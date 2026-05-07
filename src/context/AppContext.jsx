@@ -9,6 +9,7 @@ import {
   conversations as mockConversations,
   revenueData as mockRevenueData,
   alerts as mockAlerts,
+  payments as mockPayments,
 } from '../data/mockData';
 
 // ─── Initial state ─────────────────────────────────────────────────────────────
@@ -22,6 +23,7 @@ const INITIAL_STATE = {
   conversations: mockConversations,
   revenueData:   mockRevenueData,
   alerts:        mockAlerts,
+  payments:      mockPayments,
 };
 
 // ─── Reducer ───────────────────────────────────────────────────────────────────
@@ -66,6 +68,30 @@ function reducer(state, action) {
       return { ...state, transactions: [{ ...payload, id: Date.now() }, ...state.transactions] };
     case 'DELETE_TRANSACTION':
       return { ...state, transactions: state.transactions.filter(t => t.id !== payload) };
+
+    // ── Payments ─────────────────────────────────────────────────────────────
+    case 'ADD_PAYMENT':
+      return { ...state, payments: [{ ...payload, id: Date.now() }, ...state.payments] };
+    case 'UPDATE_PAYMENT':
+      return { ...state, payments: state.payments.map(p => p.id === payload.id ? payload : p) };
+    case 'MARK_PAYMENT_PAID':
+      return {
+        ...state,
+        payments: state.payments.map(p =>
+          p.id === payload
+            ? { ...p, status: 'Payé', paidDate: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) }
+            : p
+        ),
+      };
+    case 'SEND_REMINDER':
+      return {
+        ...state,
+        payments: state.payments.map(p =>
+          p.id === payload
+            ? { ...p, reminderSent: true, reminderCount: (p.reminderCount || 0) + 1, status: p.status === 'Impayé' ? 'En retard' : p.status }
+            : p
+        ),
+      };
 
     // ── Tickets ──────────────────────────────────────────────────────────────
     case 'ADD_TICKET':

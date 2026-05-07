@@ -1,28 +1,36 @@
 import { useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useApp } from '../context/AppContext';
 import Icon from './Icon';
 
 const navItems = [
-  { path: '/',            label: 'Tableau de Bord',  icon: 'dashboard',             mobileIcon: 'home' },
-  { path: '/assets',      label: 'Patrimoine',        icon: 'domain',                mobileIcon: 'apartment' },
-  { path: '/rental',      label: 'Gestion Locative',  icon: 'contract',              mobileIcon: 'contract' },
-  { path: '/finance',     label: 'Finances',          icon: 'account_balance_wallet', mobileIcon: 'assessment' },
-  { path: '/maintenance', label: 'Maintenance',       icon: 'engineering',            mobileIcon: 'engineering' },
-  { path: '/inbox',       label: 'Messagerie',        icon: 'support_agent',          mobileIcon: 'mail' },
+  { path: '/',            label: 'Tableau de Bord',  icon: 'dashboard',              mobileIcon: 'home' },
+  { path: '/assets',      label: 'Patrimoine',        icon: 'domain',                 mobileIcon: 'apartment' },
+  { path: '/rental',      label: 'Gestion Locative',  icon: 'contract',               mobileIcon: 'contract' },
+  { path: '/finance',     label: 'Finances',          icon: 'account_balance_wallet',  mobileIcon: 'assessment' },
+  { path: '/payments',    label: 'Paiements',         icon: 'payments',               mobileIcon: 'payments' },
+  { path: '/maintenance', label: 'Maintenance',       icon: 'engineering',             mobileIcon: 'engineering' },
+  { path: '/inbox',       label: 'Messagerie',        icon: 'support_agent',           mobileIcon: 'mail' },
 ];
 
 const pageTitles = {
-  '/':            'Tableau de Bord',
-  '/assets':      'Patrimoine Immobilier',
-  '/rental':      'Gestion Locative',
-  '/finance':     'Rapports Financiers',
-  '/maintenance': 'Maintenance',
-  '/inbox':       'Messagerie',
+  '/':                'Tableau de Bord',
+  '/assets':          'Patrimoine Immobilier',
+  '/rental':          'Gestion Locative',
+  '/finance':         'Rapports Financiers',
+  '/payments':        'Suivi des Paiements',
+  '/maintenance':     'Maintenance',
+  '/inbox':           'Messagerie',
+  '/portal/tenant':   'Portail Locataires',
+  '/portal/owner':    'Portail Propriétaires',
 };
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { state } = useApp();
+  const unpaidCount = state.payments.filter(p => p.status !== 'Payé').length;
   const title = pageTitles[location.pathname] || 'Minsouah';
 
   return (
@@ -79,19 +87,41 @@ export default function Layout() {
               {({ isActive }) => (
                 <>
                   <Icon name={item.icon} filled={isActive} />
-                  <span className="font-label-md text-label-md">{item.label}</span>
+                  <span className="font-label-md text-label-md flex-1">{item.label}</span>
+                  {item.path === '/payments' && unpaidCount > 0 && (
+                    <span className="bg-error text-on-error text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center mr-3">
+                      {unpaidCount}
+                    </span>
+                  )}
                 </>
               )}
             </NavLink>
           ))}
         </nav>
 
-        {/* Bottom settings */}
-        <div className="px-margin pt-md border-t border-outline-variant/30 mt-auto">
-          <button className="flex items-center gap-md py-3 text-on-surface-variant hover:text-on-surface transition-colors w-full">
-            <Icon name="settings" />
-            <span className="font-label-md text-label-md">Paramètres</span>
+        {/* Bottom — Portals + Settings */}
+        <div className="px-1 pt-md border-t border-outline-variant/30 mt-auto flex flex-col gap-1">
+          <p className="px-margin text-label-sm text-on-surface-variant uppercase tracking-widest mb-1">Portails</p>
+          <button
+            onClick={() => { navigate('/portal/tenant'); setSidebarOpen(false); }}
+            className="flex items-center gap-md py-3 pl-margin text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface rounded-r-full mr-4 transition-all duration-200"
+          >
+            <Icon name="person" />
+            <span className="font-label-md text-label-md">Portail Locataires</span>
           </button>
+          <button
+            onClick={() => { navigate('/portal/owner'); setSidebarOpen(false); }}
+            className="flex items-center gap-md py-3 pl-margin text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface rounded-r-full mr-4 transition-all duration-200"
+          >
+            <Icon name="manage_accounts" />
+            <span className="font-label-md text-label-md">Portail Propriétaires</span>
+          </button>
+          <div className="border-t border-outline-variant/30 mt-1 pt-1">
+            <button className="flex items-center gap-md py-3 pl-margin text-on-surface-variant hover:text-on-surface transition-colors w-full rounded-r-full mr-4">
+              <Icon name="settings" />
+              <span className="font-label-md text-label-md">Paramètres</span>
+            </button>
+          </div>
         </div>
       </aside>
 

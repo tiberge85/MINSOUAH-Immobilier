@@ -474,6 +474,26 @@ export const alerts = [
   },
 ];
 
+// ─── Rent Payments ─────────────────────────────────────────────────────────────
+export const payments = [
+  // Villa Azur — Julianne Moore (contractId 1)
+  { id: 1,  contractId: 1, propertyName: 'Villa Azur',           tenantName: 'Julianne Moore',       amount: 4200, month: 'Septembre 2024', dueDate: '05 Sep 2024', paidDate: '04 Sep 2024', status: 'Payé',     reminderSent: false, reminderCount: 0 },
+  { id: 2,  contractId: 1, propertyName: 'Villa Azur',           tenantName: 'Julianne Moore',       amount: 4200, month: 'Octobre 2024',   dueDate: '05 Oct 2024', paidDate: '03 Oct 2024', status: 'Payé',     reminderSent: false, reminderCount: 0 },
+  { id: 3,  contractId: 1, propertyName: 'Villa Azur',           tenantName: 'Julianne Moore',       amount: 4200, month: 'Novembre 2024',  dueDate: '05 Nov 2024', paidDate: null,          status: 'Impayé',   reminderSent: false, reminderCount: 0 },
+  // Espace Commerce Plus — Vertex Solutions (contractId 2)
+  { id: 4,  contractId: 2, propertyName: 'Espace Commerce Plus', tenantName: 'Vertex Solutions Inc.',amount: 8900, month: 'Septembre 2024', dueDate: '01 Sep 2024', paidDate: '01 Sep 2024', status: 'Payé',     reminderSent: false, reminderCount: 0 },
+  { id: 5,  contractId: 2, propertyName: 'Espace Commerce Plus', tenantName: 'Vertex Solutions Inc.',amount: 8900, month: 'Octobre 2024',   dueDate: '01 Oct 2024', paidDate: '01 Oct 2024', status: 'Payé',     reminderSent: false, reminderCount: 0 },
+  { id: 6,  contractId: 2, propertyName: 'Espace Commerce Plus', tenantName: 'Vertex Solutions Inc.',amount: 8900, month: 'Novembre 2024',  dueDate: '01 Nov 2024', paidDate: null,          status: 'En retard',reminderSent: true,  reminderCount: 1 },
+  // Château des Pins — Sarah Connor (contractId 3)
+  { id: 7,  contractId: 3, propertyName: 'Château des Pins',     tenantName: 'Sarah Connor',         amount: 7500, month: 'Septembre 2024', dueDate: '05 Sep 2024', paidDate: '05 Sep 2024', status: 'Payé',     reminderSent: false, reminderCount: 0 },
+  { id: 8,  contractId: 3, propertyName: 'Château des Pins',     tenantName: 'Sarah Connor',         amount: 7500, month: 'Octobre 2024',   dueDate: '05 Oct 2024', paidDate: '08 Oct 2024', status: 'Payé',     reminderSent: true,  reminderCount: 1 },
+  { id: 9,  contractId: 3, propertyName: 'Château des Pins',     tenantName: 'Sarah Connor',         amount: 7500, month: 'Novembre 2024',  dueDate: '05 Nov 2024', paidDate: null,          status: 'Impayé',   reminderSent: false, reminderCount: 0 },
+  // Studio Gambetta — Hugo Bernard (contractId 6)
+  { id: 10, contractId: 6, propertyName: 'Studio Gambetta',      tenantName: 'Hugo Bernard',         amount: 920,  month: 'Septembre 2024', dueDate: '05 Sep 2024', paidDate: '05 Sep 2024', status: 'Payé',     reminderSent: false, reminderCount: 0 },
+  { id: 11, contractId: 6, propertyName: 'Studio Gambetta',      tenantName: 'Hugo Bernard',         amount: 920,  month: 'Octobre 2024',   dueDate: '05 Oct 2024', paidDate: '12 Oct 2024', status: 'Payé',     reminderSent: true,  reminderCount: 2 },
+  { id: 12, contractId: 6, propertyName: 'Studio Gambetta',      tenantName: 'Hugo Bernard',         amount: 920,  month: 'Novembre 2024',  dueDate: '05 Nov 2024', paidDate: null,          status: 'En retard',reminderSent: true,  reminderCount: 1 },
+];
+
 // ─── Conversations ─────────────────────────────────────────────────────────────
 export const conversations = [
   {

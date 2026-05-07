@@ -35,6 +35,8 @@ export default function Maintenance() {
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [detailTicket, setDetailTicket] = useState(null);
+  const [assignModal, setAssignModal] = useState(null);
+  const [technicianName, setTechnicianName] = useState('');
   const [form, setForm] = useState(newTicketForm0);
 
   const filtered = tickets.filter((t) => {
@@ -73,6 +75,16 @@ export default function Maintenance() {
     const idx = STATUS_STEPS.indexOf(ticket.status);
     const next = STATUS_STEPS[Math.min(idx + 1, STATUS_STEPS.length - 1)];
     dispatch({ type: 'UPDATE_TICKET', payload: { ...ticket, status: next } });
+  };
+
+  const handleAssign = () => {
+    if (!assignModal || !technicianName.trim()) return;
+    dispatch({
+      type: 'UPDATE_TICKET',
+      payload: { ...assignModal, technician: { name: technicianName.trim() }, status: 'En cours' },
+    });
+    setAssignModal(null);
+    setTechnicianName('');
   };
 
   return (
@@ -202,12 +214,13 @@ export default function Maintenance() {
                         <span className="text-label-sm text-on-surface">{ticket.technician.name}</span>
                       </div>
                     ) : (
-                      <span
-                        onClick={(e) => { e.stopPropagation(); }}
-                        className="px-sm py-xs bg-primary-container text-on-primary-container rounded-lg text-label-sm font-label-sm cursor-pointer hover:brightness-95 transition-all"
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setAssignModal(ticket); setTechnicianName(''); }}
+                        className="px-sm py-xs bg-primary-container text-on-primary-container rounded-lg text-label-sm font-label-sm hover:brightness-95 transition-all flex items-center gap-1"
                       >
+                        <Icon name="person_add" size={14} />
                         Assigner
-                      </span>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -356,6 +369,43 @@ export default function Maintenance() {
                 );
               })}
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Assign Technician Modal ─────────────────────────────────────── */}
+      <Modal
+        open={!!assignModal}
+        onClose={() => setAssignModal(null)}
+        title="Assigner un Technicien"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setAssignModal(null)}>Annuler</Button>
+            <Button icon="person_add" onClick={handleAssign} disabled={!technicianName.trim()}>
+              Assigner
+            </Button>
+          </>
+        }
+      >
+        {assignModal && (
+          <div className="flex flex-col gap-md">
+            <div className="p-md bg-surface-container rounded-xl">
+              <p className="text-label-sm text-on-surface-variant">Ticket</p>
+              <p className="text-label-md font-label-md text-on-surface font-bold">{assignModal.title}</p>
+              <p className="text-body-sm text-on-surface-variant mt-0.5">{assignModal.property} — {assignModal.unit}</p>
+            </div>
+            <Input
+              label="Nom du technicien"
+              placeholder="Ex: Jean-Marc Diallo"
+              value={technicianName}
+              onChange={e => setTechnicianName(e.target.value)}
+              icon="engineering"
+              required
+            />
+            <p className="text-body-sm text-on-surface-variant">
+              Le statut du ticket passera automatiquement à <strong>"En cours"</strong>.
+            </p>
           </div>
         )}
       </Modal>
