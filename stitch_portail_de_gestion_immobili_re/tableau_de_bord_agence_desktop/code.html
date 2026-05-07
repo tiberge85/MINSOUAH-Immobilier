@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+
+<html class="light" lang="fr"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "inverse-surface": "#353026",
+                        "on-secondary": "#ffffff",
+                        "outline-variant": "#d2c5ae",
+                        "outline": "#817662",
+                        "on-error-container": "#93000a",
+                        "surface-container-low": "#fdf2e3",
+                        "on-primary": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "on-primary-fixed-variant": "#5a4300",
+                        "secondary-fixed": "#ebe0dd",
+                        "primary-fixed": "#ffdf9b",
+                        "primary-container": "#e5b228",
+                        "inverse-primary": "#f4bf36",
+                        "on-surface": "#1f1b12",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-container": "#5e4600",
+                        "secondary-container": "#ebe0dd",
+                        "inverse-on-surface": "#faefe0",
+                        "surface-variant": "#ebe1d2",
+                        "primary": "#785a00",
+                        "on-tertiary-fixed-variant": "#004b74",
+                        "on-secondary-fixed-variant": "#4c4543",
+                        "surface": "#fff8f2",
+                        "error": "#ba1a1a",
+                        "tertiary-container": "#75c0ff",
+                        "background": "#fff8f2",
+                        "on-secondary-fixed": "#1f1a19",
+                        "primary-fixed-dim": "#f4bf36",
+                        "on-error": "#ffffff",
+                        "surface-dim": "#e3d9ca",
+                        "surface-container": "#f7edde",
+                        "surface-tint": "#785a00",
+                        "tertiary-fixed-dim": "#94ccff",
+                        "error-container": "#ffdad6",
+                        "on-tertiary-fixed": "#001d32",
+                        "on-secondary-container": "#6a6360",
+                        "on-background": "#1f1b12",
+                        "tertiary": "#006399",
+                        "surface-container-high": "#f1e7d8",
+                        "on-tertiary-container": "#004e79",
+                        "on-primary-fixed": "#251a00",
+                        "secondary-fixed-dim": "#cec4c1",
+                        "on-surface-variant": "#4f4634",
+                        "surface-bright": "#fff8f2",
+                        "secondary": "#645d5a",
+                        "tertiary-fixed": "#cde5ff",
+                        "surface-container-highest": "#ebe1d2"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sm": "16px",
+                        "base": "4px",
+                        "gutter": "24px",
+                        "xl": "64px",
+                        "margin": "32px",
+                        "xs": "8px",
+                        "lg": "40px",
+                        "md": "24px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["Inter"],
+                        "display": ["Manrope"],
+                        "body-md": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "h3": ["Manrope"],
+                        "body-sm": ["Inter"],
+                        "label-sm": ["Inter"],
+                        "h2": ["Manrope"],
+                        "h1": ["Manrope"]
+                    },
+                    "fontSize": {
+                        "label-md": ["14px", {"lineHeight": "1", "fontWeight": "600"}],
+                        "display": ["48px", {"lineHeight": "1.1", "fontWeight": "700"}],
+                        "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "body-lg": ["18px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                        "h3": ["20px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                        "body-sm": ["14px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "label-sm": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "h2": ["24px", {"lineHeight": "1.3", "fontWeight": "600"}],
+                        "h1": ["32px", {"lineHeight": "1.2", "fontWeight": "700"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: #fff8f2;
+            color: #1f1b12;
+            -webkit-font-smoothing: antialiased;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #d2c5ae;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="font-body-md text-body-md overflow-x-hidden">
+<!-- Navigation Drawer (Sidebar) -->
+<aside class="h-full w-72 fixed left-0 top-0 bg-surface-container border-r border-outline-variant shadow-lg z-40 hidden md:flex flex-col gap-xs py-md">
+<div class="px-margin mb-lg">
+<h1 class="font-h1 text-h1 text-primary tracking-tight font-black">Minsouah</h1>
+<p class="text-on-surface-variant font-label-sm mt-1 uppercase tracking-widest">Real Estate Admin</p>
+</div>
+<nav class="flex-grow flex flex-col gap-1">
+<!-- Active: Admin Dashboard -->
+<a class="bg-primary-container text-on-primary-container border-l-4 border-primary font-bold rounded-r-full mr-4 flex items-center gap-md px-margin py-3 transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label-md text-label-md">Admin Dashboard</span>
+</a>
+<a class="text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high flex items-center gap-md px-margin py-3 transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="domain">domain</span>
+<span class="font-label-md text-label-md">Property Portfolio</span>
+</a>
+<a class="text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high flex items-center gap-md px-margin py-3 transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="font-label-md text-label-md">Owner Statements</span>
+</a>
+<a class="text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high flex items-center gap-md px-margin py-3 transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="support_agent">support_agent</span>
+<span class="font-label-md text-label-md">Client Requests</span>
+</a>
+<a class="text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high flex items-center gap-md px-margin py-3 transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label-md text-label-md">Platform Settings</span>
+</a>
+</nav>
+<div class="mt-auto px-margin pt-md border-t border-outline-variant/30">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-bold overflow-hidden">
+<img alt="Admin" data-alt="Close-up professional portrait of a real estate executive in a sharp navy suit, smiling confidently in a bright, modern glass-walled office environment. The lighting is soft and corporate, emphasizing a premium and trustworthy persona. The color palette consists of warm neutrals and soft gold tones reflecting the Minsouah brand identity." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBKlOatIi8Ms5EHj2vTEu3uMS8YYyXuYHGc22chFugND5UggGM-Ptdu3VWdaK1uQFjgkIik65mvIFe-rDvyo6a0FTpWJM3SVcqF7m_Ye7LREHG3Mz8YdVFzbiBQigK4N4kMmRrMXJV9t-AQPpxD_zXCq6wrAnHelDTvfA4_OjPGf3M-pbKdhk0B_Y3RV7L2_eYSYtwrUB3u2r70TF5qvGXpOlqBBAp4HfdcYoW-8Iu4op2U7m9kldNsMf_PSUR_5zLE_N_ow1ACqcI"/>
+</div>
+<div class="flex flex-col">
+<span class="font-label-md text-on-surface">Jean Dupont</span>
+<span class="text-label-sm text-on-surface-variant">Premium Tier</span>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Canvas -->
+<main class="md:ml-72 min-h-screen pb-xl">
+<!-- TopAppBar -->
+<header class="flex justify-between items-center w-full px-margin h-20 bg-surface shadow-[0px_4px_20px_rgba(62,56,54,0.05)] sticky top-0 z-30">
+<div class="flex items-center gap-md">
+<button class="material-symbols-outlined md:hidden text-primary" data-icon="menu">menu</button>
+<h2 class="font-h2 text-h2 font-bold text-primary">Tableau de Bord</h2>
+</div>
+<div class="flex items-center gap-gutter">
+<div class="hidden lg:flex items-center bg-surface-container rounded-full px-4 py-2 border border-outline-variant/30">
+<span class="material-symbols-outlined text-outline mr-2" data-icon="search">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-body-sm w-64" placeholder="Rechercher une propriété..." type="text"/>
+</div>
+<div class="flex items-center gap-sm">
+<button class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-high transition-colors text-on-surface-variant">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<div class="w-10 h-10 rounded-full bg-surface-variant overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200">
+<img alt="Avatar" data-alt="A professional headshot of a mature businessman with graying hair and a warm, approachable smile. He is dressed in a crisp white shirt and a tailored gray vest. The background is a blurry, high-end real estate office with warm lighting and wooden accents, suggesting expertise and reliability in a corporate light-mode setting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuApK1peUWaKt9aUZTyTvVsB1QuZDj0aqEsN21pKuVNoxCQktZiKARuZD6QOXOV6sKrEtze--FC9p8vQUZV2jrjrChsBmcWmeO3ylRjep5EFHDAHBF0oOx-HAkFbfYaX0v_NYYEcFSfNpeMHL2pAhN6xuH-oECCgUxguY8RC5SjP7RqHay224Nd4yJKrBTg3N590CpLN2kH-cIdSwrdUttonL_UB0bFTYok7q-7540GdeGTsquV92nEV_f-D8HS-Jtk6q7xMQ8Sw6wo"/>
+</div>
+</div>
+</div>
+</header>
+<!-- Dashboard Content -->
+<div class="px-margin pt-gutter flex flex-col gap-gutter">
+<!-- KPI Section - Bento Grid Style -->
+<section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md">
+<div class="bg-surface rounded-xl p-md shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/20 flex items-start justify-between">
+<div>
+<p class="text-on-surface-variant font-label-sm uppercase tracking-wider mb-base">Total Propriétés</p>
+<h3 class="font-h1 text-h1 text-primary">1,284</h3>
+<p class="text-green-600 font-label-sm mt-2 flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="trending_up">trending_up</span> +12% ce mois
+                        </p>
+</div>
+<div class="p-3 rounded-lg bg-primary-container/10 text-primary">
+<span class="material-symbols-outlined" data-icon="apartment">apartment</span>
+</div>
+</div>
+<div class="bg-surface rounded-xl p-md shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/20 flex items-start justify-between">
+<div>
+<p class="text-on-surface-variant font-label-sm uppercase tracking-wider mb-base">Taux d'Occupation</p>
+<h3 class="font-h1 text-h1 text-primary">94.2%</h3>
+<p class="text-green-600 font-label-sm mt-2 flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="trending_up">trending_up</span> Stable
+                        </p>
+</div>
+<div class="p-3 rounded-lg bg-tertiary-container/10 text-tertiary">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+</div>
+</div>
+<div class="bg-surface rounded-xl p-md shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/20 flex items-start justify-between">
+<div>
+<p class="text-on-surface-variant font-label-sm uppercase tracking-wider mb-base">Revenu Mensuel</p>
+<h3 class="font-h1 text-h1 text-primary">425k €</h3>
+<p class="text-green-600 font-label-sm mt-2 flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="trending_up">trending_up</span> +8.4%
+                        </p>
+</div>
+<div class="p-3 rounded-lg bg-primary-container/10 text-primary">
+<span class="material-symbols-outlined" data-icon="payments">payments</span>
+</div>
+</div>
+<div class="bg-surface rounded-xl p-md shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/20 flex items-start justify-between">
+<div>
+<p class="text-on-surface-variant font-label-sm uppercase tracking-wider mb-base">Requêtes En Attente</p>
+<h3 class="font-h1 text-h1 text-primary">28</h3>
+<p class="text-error font-label-sm mt-2 flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="warning">warning</span> 5 urgentes
+                        </p>
+</div>
+<div class="p-3 rounded-lg bg-error-container/10 text-error">
+<span class="material-symbols-outlined" data-icon="assignment_late">assignment_late</span>
+</div>
+</div>
+</section>
+<!-- Charts & Urgent Alerts Section -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
+<!-- Revenue Trend Chart -->
+<div class="lg:col-span-2 bg-surface rounded-xl p-md shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/20 h-[400px] flex flex-col">
+<div class="flex justify-between items-center mb-lg">
+<h3 class="font-h3 text-h3">Évolution des Revenus</h3>
+<div class="flex gap-2">
+<button class="px-3 py-1 text-label-sm rounded-full bg-surface-container border border-outline-variant/30">7 Jours</button>
+<button class="px-3 py-1 text-label-sm rounded-full bg-primary text-on-primary">Mensuel</button>
+<button class="px-3 py-1 text-label-sm rounded-full bg-surface-container border border-outline-variant/30">Annuel</button>
+</div>
+</div>
+<div class="flex-grow flex items-end gap-gutter px-md">
+<!-- Simulated Chart Bars -->
+<div class="flex-grow flex flex-col items-center gap-2">
+<div class="w-full bg-surface-container-high rounded-t-lg relative" style="height: 60%">
+<div class="absolute inset-0 bg-primary/20 rounded-t-lg"></div>
+</div>
+<span class="text-label-sm text-on-surface-variant">Jan</span>
+</div>
+<div class="flex-grow flex flex-col items-center gap-2">
+<div class="w-full bg-surface-container-high rounded-t-lg relative" style="height: 75%">
+<div class="absolute inset-0 bg-primary/40 rounded-t-lg"></div>
+</div>
+<span class="text-label-sm text-on-surface-variant">Fév</span>
+</div>
+<div class="flex-grow flex flex-col items-center gap-2">
+<div class="w-full bg-surface-container-high rounded-t-lg relative" style="height: 65%">
+<div class="absolute inset-0 bg-primary/30 rounded-t-lg"></div>
+</div>
+<span class="text-label-sm text-on-surface-variant">Mar</span>
+</div>
+<div class="flex-grow flex flex-col items-center gap-2">
+<div class="w-full bg-surface-container-high rounded-t-lg relative" style="height: 85%">
+<div class="absolute inset-0 bg-primary/60 rounded-t-lg"></div>
+</div>
+<span class="text-label-sm text-on-surface-variant">Avr</span>
+</div>
+<div class="flex-grow flex flex-col items-center gap-2">
+<div class="w-full bg-surface-container-high rounded-t-lg relative" style="height: 95%">
+<div class="absolute inset-0 bg-primary rounded-t-lg"></div>
+</div>
+<span class="text-label-sm text-on-surface-variant">Mai</span>
+</div>
+</div>
+</div>
+<!-- Urgent Alerts -->
+<div class="bg-surface rounded-xl p-md shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/20 flex flex-col">
+<h3 class="font-h3 text-h3 mb-lg flex items-center gap-2">
+<span class="material-symbols-outlined text-error" data-icon="campaign">campaign</span>
+                        Alertes Urgentes
+                    </h3>
+<div class="flex flex-col gap-sm overflow-y-auto custom-scrollbar pr-2">
+<!-- Maintenance Alert -->
+<div class="p-sm bg-error-container/10 border-l-4 border-error rounded-r-lg">
+<div class="flex justify-between items-start mb-1">
+<span class="font-label-md text-error">Fuite d'eau majeure</span>
+<span class="text-[10px] uppercase font-bold text-on-surface-variant">Il y a 2h</span>
+</div>
+<p class="text-body-sm text-on-surface-variant">Résidence Le Panoramique - Appt 402</p>
+<button class="mt-2 text-label-sm font-bold text-primary flex items-center gap-1 hover:underline">
+                                Assigner un technicien <span class="material-symbols-outlined text-[14px]" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+<!-- Lease Expiry -->
+<div class="p-sm bg-primary-container/10 border-l-4 border-primary-container rounded-r-lg">
+<div class="flex justify-between items-start mb-1">
+<span class="font-label-md text-primary">Bail expirant bientôt</span>
+<span class="text-[10px] uppercase font-bold text-on-surface-variant">3 jours restants</span>
+</div>
+<p class="text-body-sm text-on-surface-variant">Villa Harmonie - Locataire : Marc Leroy</p>
+<button class="mt-2 text-label-sm font-bold text-primary flex items-center gap-1 hover:underline">
+                                Envoyer renouvellement <span class="material-symbols-outlined text-[14px]" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+<!-- Payment Issue -->
+<div class="p-sm bg-error-container/10 border-l-4 border-error rounded-r-lg">
+<div class="flex justify-between items-start mb-1">
+<span class="font-label-md text-error">Retard de paiement</span>
+<span class="text-[10px] uppercase font-bold text-on-surface-variant">Échu hier</span>
+</div>
+<p class="text-body-sm text-on-surface-variant">Bureau C - Agence Horizon</p>
+<button class="mt-2 text-label-sm font-bold text-primary flex items-center gap-1 hover:underline">
+                                Relancer le client <span class="material-symbols-outlined text-[14px]" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Portfolio Spotlight -->
+<section>
+<div class="flex justify-between items-center mb-md">
+<h3 class="font-h3 text-h3">Coup de Projecteur : Portfolio Premium</h3>
+<a class="text-primary font-label-md flex items-center gap-1 hover:underline" href="#">Voir tout le catalogue</a>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-gutter">
+<!-- Property Card 1 -->
+<div class="bg-surface rounded-xl overflow-hidden shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/20 hover:translate-y-[-4px] transition-transform duration-300">
+<div class="h-48 w-full relative">
+<img alt="Villa Design" class="w-full h-full object-cover" data-alt="A breathtaking view of a modern luxury villa perched on a Mediterranean hillside at dusk. The architecture features clean white lines, large glass expanses, and an infinity pool reflecting the warm, golden-hour sky. The scene is elegant and sophisticated, emphasizing the high-end real estate managed by Minsouah. Soft warm lighting illuminates the terrace, creating a sense of exclusive comfort and modern stability." src="https://lh3.googleusercontent.com/aida/ADBb0uj58Y8bnT9Hp9lliemAp9abgD671cfZoZVY_bbjfULuuoaagYhq0nOXy6L1KM8QwTSSitm14HK6W8h9I39rIcTL0Aje2yEmtz3ByQhSdA9sWsMCKhvyTa7SXfIecD0f1Tt4q6XTWrS1FHjffGSrOfFrp0CmjnN6CPhwBNuNAgLSE_UjmGMbJyAF49X2xLiT9OqHcCq4rwW_5fMhTZIF04tx9JwH_NPIl9y3YguhI0ohhjarot3D7MMKGe54mhJj1LCFgihuHVmN"/>
+<div class="absolute top-4 left-4 bg-green-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase">Loué</div>
+</div>
+<div class="p-md">
+<h4 class="font-h3 text-h3 text-on-surface">La Villa Céleste</h4>
+<p class="text-on-surface-variant text-body-sm flex items-center gap-1 mb-md">
+<span class="material-symbols-outlined text-[16px]" data-icon="location_on">location_on</span> Nice, Côte d'Azur
+                            </p>
+<div class="flex justify-between items-center pt-md border-t border-outline-variant/20">
+<div>
+<p class="text-label-sm text-on-surface-variant uppercase">Revenu Mensuel</p>
+<p class="font-bold text-primary text-h2">12,500 €</p>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant text-label-md">
+<span class="material-symbols-outlined" data-icon="star">star</span>
+<span>4.9</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Property Card 2 -->
+<div class="bg-surface rounded-xl overflow-hidden shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/20 hover:translate-y-[-4px] transition-transform duration-300">
+<div class="h-48 w-full relative">
+<img alt="Corporate" class="w-full h-full object-cover" data-alt="An expansive, high-ceilinged modern corporate office interior with panoramic floor-to-ceiling windows overlooking a metropolitan city skyline. The interior is minimal, featuring sustainable wood accents, polished concrete floors, and ergonomic designer furniture. The lighting is bright and natural, suggesting a premium, professional business environment in line with Minsouah's sophisticated brand values." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB5tkPt-TqYJQM7MyNEhYSZFtiANOaTwKFoJm-0fyj7NfP5Bq_NW-Dse05lgAM7vbJPuwTimchqtEEMPRtzUggSbBumMxFoUFqvwMTLpudbS835Ps3e6f9kH8c_ppm8q-BwR8VJepu3PyQtu6qiLo09fLM0cP2cdMIxFd-hIG6vHU5J_2csKP7SDq3CyL6_Rpi-OLNUxYantDLsKgRE0s5AWaKHvlXonI59jpG0FtuYV208gFSQr7m8QecShIJZ8UyZ_WqvZhvTpvQ"/>
+<div class="absolute top-4 left-4 bg-primary text-on-primary text-[10px] font-bold px-3 py-1 rounded-full uppercase">Disponible</div>
+</div>
+<div class="p-md">
+<h4 class="font-h3 text-h3 text-on-surface">Espace Horizon Business</h4>
+<p class="text-on-surface-variant text-body-sm flex items-center gap-1 mb-md">
+<span class="material-symbols-outlined text-[16px]" data-icon="location_on">location_on</span> La Défense, Paris
+                            </p>
+<div class="flex justify-between items-center pt-md border-t border-outline-variant/20">
+<div>
+<p class="text-label-sm text-on-surface-variant uppercase">Loyer/m²</p>
+<p class="font-bold text-primary text-h2">850 €</p>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant text-label-md">
+<span class="material-symbols-outlined" data-icon="aspect_ratio">aspect_ratio</span>
+<span>1,200 m²</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Property Card 3 -->
+<div class="bg-surface rounded-xl overflow-hidden shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/20 hover:translate-y-[-4px] transition-transform duration-300">
+<div class="h-48 w-full relative">
+<img alt="Loft" class="w-full h-full object-cover" data-alt="A contemporary designer loft in a converted historic building, showcasing high-end industrial aesthetics with exposed brick walls, steel beams, and warm oak flooring. Large industrial-style windows flood the space with soft daylight. The furniture is a mix of mid-century modern and contemporary pieces, creating an atmosphere of urban elegance and premium comfort." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDyyDspdu_Bmm_gkwdsH8QQPgOa6iTrnBhouXzDHE6B3VTfuYU2S3TKEwhnLPLhypELxKif2b8ci2iiFiD5jqbdhChXHvWnn8lxQmq5e8sVWR91v8sSxU3MROlvgHNN_uiA1F9n0wwDhv9fDQFHsuXoe6Dy6Lt917wF1ECls2CGWmDP2BsjaGIWCY0zKwXN8Ds0W3-HWdzbBNiclRjg1E45ndvCw6uz227RfDQ3Wpi0M1oW-TWRWTZZJC4ZvnNozqQ6AuHKy2-EVjU"/>
+<div class="absolute top-4 left-4 bg-tertiary text-on-tertiary text-[10px] font-bold px-3 py-1 rounded-full uppercase">Sous Offre</div>
+</div>
+<div class="p-md">
+<h4 class="font-h3 text-h3 text-on-surface">Loft Manufacturier</h4>
+<p class="text-on-surface-variant text-body-sm flex items-center gap-1 mb-md">
+<span class="material-symbols-outlined text-[16px]" data-icon="location_on">location_on</span> Lyon, Presqu'île
+                            </p>
+<div class="flex justify-between items-center pt-md border-t border-outline-variant/20">
+<div>
+<p class="text-label-sm text-on-surface-variant uppercase">Valeur Estimée</p>
+<p class="font-bold text-primary text-h2">1.8M €</p>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant text-label-md">
+<span class="material-symbols-outlined" data-icon="bed">bed</span>
+<span>4 Ch.</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+</main>
+<!-- Bottom Navigation Bar (Mobile only) -->
+<nav class="md:hidden fixed bottom-0 w-full z-50 bg-surface border-t border-outline-variant shadow-[0px_-4px_20px_rgba(62,56,54,0.05)] flex justify-around items-center h-16 pb-safe px-4">
+<a class="flex flex-col items-center justify-center text-primary font-bold active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="home">home</span>
+<span class="font-label-sm text-label-sm">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="apartment">apartment</span>
+<span class="font-label-sm text-label-sm">Assets</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="assessment">assessment</span>
+<span class="font-label-sm text-label-sm">Reports</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="mail">mail</span>
+<span class="font-label-sm text-label-sm">Inbox</span>
+</a>
+</nav>
+<!-- FAB (Contextual for Dashboard: Create Property or Request) -->
+<button class="fixed bottom-24 right-8 w-14 h-14 bg-primary text-on-primary rounded-full shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-all duration-200 z-40 md:bottom-12 md:right-12">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+</button>
+</body></html>

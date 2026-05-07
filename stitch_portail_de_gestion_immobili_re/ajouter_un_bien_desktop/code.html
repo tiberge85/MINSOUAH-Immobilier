@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+
+<html class="light" lang="fr"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800;900&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-surface-variant": "#4f4634",
+                        "tertiary-container": "#75c0ff",
+                        "on-tertiary": "#ffffff",
+                        "surface-container-low": "#fdf2e3",
+                        "surface-container-high": "#f1e7d8",
+                        "surface-bright": "#fff8f2",
+                        "on-tertiary-container": "#004e79",
+                        "inverse-primary": "#f4bf36",
+                        "secondary-fixed-dim": "#cec4c1",
+                        "error-container": "#ffdad6",
+                        "on-secondary-fixed-variant": "#4c4543",
+                        "on-primary-fixed": "#251a00",
+                        "surface-dim": "#e3d9ca",
+                        "on-tertiary-fixed-variant": "#004b74",
+                        "on-primary-fixed-variant": "#5a4300",
+                        "on-surface": "#1f1b12",
+                        "on-secondary": "#ffffff",
+                        "surface": "#fff8f2",
+                        "inverse-surface": "#353026",
+                        "secondary": "#645d5a",
+                        "on-error-container": "#93000a",
+                        "surface-container": "#f7edde",
+                        "outline": "#817662",
+                        "inverse-on-surface": "#faefe0",
+                        "outline-variant": "#d2c5ae",
+                        "on-error": "#ffffff",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-container": "#5e4600",
+                        "tertiary-fixed": "#cde5ff",
+                        "surface-variant": "#ebe1d2",
+                        "surface-container-highest": "#ebe1d2",
+                        "error": "#ba1a1a",
+                        "tertiary": "#006399",
+                        "on-secondary-container": "#6a6360",
+                        "on-background": "#1f1b12",
+                        "primary-container": "#e5b228",
+                        "primary-fixed-dim": "#f4bf36",
+                        "on-secondary-fixed": "#1f1a19",
+                        "surface-tint": "#785a00",
+                        "on-primary": "#ffffff",
+                        "primary-fixed": "#ffdf9b",
+                        "tertiary-fixed-dim": "#94ccff",
+                        "secondary-fixed": "#ebe0dd",
+                        "primary": "#785a00",
+                        "background": "#fff8f2",
+                        "on-tertiary-fixed": "#001d32",
+                        "secondary-container": "#ebe0dd"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "margin": "32px",
+                        "base": "4px",
+                        "sm": "16px",
+                        "xl": "64px",
+                        "md": "24px",
+                        "lg": "40px",
+                        "gutter": "24px",
+                        "xs": "8px"
+                    },
+                    "fontFamily": {
+                        "display": ["Manrope"],
+                        "h1": ["Manrope"],
+                        "body-md": ["Inter"],
+                        "h3": ["Manrope"],
+                        "h2": ["Manrope"],
+                        "body-sm": ["Inter"],
+                        "label-sm": ["Inter"],
+                        "label-md": ["Inter"],
+                        "body-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "display": ["48px", {"lineHeight": "1.1", "fontWeight": "700"}],
+                        "h1": ["32px", {"lineHeight": "1.2", "fontWeight": "700"}],
+                        "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "h3": ["20px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                        "h2": ["24px", {"lineHeight": "1.3", "fontWeight": "600"}],
+                        "body-sm": ["14px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "label-sm": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "label-md": ["14px", {"lineHeight": "1", "fontWeight": "600"}],
+                        "body-lg": ["18px", {"lineHeight": "1.6", "fontWeight": "400"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3, .font-h1, .font-h2, .font-h3 { font-family: 'Manrope', sans-serif; }
+        .shadow-soft { shadow-[0px_4px_20px_rgba(62,56,54,0.05)] }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+<!-- TopAppBar -->
+<header class="bg-surface dark:bg-surface-dim shadow-[0px_4px_20px_rgba(62,56,54,0.05)] dark:shadow-none fixed top-0 left-0 right-0 z-40 h-20 px-margin flex justify-between items-center">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-primary cursor-pointer active:scale-95 transition-transform duration-200">menu</span>
+<span class="font-h1 text-h1 text-primary dark:text-primary-fixed-dim tracking-tight font-black">Minsouah</span>
+</div>
+<div class="flex items-center gap-md">
+<div class="hidden md:flex gap-md">
+<span class="font-label-md text-label-md text-primary dark:text-primary-fixed-dim font-bold cursor-pointer transition-colors">Property Portfolio</span>
+<span class="font-label-md text-label-md text-on-surface-variant dark:text-outline hover:bg-surface-container-high transition-colors p-2 rounded-lg cursor-pointer">Client Requests</span>
+</div>
+<div class="w-10 h-10 rounded-full overflow-hidden bg-surface-container shadow-sm border border-outline-variant cursor-pointer active:scale-95 transition-transform">
+<img alt="User Profile Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB6IYLAo8haDJEBfoIM1OrxsCuiVz1RzYijsKYThkbSBhcr1bA2qrwxFPoNMg52VILVF9gEXyyGb58zo-v83qFAftI9VSJm6r6yVuX_XgCPgoowrR6Zkyhe46CxQSobXwRPya4Nfr-nzRCFxWwzH_ULrVQtdt0wODe_WtgkAUr4lpq2Z7qLy7JKWWjY6zKayZziGNzfRKc4ORfi3gefd98iXJFZbvtJJ5BGMV9jh47FdbPcLbZj-15r-6uzfjB2z6Vp0fs5w1Qyxps"/>
+</div>
+</div>
+</header>
+<!-- NavigationDrawer (Visible on Desktop) -->
+<aside class="hidden md:flex flex-col gap-xs py-md h-screen bg-surface-container dark:bg-surface-container-low w-72 fixed left-0 top-0 border-r border-outline-variant dark:border-none shadow-lg z-50">
+<div class="px-md py-lg flex flex-col items-start gap-xs">
+<div class="w-16 h-16 rounded-xl bg-primary-container flex items-center justify-center mb-base shadow-sm">
+<span class="material-symbols-outlined text-on-primary-container text-4xl" data-weight="fill" style="font-variation-settings: 'FILL' 1;">domain</span>
+</div>
+<div class="flex flex-col">
+<span class="font-h3 text-h3 text-on-surface font-bold">Real Estate Admin</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Agency Portfolio</span>
+<span class="font-label-sm text-label-sm text-primary font-bold mt-1">Premium Tier</span>
+</div>
+</div>
+<nav class="flex-1 px-4 space-y-1">
+<a class="flex items-center gap-sm px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all duration-300 ease-in-out rounded-lg" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-label-md text-label-md">Admin Dashboard</span>
+</a>
+<a class="flex items-center gap-sm px-md py-sm bg-primary-container text-on-primary-container border-l-4 border-primary font-bold rounded-r-full mr-4 transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-weight="fill" style="font-variation-settings: 'FILL' 1;">domain</span>
+<span class="font-label-md text-label-md">Property Portfolio</span>
+</a>
+<a class="flex items-center gap-sm px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all duration-300 ease-in-out rounded-lg" href="#">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+<span class="font-label-md text-label-md">Owner Statements</span>
+</a>
+<a class="flex items-center gap-sm px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all duration-300 ease-in-out rounded-lg" href="#">
+<span class="material-symbols-outlined">support_agent</span>
+<span class="font-label-md text-label-md">Client Requests</span>
+</a>
+<a class="flex items-center gap-sm px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all duration-300 ease-in-out rounded-lg" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-md text-label-md">Platform Settings</span>
+</a>
+</nav>
+</aside>
+<!-- Main Content Area -->
+<main class="md:pl-72 pt-20 pb-16 md:pb-0 min-h-screen">
+<div class="max-w-7xl mx-auto p-margin">
+<!-- Breadcrumbs / Header -->
+<div class="mb-lg flex flex-col md:flex-row md:items-end justify-between gap-md">
+<div>
+<span class="font-label-sm text-label-sm text-primary uppercase tracking-widest">Nouveau Bien</span>
+<h2 class="font-h1 text-h1 text-on-surface mt-base">Enregistrer une propriété</h2>
+<p class="text-on-surface-variant font-body-md mt-xs max-w-xl">Remplissez les informations ci-dessous pour ajouter un nouvel actif immobilier à votre portefeuille premium. L'exactitude des données garantit un reporting optimal.</p>
+</div>
+<div class="hidden md:block">
+<img alt="Property Architecture" class="w-64 h-32 object-cover rounded-xl shadow-lg" data-alt="A high-end architectural photograph of a luxury property exterior with clean lines and warm sunlight. The building features large glass panels reflecting a serene garden and a blue sky. The lighting is bright and airy, emphasizing the sophisticated, modern real estate brand. The overall mood is one of premium stability and elegance." src="https://lh3.googleusercontent.com/aida/ADBb0uj58Y8bnT9Hp9lliemAp9abgD671cfZoZVY_bbjfULuuoaagYhq0nOXy6L1KM8QwTSSitm14HK6W8h9I39rIcTL0Aje2yEmtz3ByQhSdA9sWsMCKhvyTa7SXfIecD0f1Tt4q6XTWrS1FHjffGSrOfFrp0CmjnN6CPhwBNuNAgLSE_UjmGMbJyAF49X2xLiT9OqHcCq4rwW_5fMhTZIF04tx9JwH_NPIl9y3YguhI0ohhjarot3D7MMKGe54mhJj1LCFgihuHVmN"/>
+</div>
+</div>
+<!-- Form Container -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-gutter">
+<!-- Left Section: Basic Info -->
+<div class="md:col-span-8 space-y-gutter">
+<section class="bg-surface p-lg rounded-xl shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/30">
+<h3 class="font-h3 text-h3 text-on-surface mb-md flex items-center gap-xs">
+<span class="material-symbols-outlined text-primary">info</span>
+                            Informations Générales
+                        </h3>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-md">
+<div class="col-span-1 md:col-span-2">
+<label class="block font-label-md text-label-md text-on-surface mb-xs">Nom du bien</label>
+<input class="w-full bg-surface border border-outline-variant rounded-lg p-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-on-surface font-body-md" placeholder="Ex: Résidence Les Palmiers" type="text"/>
+</div>
+<div class="col-span-1 md:col-span-2">
+<label class="block font-label-md text-label-md text-on-surface mb-sm">Type de bien</label>
+<div class="grid grid-cols-3 gap-sm">
+<label class="cursor-pointer group">
+<input checked="" class="hidden peer" name="property_type" type="radio"/>
+<div class="flex flex-col items-center gap-xs p-md border-2 border-outline-variant rounded-xl group-hover:border-primary/50 peer-checked:border-primary peer-checked:bg-surface-container transition-all">
+<span class="material-symbols-outlined text-3xl group-hover:scale-110 transition-transform">apartment</span>
+<span class="font-label-md text-label-md">Appartement</span>
+</div>
+</label>
+<label class="cursor-pointer group">
+<input class="hidden peer" name="property_type" type="radio"/>
+<div class="flex flex-col items-center gap-xs p-md border-2 border-outline-variant rounded-xl group-hover:border-primary/50 peer-checked:border-primary peer-checked:bg-surface-container transition-all">
+<span class="material-symbols-outlined text-3xl group-hover:scale-110 transition-transform">villa</span>
+<span class="font-label-md text-label-md">Villa</span>
+</div>
+</label>
+<label class="cursor-pointer group">
+<input class="hidden peer" name="property_type" type="radio"/>
+<div class="flex flex-col items-center gap-xs p-md border-2 border-outline-variant rounded-xl group-hover:border-primary/50 peer-checked:border-primary peer-checked:bg-surface-container transition-all">
+<span class="material-symbols-outlined text-3xl group-hover:scale-110 transition-transform">storefront</span>
+<span class="font-label-md text-label-md">Commerce</span>
+</div>
+</label>
+</div>
+</div>
+<div class="col-span-1 md:col-span-2">
+<label class="block font-label-md text-label-md text-on-surface mb-xs">Adresse complète</label>
+<div class="relative">
+<input class="w-full bg-surface border border-outline-variant rounded-lg p-sm pl-12 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-on-surface font-body-md" placeholder="Entrez l'adresse de localisation" type="text"/>
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">location_on</span>
+</div>
+</div>
+</div>
+</section>
+<section class="bg-surface p-lg rounded-xl shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/30">
+<h3 class="font-h3 text-h3 text-on-surface mb-md flex items-center gap-xs">
+<span class="material-symbols-outlined text-primary">analytics</span>
+                            Métriques et Gestion
+                        </h3>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-md">
+<div>
+<label class="block font-label-md text-label-md text-on-surface mb-xs">Nombre d'unités</label>
+<input class="w-full bg-surface border border-outline-variant rounded-lg p-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-on-surface font-body-md text-right" placeholder="0" type="number"/>
+</div>
+<div>
+<label class="block font-label-md text-label-md text-on-surface mb-xs">Loyer mensuel estimé (HT)</label>
+<div class="relative">
+<input class="w-full bg-surface border border-outline-variant rounded-lg p-sm pr-12 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-on-surface font-body-md text-right" placeholder="0.00" type="text"/>
+<span class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold">€</span>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Right Section: Sidebar / Lookup -->
+<div class="md:col-span-4 space-y-gutter">
+<section class="bg-surface p-lg rounded-xl shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/30 sticky top-24">
+<h3 class="font-h3 text-h3 text-on-surface mb-md flex items-center gap-xs">
+<span class="material-symbols-outlined text-primary">person_search</span>
+                            Liaison Propriétaire
+                        </h3>
+<div class="mb-md">
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-sm">Associez ce nouveau bien à un propriétaire existant dans votre base de données.</p>
+<div class="relative">
+<input class="w-full bg-surface border border-outline-variant rounded-lg p-sm pl-12 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-on-surface font-body-md" placeholder="Rechercher un propriétaire..." type="text"/>
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">search</span>
+</div>
+</div>
+<!-- Mock Suggestion List -->
+<div class="space-y-sm">
+<div class="flex items-center gap-sm p-sm rounded-lg hover:bg-surface-container cursor-pointer transition-colors border border-transparent hover:border-outline-variant">
+<img alt="Owner Profile" class="w-10 h-10 rounded-full" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBmLed_msoyHXCHLiCwcS4Lh4SvwcqDmEVoNOghExW0sSwB0DcZ2dDuHOaYJQemsu2b5Aw4wsArl9GfiP1862QeZ1u-Qh3AgxEcsRDan22PNoiuq4qpf35oCnRbYCFnmQ08C-XrsdtJHXCMq_LgpGnGUqkXMAXT-kYqIrI468vzwVx9byaCc4iEm1VkvWFCbP7fJuHOwGKwWEjK76GGGueG2-3PJp809VBnCmG8s5AOyc9TAiWUvGzVNU9Mr0RgURE8JdvI-RUVOMM"/>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface">Jean Dupont</span>
+<span class="text-[10px] text-on-surface-variant">ID: OWNER-8823</span>
+</div>
+<span class="material-symbols-outlined ml-auto text-primary text-sm">link</span>
+</div>
+<div class="flex items-center gap-sm p-sm rounded-lg hover:bg-surface-container cursor-pointer transition-colors border border-transparent hover:border-outline-variant">
+<img alt="Owner Profile" class="w-10 h-10 rounded-full" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBCMCGXhoLaj_wkjlFDQ94X5ZYAthOg5s0KbyHIx58hRqUWT9okNOxXl_k2Irrb7ujnirn_fDDGMnb0YiaeQzIQbqc7D1td4d987qI7ZylkEQQ6yf3pasadcrnxRH_44Y8I6CmbmkYTPQbv4cNnXWGqBpJh1mm-CVEmBv3C9b7UTxlzkRlun-f2rX0eJsKZPvrrYCKo-arix3MLnj9yfGOPADKFoGS93PaINJDaKqRydQ0EQI1l1QZR9cToLj_Nge998qkFXud8n2M"/>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface">Sarah Morel</span>
+<span class="text-[10px] text-on-surface-variant">ID: OWNER-9104</span>
+</div>
+<span class="material-symbols-outlined ml-auto text-outline text-sm">link</span>
+</div>
+</div>
+<button class="w-full mt-lg bg-surface-container-high text-on-surface-variant font-label-md py-sm rounded-lg hover:bg-surface-variant transition-colors flex items-center justify-center gap-xs">
+<span class="material-symbols-outlined text-sm">add_circle</span>
+                            Nouveau Propriétaire
+                        </button>
+<hr class="my-lg border-outline-variant/30"/>
+<!-- Main Action -->
+<button class="w-full bg-primary text-on-primary font-h3 text-h3 py-md rounded-xl hover:shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-sm">
+<span class="material-symbols-outlined">add_business</span>
+                            Créer le bien
+                        </button>
+<p class="text-center font-label-sm text-label-sm text-on-surface-variant mt-sm">Une confirmation sera envoyée par email.</p>
+</section>
+<!-- Info Card -->
+<div class="bg-primary-container/20 p-md rounded-xl border border-primary-container/30">
+<div class="flex gap-sm">
+<span class="material-symbols-outlined text-primary">lightbulb</span>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-primary-container">Conseil Pro</span>
+<p class="font-body-sm text-body-sm text-on-primary-container mt-xs leading-relaxed">Pensez à inclure le code postal et la commune exacte pour une géolocalisation précise sur votre carte interactive d'actifs.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar (Visible on Mobile) -->
+<nav class="md:hidden fixed bottom-0 w-full z-50 bg-surface dark:bg-surface-container-lowest border-t border-outline-variant dark:border-none shadow-[0px_-4px_20px_rgba(62,56,54,0.05)] flex justify-around items-center h-16 pb-safe px-4">
+<div class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline active:scale-90 transition-transform duration-150">
+<span class="material-symbols-outlined">home</span>
+<span class="font-label-sm text-label-sm">Home</span>
+</div>
+<div class="flex flex-col items-center justify-center text-primary dark:text-primary-fixed-dim font-bold active:scale-90 transition-transform duration-150">
+<span class="material-symbols-outlined" data-weight="fill" style="font-variation-settings: 'FILL' 1;">apartment</span>
+<span class="font-label-sm text-label-sm">Assets</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline active:scale-90 transition-transform duration-150">
+<span class="material-symbols-outlined">assessment</span>
+<span class="font-label-sm text-label-sm">Reports</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline active:scale-90 transition-transform duration-150">
+<span class="material-symbols-outlined">mail</span>
+<span class="font-label-sm text-label-sm">Inbox</span>
+</div>
+</nav>
+</body></html>

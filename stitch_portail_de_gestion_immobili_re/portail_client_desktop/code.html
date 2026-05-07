@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+
+<html class="light" lang="fr"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800;900&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "inverse-surface": "#353026",
+                        "on-secondary": "#ffffff",
+                        "outline-variant": "#d2c5ae",
+                        "outline": "#817662",
+                        "on-error-container": "#93000a",
+                        "surface-container-low": "#fdf2e3",
+                        "on-primary": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "on-primary-fixed-variant": "#5a4300",
+                        "secondary-fixed": "#ebe0dd",
+                        "primary-fixed": "#ffdf9b",
+                        "primary-container": "#e5b228",
+                        "inverse-primary": "#f4bf36",
+                        "on-surface": "#1f1b12",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-container": "#5e4600",
+                        "secondary-container": "#ebe0dd",
+                        "inverse-on-surface": "#faefe0",
+                        "surface-variant": "#ebe1d2",
+                        "primary": "#785a00",
+                        "on-tertiary-fixed-variant": "#004b74",
+                        "on-secondary-fixed-variant": "#4c4543",
+                        "surface": "#fff8f2",
+                        "error": "#ba1a1a",
+                        "tertiary-container": "#75c0ff",
+                        "background": "#fff8f2",
+                        "on-secondary-fixed": "#1f1a19",
+                        "primary-fixed-dim": "#f4bf36",
+                        "on-error": "#ffffff",
+                        "surface-dim": "#e3d9ca",
+                        "surface-container": "#f7edde",
+                        "surface-tint": "#785a00",
+                        "tertiary-fixed-dim": "#94ccff",
+                        "error-container": "#ffdad6",
+                        "on-tertiary-fixed": "#001d32",
+                        "on-secondary-container": "#6a6360",
+                        "on-background": "#1f1b12",
+                        "tertiary": "#006399",
+                        "surface-container-high": "#f1e7d8",
+                        "on-tertiary-container": "#004e79",
+                        "on-primary-fixed": "#251a00",
+                        "secondary-fixed-dim": "#cec4c1",
+                        "on-surface-variant": "#4f4634",
+                        "surface-bright": "#fff8f2",
+                        "secondary": "#645d5a",
+                        "tertiary-fixed": "#cde5ff",
+                        "surface-container-highest": "#ebe1d2"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sm": "16px",
+                        "base": "4px",
+                        "gutter": "24px",
+                        "xl": "64px",
+                        "margin": "32px",
+                        "xs": "8px",
+                        "md": "24px",
+                        "lg": "40px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["Inter"],
+                        "display": ["Manrope"],
+                        "body-md": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "h3": ["Manrope"],
+                        "body-sm": ["Inter"],
+                        "label-sm": ["Inter"],
+                        "h2": ["Manrope"],
+                        "h1": ["Manrope"]
+                    },
+                    "fontSize": {
+                        "label-md": ["14px", {"lineHeight": "1", "fontWeight": "600"}],
+                        "display": ["48px", {"lineHeight": "1.1", "fontWeight": "700"}],
+                        "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "body-lg": ["18px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                        "h3": ["20px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                        "body-sm": ["14px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "label-sm": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "h2": ["24px", {"lineHeight": "1.3", "fontWeight": "600"}],
+                        "h1": ["32px", {"lineHeight": "1.2", "fontWeight": "700"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #fff8f2;
+            color: #1f1b12;
+            font-family: 'Inter', sans-serif;
+        }
+        .premium-shadow {
+            box-shadow: 0px 4px 20px rgba(62, 56, 54, 0.05);
+        }
+    </style>
+</head>
+<body class="flex min-h-screen">
+<!-- Sidebar Navigation Drawer (Desktop) -->
+<aside class="hidden md:flex flex-col gap-xs py-md h-screen h-full w-72 fixed left-0 top-0 bg-surface-container dark:bg-surface-container-low border-r border-outline-variant dark:border-none shadow-md z-40">
+<div class="px-margin mb-lg flex flex-col items-start gap-xs">
+<h1 class="font-h1 text-h1 text-primary dark:text-primary-fixed-dim font-black tracking-tight">Minsouah</h1>
+<div class="flex items-center gap-sm mt-md">
+<div class="w-12 h-12 rounded-full overflow-hidden border border-outline-variant">
+<img alt="Tenant" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC8D9elLTXOST1dCfYpNYqP2EkW-xrClRvmilbpQbnmqBkwTVnSEe_j5-oAZCU6YJFn4XTKGcRROSjkLxHm4VipIIGwZqoOaRgnBMVCfrpmCP0Ve1MnAJPVQj8mQBxCiftARGRmRJXK-QybY33Ey9LWtagVnBZBSpKA9l7M0BAAsHmbtLgA2unpACzq6SnnmEV1DIIkS9zaI97oKMycAF-FP8Jd-pGMIH_DqQtf_W8F7aitFz7G83Y40vapzJCzhnPUkVIX_IzJrug"/>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-surface">Jean Dupont</p>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Locataire Premium</p>
+</div>
+</div>
+</div>
+<nav class="flex flex-col gap-xs">
+<a class="flex items-center gap-md py-sm px-margin bg-primary-container text-on-primary-container border-l-4 border-primary font-bold rounded-r-full mr-4 transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label-md text-label-md">Admin Dashboard</span>
+</a>
+<a class="flex items-center gap-md py-sm px-margin text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="domain">domain</span>
+<span class="font-label-md text-label-md">Property Portfolio</span>
+</a>
+<a class="flex items-center gap-md py-sm px-margin text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="font-label-md text-label-md">Owner Statements</span>
+</a>
+<a class="flex items-center gap-md py-sm px-margin text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="support_agent">support_agent</span>
+<span class="font-label-md text-label-md">Client Requests</span>
+</a>
+<a class="flex items-center gap-md py-sm px-margin text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label-md text-label-md">Platform Settings</span>
+</a>
+</nav>
+</aside>
+<!-- Main Canvas -->
+<main class="flex-1 md:ml-72 flex flex-col min-h-screen">
+<!-- Top App Bar -->
+<header class="flex justify-between items-center w-full px-margin h-20 docked full-width top-0 bg-surface dark:bg-surface-dim shadow-[0px_4px_20px_rgba(62,56,54,0.05)] dark:shadow-none z-30">
+<div class="flex items-center gap-sm">
+<button class="md:hidden p-xs cursor-pointer active:scale-95 transition-transform duration-200">
+<span class="material-symbols-outlined text-primary" data-icon="menu">menu</span>
+</button>
+<h2 class="font-h2 text-h2 font-bold text-primary dark:text-primary-fixed-dim">Tableau de bord</h2>
+</div>
+<div class="flex items-center gap-md">
+<button class="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-high p-xs rounded-full transition-colors" data-icon="notifications">notifications</button>
+<div class="w-10 h-10 rounded-full bg-surface-variant flex items-center justify-center cursor-pointer active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="person">person</span>
+</div>
+</div>
+</header>
+<!-- Content Area -->
+<div class="p-margin flex flex-col gap-gutter max-w-7xl mx-auto w-full pb-24 md:pb-margin">
+<!-- Hero Lease Card -->
+<section class="grid grid-cols-1 lg:grid-cols-12 gap-gutter">
+<div class="lg:col-span-8 bg-surface-container-lowest rounded-xl overflow-hidden premium-shadow flex flex-col md:flex-row border border-outline-variant/20">
+<div class="md:w-2/5 h-64 md:h-auto relative">
+<img alt="Appartement élégant" class="w-full h-full object-cover" data-alt="A luxurious high-end Parisian apartment interior featuring classic Haussmannian architecture with tall windows and intricate ceiling moldings. The room is flooded with warm, natural sunlight that highlights a palette of sophisticated ochre and cream tones. Elegant, modern furniture sits on a polished light wood floor, creating a mood of premium stability and elite real estate comfort." src="https://lh3.googleusercontent.com/aida/ADBb0uj58Y8bnT9Hp9lliemAp9abgD671cfZoZVY_bbjfULuuoaagYhq0nOXy6L1KM8QwTSSitm14HK6W8h9I39rIcTL0Aje2yEmtz3ByQhSdA9sWsMCKhvyTa7SXfIecD0f1Tt4q6XTWrS1FHjffGSrOfFrp0CmjnN6CPhwBNuNAgLSE_UjmGMbJyAF49X2xLiT9OqHcCq4rwW_5fMhTZIF04tx9JwH_NPIl9y3YguhI0ohhjarot3D7MMKGe54mhJj1LCFgihuHVmN"/>
+<div class="absolute top-4 left-4 bg-primary text-on-primary px-sm py-xs rounded-full font-label-sm text-label-sm uppercase tracking-wider">Bail Actuel</div>
+</div>
+<div class="md:w-3/5 p-lg flex flex-col justify-between">
+<div>
+<h3 class="font-h1 text-h1 text-on-surface mb-xs">12 Rue de l'Élégance</h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-md">75008 Paris, France</p>
+<div class="flex items-baseline gap-xs mb-lg">
+<span class="font-h2 text-h2 text-primary font-bold">1 450 €</span>
+<span class="font-label-md text-label-md text-on-surface-variant">/ mois</span>
+</div>
+</div>
+<button class="bg-primary text-on-primary font-h3 text-h3 py-sm px-lg rounded-xl flex items-center justify-center gap-sm active:scale-[0.98] transition-transform hover:bg-surface-tint shadow-md w-full md:w-fit">
+<span class="material-symbols-outlined" data-icon="payments">payments</span>
+                            Payer le loyer
+                        </button>
+</div>
+</div>
+<!-- Quick Actions -->
+<div class="lg:col-span-4 flex flex-col gap-gutter">
+<div class="bg-surface-container-low p-md rounded-xl premium-shadow border border-outline-variant/30">
+<h4 class="font-h3 text-h3 text-on-surface mb-md">Actions Rapides</h4>
+<div class="flex flex-col gap-sm">
+<button class="w-full flex items-center justify-between p-sm bg-surface-container-lowest rounded-lg hover:bg-primary-container hover:text-on-primary-container transition-colors group">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-primary group-hover:text-on-primary-container" data-icon="report_problem">report_problem</span>
+<span class="font-label-md text-label-md">Signaler un problème</span>
+</div>
+<span class="material-symbols-outlined text-outline" data-icon="chevron_right">chevron_right</span>
+</button>
+<button class="w-full flex items-center justify-between p-sm bg-surface-container-lowest rounded-lg hover:bg-primary-container hover:text-on-primary-container transition-colors group">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-primary group-hover:text-on-primary-container" data-icon="contact_support">contact_support</span>
+<span class="font-label-md text-label-md">Contacter l'agence</span>
+</div>
+<span class="material-symbols-outlined text-outline" data-icon="chevron_right">chevron_right</span>
+</button>
+<button class="w-full flex items-center justify-between p-sm bg-surface-container-lowest rounded-lg hover:bg-primary-container hover:text-on-primary-container transition-colors group">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-primary group-hover:text-on-primary-container" data-icon="description">description</span>
+<span class="font-label-md text-label-md">Documents du bail</span>
+</div>
+<span class="material-symbols-outlined text-outline" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Announcements & Maintenance -->
+<section class="grid grid-cols-1 lg:grid-cols-12 gap-gutter">
+<!-- Maintenance Table -->
+<div class="lg:col-span-7 bg-surface-container-lowest rounded-xl premium-shadow overflow-hidden border border-outline-variant/20 flex flex-col">
+<div class="p-md border-b border-outline-variant/10 flex justify-between items-center">
+<h4 class="font-h3 text-h3 text-on-surface">Historique de maintenance</h4>
+<span class="font-label-sm text-label-sm text-primary cursor-pointer hover:underline">Voir tout</span>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container text-on-surface-variant font-label-sm text-label-sm uppercase tracking-wider">
+<th class="px-md py-sm">Référence</th>
+<th class="px-md py-sm">Sujet</th>
+<th class="px-md py-sm">Date</th>
+<th class="px-md py-sm">Statut</th>
+</tr>
+</thead>
+<tbody class="font-body-sm text-body-sm text-on-surface divide-y divide-outline-variant/10">
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="px-md py-md font-label-md">#MNT-8821</td>
+<td class="px-md py-md">Fuite robinetterie cuisine</td>
+<td class="px-md py-md">14 Oct 2023</td>
+<td class="px-md py-md">
+<span class="px-xs py-[2px] bg-green-100 text-green-800 rounded font-label-sm text-[10px] uppercase font-bold">Terminé</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="px-md py-md font-label-md">#MNT-9045</td>
+<td class="px-md py-md">Interphone défectueux</td>
+<td class="px-md py-md">02 Nov 2023</td>
+<td class="px-md py-md">
+<span class="px-xs py-[2px] bg-primary-fixed text-on-primary-fixed-variant rounded font-label-sm text-[10px] uppercase font-bold">En cours</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="px-md py-md font-label-md">#MNT-9102</td>
+<td class="px-md py-md">Entretien chaudière annuel</td>
+<td class="px-md py-md">28 Jan 2024</td>
+<td class="px-md py-md">
+<span class="px-xs py-[2px] bg-surface-variant text-on-surface-variant rounded font-label-sm text-[10px] uppercase font-bold">Planifié</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Announcements -->
+<div class="lg:col-span-5 flex flex-col gap-gutter">
+<div class="bg-surface-container-lowest p-md rounded-xl premium-shadow border border-outline-variant/20 h-full">
+<div class="flex items-center gap-xs mb-md">
+<span class="material-symbols-outlined text-primary" data-icon="campaign">campaign</span>
+<h4 class="font-h3 text-h3 text-on-surface">Annonces &amp; Notes</h4>
+</div>
+<div class="space-y-md">
+<div class="p-sm bg-surface-container rounded-lg border-l-4 border-primary">
+<div class="flex justify-between items-start mb-xs">
+<p class="font-label-md text-label-md text-on-surface">Coupure d'eau programmée</p>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Hier</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Une maintenance des canalisations aura lieu le 15 mars entre 9h et 12h.</p>
+</div>
+<div class="p-sm bg-surface-container-low rounded-lg border-l-4 border-outline">
+<div class="flex justify-between items-start mb-xs">
+<p class="font-label-md text-label-md text-on-surface">Nettoyage des parties communes</p>
+<span class="font-label-sm text-label-sm text-on-surface-variant">3 jrs</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Le planning de nettoyage a été mis à jour dans le hall d'entrée.</p>
+</div>
+<div class="p-sm bg-surface-container-low rounded-lg border-l-4 border-outline">
+<div class="flex justify-between items-start mb-xs">
+<p class="font-label-md text-label-md text-on-surface">Code Digicode</p>
+<span class="font-label-sm text-label-sm text-on-surface-variant">1 sem</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Le code de l'entrée principale changera le 1er du mois prochain.</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Bottom Navigation Bar (Mobile) -->
+<nav class="md:hidden fixed bottom-0 w-full z-50 bg-surface dark:bg-surface-container-lowest border-t border-outline-variant dark:border-none shadow-[0px_-4px_20px_rgba(62,56,54,0.05)] flex justify-around items-center h-16 pb-safe px-4">
+<a class="flex flex-col items-center justify-center text-primary dark:text-primary-fixed-dim font-bold active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="home">home</span>
+<span class="font-label-sm text-label-sm">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="apartment">apartment</span>
+<span class="font-label-sm text-label-sm">Assets</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="assessment">assessment</span>
+<span class="font-label-sm text-label-sm">Reports</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="mail">mail</span>
+<span class="font-label-sm text-label-sm">Inbox</span>
+</a>
+</nav>
+</main>
+</body></html>

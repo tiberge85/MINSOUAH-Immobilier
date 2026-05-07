@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Minsouah Messaging Center</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800;900&amp;family=Inter:wght@400;500;600&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary-container": "#75c0ff",
+                        "background": "#fff8f2",
+                        "error": "#ba1a1a",
+                        "surface": "#fff8f2",
+                        "primary": "#785a00",
+                        "on-tertiary-fixed-variant": "#004b74",
+                        "on-secondary-fixed-variant": "#4c4543",
+                        "surface-variant": "#ebe1d2",
+                        "inverse-on-surface": "#faefe0",
+                        "secondary-container": "#ebe0dd",
+                        "on-primary-container": "#5e4600",
+                        "surface-container-lowest": "#ffffff",
+                        "on-surface": "#1f1b12",
+                        "secondary-fixed": "#ebe0dd",
+                        "primary-fixed": "#ffdf9b",
+                        "primary-container": "#e5b228",
+                        "inverse-primary": "#f4bf36",
+                        "on-tertiary": "#ffffff",
+                        "on-primary-fixed-variant": "#5a4300",
+                        "on-primary": "#ffffff",
+                        "surface-container-low": "#fdf2e3",
+                        "on-error-container": "#93000a",
+                        "outline": "#817662",
+                        "outline-variant": "#d2c5ae",
+                        "on-secondary": "#ffffff",
+                        "inverse-surface": "#353026",
+                        "surface-container-highest": "#ebe1d2",
+                        "tertiary-fixed": "#cde5ff",
+                        "surface-bright": "#fff8f2",
+                        "secondary": "#645d5a",
+                        "secondary-fixed-dim": "#cec4c1",
+                        "on-surface-variant": "#4f4634",
+                        "surface-container-high": "#f1e7d8",
+                        "on-tertiary-container": "#004e79",
+                        "on-primary-fixed": "#251a00",
+                        "tertiary": "#006399",
+                        "on-tertiary-fixed": "#001d32",
+                        "on-secondary-container": "#6a6360",
+                        "on-background": "#1f1b12",
+                        "tertiary-fixed-dim": "#94ccff",
+                        "error-container": "#ffdad6",
+                        "surface-tint": "#785a00",
+                        "surface-container": "#f7edde",
+                        "surface-dim": "#e3d9ca",
+                        "on-error": "#ffffff",
+                        "primary-fixed-dim": "#f4bf36",
+                        "on-secondary-fixed": "#1f1a19"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xl": "64px",
+                        "margin": "32px",
+                        "gutter": "24px",
+                        "sm": "16px",
+                        "base": "4px",
+                        "md": "24px",
+                        "xs": "8px",
+                        "lg": "40px"
+                    },
+                    "fontFamily": {
+                        "label-sm": ["Inter"],
+                        "h2": ["Manrope"],
+                        "h1": ["Manrope"],
+                        "body-sm": ["Inter"],
+                        "h3": ["Manrope"],
+                        "body-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "display": ["Manrope"],
+                        "label-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-sm": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "h2": ["24px", {"lineHeight": "1.3", "fontWeight": "600"}],
+                        "h1": ["32px", {"lineHeight": "1.2", "fontWeight": "700"}],
+                        "body-sm": ["14px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "h3": ["20px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                        "body-lg": ["18px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                        "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "display": ["48px", {"lineHeight": "1.1", "fontWeight": "700"}],
+                        "label-md": ["14px", {"lineHeight": "1", "fontWeight": "600"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #d2c5ae;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen overflow-hidden flex flex-col">
+<!-- TopAppBar -->
+<header class="bg-surface docked full-width top-0 shadow-[0px_4px_20px_rgba(62,56,54,0.05)] z-40 flex justify-between items-center w-full px-margin h-20">
+<div class="flex items-center gap-sm">
+<button class="material-symbols-outlined text-primary cursor-pointer active:scale-95 transition-transform duration-200">menu</button>
+<h1 class="font-h1 text-h1 text-primary tracking-tight font-black">Minsouah</h1>
+</div>
+<div class="flex items-center gap-md">
+<nav class="hidden md:flex gap-lg items-center">
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">Properties</a>
+<a class="font-label-md text-label-md text-primary font-bold" href="#">Inbox</a>
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">Leasing</a>
+</nav>
+<div class="h-10 w-10 rounded-full overflow-hidden border-2 border-primary-container">
+<img alt="User Profile Avatar" class="w-full h-full object-cover" data-alt="A professional headshot of a modern real estate executive with a friendly, reliable expression. The lighting is bright and warm, reflecting the sophisticated ochre and light gray color palette of the brand. The setting is a minimalist office with clean white walls and soft ambient depth, maintaining a high-end corporate aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCtouVnz1SL3az8XAWfizPID9m7iVzDydmMupQVASnKev98Nu0I9MMbo1ydImCdytBHUKzl9B5zpdzz0Ql4ne7gsnYaarujGgx0ojFXMlX9G-5MppBzGabnKd15uvRZtNHJZpvdc5OTCN0plyMaSAGtb7ZZGpEEujGxI99yac_ipCzLvfT8fCx8D2_L6FE-GVHzPwGgqZKofP9RFw0KkYu9yand-wQTd10AtY1yN7r3twS-3LgKBd6weE0tqJDJ9TULHMPIhsFAHnQ"/>
+</div>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<!-- NavigationDrawer (Desktop) -->
+<aside class="hidden lg:flex flex-col gap-xs py-md h-full w-72 bg-surface-container border-r border-outline-variant shadow-md">
+<div class="px-sm mb-lg flex items-center gap-sm">
+<div class="w-12 h-12 bg-primary rounded-xl flex items-center justify-center text-white">
+<span class="material-symbols-outlined">domain</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-primary">Real Estate Admin</p>
+<p class="text-[10px] text-on-surface-variant uppercase tracking-wider">Premium Tier</p>
+</div>
+</div>
+<nav class="flex flex-col gap-1 px-sm">
+<a class="flex items-center gap-sm px-sm py-3 text-on-surface-variant hover:bg-surface-container-high rounded-xl transition-all" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-label-md text-label-md">Admin Dashboard</span>
+</a>
+<a class="flex items-center gap-sm px-sm py-3 text-on-surface-variant hover:bg-surface-container-high rounded-xl transition-all" href="#">
+<span class="material-symbols-outlined">domain</span>
+<span class="font-label-md text-label-md">Property Portfolio</span>
+</a>
+<a class="flex items-center gap-sm px-sm py-3 text-on-surface-variant hover:bg-surface-container-high rounded-xl transition-all" href="#">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+<span class="font-label-md text-label-md">Owner Statements</span>
+</a>
+<a class="flex items-center gap-sm px-sm py-3 bg-primary-container text-on-primary-container border-l-4 border-primary font-bold rounded-r-full mr-4 shadow-sm" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">support_agent</span>
+<span class="font-label-md text-label-md">Client Requests</span>
+</a>
+<a class="flex items-center gap-sm px-sm py-3 text-on-surface-variant hover:bg-surface-container-high rounded-xl transition-all" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-md text-label-md">Platform Settings</span>
+</a>
+</nav>
+</aside>
+<!-- Main Content (Messaging UI) -->
+<main class="flex-1 flex overflow-hidden">
+<!-- Conversation Sidebar -->
+<section class="w-full md:w-80 lg:w-96 bg-surface-container-low border-r border-outline-variant flex flex-col">
+<div class="p-md bg-surface shadow-sm z-10 flex flex-col gap-sm">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full pl-10 pr-4 py-2.5 rounded-lg border border-outline-variant bg-surface-container-lowest focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all text-body-sm" placeholder="Search conversations..." type="text"/>
+</div>
+<div class="flex gap-2">
+<button class="px-4 py-1.5 rounded-full bg-primary-container text-on-primary-container font-label-sm text-label-sm">All</button>
+<button class="px-4 py-1.5 rounded-full bg-surface-container-highest text-on-surface-variant font-label-sm text-label-sm hover:bg-outline-variant transition-colors">Owners</button>
+<button class="px-4 py-1.5 rounded-full bg-surface-container-highest text-on-surface-variant font-label-sm text-label-sm hover:bg-outline-variant transition-colors">Tenants</button>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto">
+<!-- Conversation Item -->
+<div class="p-md border-b border-outline-variant bg-surface-container-high cursor-pointer hover:bg-surface-variant transition-colors flex gap-sm">
+<div class="relative flex-shrink-0">
+<img class="w-12 h-12 rounded-full object-cover border border-outline-variant" data-alt="A portrait of a sophisticated female property owner in an urban loft setting. The lighting is natural and high-key, emphasizing a modern professional aesthetic. The color palette incorporates soft neutrals and the brand's ochre accents. The image evokes reliability and premium stability for a real estate messaging context." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAOGRg8qJ_adXQN8L1jxqny-dO1bYh_HZlFpLYPdxpayricUJCXOTG9KhBapVY4mRNJJr12ZfJr6u0HhhhXixGubh7BKSlpMIy6tJSiNwwNxyOqDZMKDEfku3mPtc2srCdGE1bWj3TNBRD_6jTcdq032jhy4-vrUaHsd0UTMkywcRU5tuGUg2iCFKJH0GCyTyiDEdxzce7pOn9bJVge08uWk6CxC0YtJ6nN50OiinNfncuyRJ0GhwET_OwsIQX9nd9BqxxBz0Gb1qE"/>
+<span class="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-surface-container-high rounded-full"></span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="font-label-md text-label-md text-on-surface truncate">Eleanor Vance</h3>
+<span class="font-label-sm text-label-sm text-primary font-bold">10:42 AM</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant font-semibold truncate mt-0.5">The lease agreement for Unit 4B looks good...</p>
+<div class="flex mt-1">
+<span class="bg-primary text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">2</span>
+</div>
+</div>
+</div>
+<!-- Conversation Item -->
+<div class="p-md border-b border-outline-variant hover:bg-surface-container-high cursor-pointer transition-colors flex gap-sm">
+<div class="relative flex-shrink-0">
+<img class="w-12 h-12 rounded-full object-cover" data-alt="A male property maintenance technician wearing a professional uniform, standing in a clean, brightly lit workshop. The image style is sharp and modern with a focus on professional reliability. The lighting is balanced and clean, aligning with the real estate management platform's premium design tokens." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBeaFS3d3F1g4TYEsqgVqSLLA_uImfyPyTQX2_1swmPVIbZdLbhOocUkPE36jsJFefqsWaWlhwDzPOle_SWT4hkmzO_2E1TVgsiN5r5lYCXoZGZL21iN5VAAm4ilupOUYw8Z8jlkj0sGHWYCHLGOQvP5rMU1V0CZv4FduVRgj5MT8yZj3AKpC6WQ8VPMElJiZGTT1iZCjUoh_JycNLgs6ToiHJzcx-E5aYR-fEuug1fT46IPcswgnrYHw6Y4xq-ck4zmTo79DTnmvQ"/>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="font-label-md text-label-md text-on-surface truncate">Marcus Chen (Tech)</h3>
+<span class="font-label-sm text-label-sm text-outline">Yesterday</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate mt-0.5">HVAC repair completed at building C.</p>
+</div>
+</div>
+<!-- Conversation Item -->
+<div class="p-md border-b border-outline-variant hover:bg-surface-container-high cursor-pointer transition-colors flex gap-sm">
+<div class="flex-shrink-0 w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold text-h3">
+                            JP
+                        </div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="font-label-md text-label-md text-on-surface truncate">Julian Peters</h3>
+<span class="font-label-sm text-label-sm text-outline">Aug 14</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate mt-0.5">Can we schedule a viewing for the penthouse?</p>
+</div>
+</div>
+<!-- Add more items to fill space -->
+<div class="p-md border-b border-outline-variant hover:bg-surface-container-high cursor-pointer transition-colors flex gap-sm opacity-60">
+<div class="flex-shrink-0 w-12 h-12 rounded-full bg-surface-variant"></div>
+<div class="flex-1 min-w-0">
+<div class="h-4 w-24 bg-surface-variant rounded mb-2"></div>
+<div class="h-3 w-40 bg-surface-variant rounded"></div>
+</div>
+</div>
+</div>
+</section>
+<!-- Active Chat Pane -->
+<section class="hidden md:flex flex-1 flex-col bg-surface-container-lowest">
+<!-- Chat Header -->
+<div class="h-20 px-lg flex items-center justify-between border-b border-outline-variant shadow-sm z-10 bg-surface">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 rounded-full overflow-hidden border border-outline-variant">
+<img class="w-full h-full object-cover" data-alt="Detailed portrait of a professional property owner, high-key lighting, warm sophisticated aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAxImXrk0-O7VsVpJo8A6E1ChtnbKRqT-quute7D5fCBfL3Y6GljKPlja0bL2tqQ2yoifENSONxOgyzneCvL2CCYBJLPExWCAf51KhnkRyDsdAphRUUeW-Z4lVNn6GrtvBk2fRHiC5mwV85fjSUzqjf3P3MVNt-roQvNkdDNTdIrItL9YuD3PsIiutISt3MZptr6s0s8V6NACCGw7lA9r9SsMPnnaRLKsKqCQYg3nnWadueHQD1mfrzjoJyFb2dWfNWnN9yxSS-YyU"/>
+</div>
+<div>
+<h2 class="font-h3 text-h3 text-on-surface">Eleanor Vance</h2>
+<p class="font-body-sm text-body-sm text-primary flex items-center gap-1">
+<span class="w-2 h-2 bg-green-500 rounded-full"></span> Online
+                            </p>
+</div>
+</div>
+<div class="flex gap-md">
+<button class="material-symbols-outlined p-2 text-on-surface-variant hover:bg-surface-container rounded-full transition-colors">call</button>
+<button class="material-symbols-outlined p-2 text-on-surface-variant hover:bg-surface-container rounded-full transition-colors">videocam</button>
+<button class="material-symbols-outlined p-2 text-on-surface-variant hover:bg-surface-container rounded-full transition-colors">more_vert</button>
+</div>
+</div>
+<!-- Messages History -->
+<div class="flex-1 overflow-y-auto p-lg flex flex-col gap-lg bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-opacity-5">
+<!-- Date Divider -->
+<div class="flex justify-center">
+<span class="px-4 py-1 rounded-full bg-surface-container text-outline text-[10px] uppercase font-bold tracking-widest">Today</span>
+</div>
+<!-- Message Received -->
+<div class="flex gap-md max-w-[80%]">
+<div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 mt-2">
+<img class="w-full h-full object-cover" data-alt="Portrait of a female client." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAQGj8AQmPTqaQydjYMpjLwUEO_7SQ1bQXuy_MsJV_zNrwklab8PsMssJBAKNBNlno1WB-2ZGZh5PyOxyFAGJjukde9l73IHE2N8Yvh7odpdczz5Unvy7w58n5eProopiUXPMxrqqQqFSD7-vQZLCJmSnWSSotDg4P_pakvZJnBr8PiADDtd7wgQ2c-qjRmDgO2a2nZPmhBv5sQmWMpTwrhhWFzL6SKGL7TQj-YcrJXvUp59r9vl1lSQyC4mtaU-9ghh1cX2xO9elc"/>
+</div>
+<div class="flex flex-col gap-1">
+<div class="bg-surface-container border border-outline-variant p-md rounded-2xl rounded-tl-none shadow-[0px_4px_10px_rgba(62,56,54,0.03)]">
+<p class="text-on-surface-variant text-body-md">Good morning! I've reviewed the proposed lease agreement for the commercial space in Unit 4B. The terms seem fair, but I had one question regarding the maintenance clause on page 4.</p>
+</div>
+<span class="text-label-sm font-label-sm text-outline ml-1">10:40 AM</span>
+</div>
+</div>
+<!-- Message Sent -->
+<div class="flex flex-col gap-1 items-end ml-auto max-w-[80%]">
+<div class="bg-primary text-white p-md rounded-2xl rounded-tr-none shadow-md">
+<p class="text-body-md">Morning Eleanor! I'm happy to clarify that. Which specific section of the clause were you looking at? We can adjust the wording to ensure it specifically covers the external structural maintenance.</p>
+</div>
+<div class="flex items-center gap-1 mr-1">
+<span class="text-label-sm font-label-sm text-outline">10:41 AM</span>
+<span class="material-symbols-outlined text-[14px] text-primary" style="font-variation-settings: 'FILL' 1;">done_all</span>
+</div>
+</div>
+<!-- Message Received -->
+<div class="flex gap-md max-w-[80%]">
+<div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 mt-2">
+<img class="w-full h-full object-cover" data-alt="Portrait of a female client." src="https://lh3.googleusercontent.com/aida-public/AB6AXuALu0GIuLEL4hbhIrDmP1dPoVFyaviq6h4iqUIXN8Q_vQEzkfub9idJkLnraoQtayJMQ13WXs1VKmLy7_ewRER0ekC4qxO4x0_20p_f81BQC9jkPMRkLSV1p64kzmMJTEYHGibA9tMoBJupTeNdVeRRQVpyjLsoSjp0DDTXtXyvdjfHJ01Lwy5oULijDawbiUSX2SHmF0xUbDpBO_Dyc_oO9FPmFOrpBJPovM7tKdR9xWz_eir7-NNEORviB1Cx5R9cqARtuSafImA"/>
+</div>
+<div class="flex flex-col gap-1">
+<div class="bg-surface-container border border-outline-variant p-md rounded-2xl rounded-tl-none">
+<p class="text-on-surface-variant text-body-md">The lease agreement for Unit 4B looks good otherwise. If we can clarify the HVAC responsibility, I'm ready to sign today.</p>
+</div>
+<span class="text-label-sm font-label-sm text-outline ml-1">10:42 AM</span>
+</div>
+</div>
+<!-- Property Context Card (Custom Bento Element) -->
+<div class="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm max-w-sm flex flex-col gap-0">
+<div class="h-32 bg-cover bg-center" data-alt="A high-end architectural photograph of a modern luxury property exterior at sunset. The building features clean lines, expansive glass windows, and premium materials like warm wood and natural stone. The lighting is golden and dramatic, creating a sense of luxury and exclusive real estate. The mood is sophisticated and forward-thinking, perfectly matching the Minsouah brand identity." style="background-image: url('https://lh3.googleusercontent.com/aida/ADBb0uj58Y8bnT9Hp9lliemAp9abgD671cfZoZVY_bbjfULuuoaagYhq0nOXy6L1KM8QwTSSitm14HK6W8h9I39rIcTL0Aje2yEmtz3ByQhSdA9sWsMCKhvyTa7SXfIecD0f1Tt4q6XTWrS1FHjffGSrOfFrp0CmjnN6CPhwBNuNAgLSE_UjmGMbJyAF49X2xLiT9OqHcCq4rwW_5fMhTZIF04tx9JwH_NPIl9y3YguhI0ohhjarot3D7MMKGe54mhJj1LCFgihuHVmN')"></div>
+<div class="p-sm">
+<div class="flex justify-between items-start">
+<div>
+<p class="font-label-md text-label-md text-primary">Unit 4B - Skyline Plaza</p>
+<p class="font-body-sm text-body-sm text-outline">Commercial Lease • Pending Sign</p>
+</div>
+<span class="bg-primary-container text-on-primary-container px-2 py-1 rounded text-[10px] font-bold">ACTIVE</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Message Input -->
+<div class="p-lg bg-surface border-t border-outline-variant">
+<div class="flex items-end gap-md bg-surface-container-lowest border border-outline-variant rounded-2xl p-2 shadow-inner">
+<button class="material-symbols-outlined p-2 text-outline hover:text-primary transition-colors">add_circle</button>
+<textarea class="flex-1 bg-transparent border-none focus:ring-0 resize-none py-2 text-body-md text-on-surface" placeholder="Type your message here..." rows="1" style="min-height: 40px;"></textarea>
+<div class="flex gap-sm p-1">
+<button class="material-symbols-outlined p-2 text-outline hover:text-primary transition-colors">sentiment_satisfied</button>
+<button class="w-10 h-10 bg-primary text-white rounded-xl flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all">
+<span class="material-symbols-outlined">send</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+</main>
+</div>
+<!-- Mobile Bottom Navigation (Visible only on mobile) -->
+<nav class="md:hidden fixed bottom-0 w-full z-50 bg-surface border-t border-outline-variant shadow-[0px_-4px_20px_rgba(62,56,54,0.05)] flex justify-around items-center h-16 pb-safe px-4">
+<div class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline active:scale-90 transition-transform duration-150">
+<span class="material-symbols-outlined">home</span>
+<span class="font-label-sm text-label-sm">Home</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline active:scale-90 transition-transform duration-150">
+<span class="material-symbols-outlined">apartment</span>
+<span class="font-label-sm text-label-sm">Assets</span>
+</div>
+<div class="flex flex-col items-center justify-center text-primary dark:text-primary-fixed-dim font-bold active:scale-90 transition-transform duration-150">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">mail</span>
+<span class="font-label-sm text-label-sm">Inbox</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline active:scale-90 transition-transform duration-150">
+<span class="material-symbols-outlined">assessment</span>
+<span class="font-label-sm text-label-sm">Reports</span>
+</div>
+</nav>
+</body></html>

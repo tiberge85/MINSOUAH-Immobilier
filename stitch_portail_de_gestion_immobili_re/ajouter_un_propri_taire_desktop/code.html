@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+
+<html class="light" lang="fr"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800;900&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-surface-variant": "#4f4634",
+                        "tertiary-container": "#75c0ff",
+                        "on-tertiary": "#ffffff",
+                        "surface-container-low": "#fdf2e3",
+                        "surface-container-high": "#f1e7d8",
+                        "surface-bright": "#fff8f2",
+                        "on-tertiary-container": "#004e79",
+                        "inverse-primary": "#f4bf36",
+                        "secondary-fixed-dim": "#cec4c1",
+                        "error-container": "#ffdad6",
+                        "on-secondary-fixed-variant": "#4c4543",
+                        "on-primary-fixed": "#251a00",
+                        "surface-dim": "#e3d9ca",
+                        "on-tertiary-fixed-variant": "#004b74",
+                        "on-primary-fixed-variant": "#5a4300",
+                        "on-surface": "#1f1b12",
+                        "on-secondary": "#ffffff",
+                        "surface": "#fff8f2",
+                        "inverse-surface": "#353026",
+                        "secondary": "#645d5a",
+                        "on-error-container": "#93000a",
+                        "surface-container": "#f7edde",
+                        "outline": "#817662",
+                        "inverse-on-surface": "#faefe0",
+                        "outline-variant": "#d2c5ae",
+                        "on-error": "#ffffff",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-container": "#5e4600",
+                        "tertiary-fixed": "#cde5ff",
+                        "surface-variant": "#ebe1d2",
+                        "surface-container-highest": "#ebe1d2",
+                        "error": "#ba1a1a",
+                        "tertiary": "#006399",
+                        "on-secondary-container": "#6a6360",
+                        "on-background": "#1f1b12",
+                        "primary-container": "#e5b228",
+                        "primary-fixed-dim": "#f4bf36",
+                        "on-secondary-fixed": "#1f1a19",
+                        "surface-tint": "#785a00",
+                        "on-primary": "#ffffff",
+                        "primary-fixed": "#ffdf9b",
+                        "tertiary-fixed-dim": "#94ccff",
+                        "secondary-fixed": "#ebe0dd",
+                        "primary": "#785a00",
+                        "background": "#fff8f2",
+                        "on-tertiary-fixed": "#001d32",
+                        "secondary-container": "#ebe0dd"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "margin": "32px",
+                        "base": "4px",
+                        "sm": "16px",
+                        "xl": "64px",
+                        "md": "24px",
+                        "lg": "40px",
+                        "gutter": "24px",
+                        "xs": "8px"
+                    },
+                    "fontFamily": {
+                        "display": ["Manrope"],
+                        "h1": ["Manrope"],
+                        "body-md": ["Inter"],
+                        "h3": ["Manrope"],
+                        "h2": ["Manrope"],
+                        "body-sm": ["Inter"],
+                        "label-sm": ["Inter"],
+                        "label-md": ["Inter"],
+                        "body-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "display": ["48px", {"lineHeight": "1.1", "fontWeight": "700"}],
+                        "h1": ["32px", {"lineHeight": "1.2", "fontWeight": "700"}],
+                        "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "h3": ["20px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                        "h2": ["24px", {"lineHeight": "1.3", "fontWeight": "600"}],
+                        "body-sm": ["14px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "label-sm": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "label-md": ["14px", {"lineHeight": "1", "fontWeight": "600"}],
+                        "body-lg": ["18px", {"lineHeight": "1.6", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen overflow-x-hidden">
+<!-- TopAppBar -->
+<header class="bg-surface docked full-width top-0 shadow-sm z-50 fixed flex justify-between items-center w-full px-margin h-20">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined cursor-pointer active:scale-95 transition-transform duration-200 text-primary" data-icon="menu">menu</span>
+<h1 class="font-h1 text-h1 text-primary tracking-tight font-black">Minsouah</h1>
+</div>
+<div class="flex items-center gap-md">
+<div class="hidden md:flex items-center gap-gutter mr-4">
+<span class="font-label-md text-label-md text-primary font-bold cursor-pointer transition-colors hover:text-primary">Tableau de bord</span>
+<span class="font-label-md text-label-md text-on-surface-variant cursor-pointer transition-colors hover:text-primary">Propriétés</span>
+<span class="font-label-md text-label-md text-on-surface-variant cursor-pointer transition-colors hover:text-primary">Locataires</span>
+</div>
+<div class="cursor-pointer active:scale-95 transition-transform duration-200">
+<img alt="User Profile Avatar" class="w-10 h-10 rounded-full border-2 border-primary-container" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDiWzcH5wsqagbJY2p3urkJFUp5_ow8Wij5xAssEp1bOzeq1S6XSxzNMjgi42dEEM2bfMFH692zvMUibwxp4YCrfOYPb91Vuci6AEFgE3bS5k1-vIwu1hIWHAWongxOLDbj2VK8eIv_5V7QNmplP2qa28Q-2pBUkgMvmfKWae2_MGQyM72YkqkkEITalFmpLGqsMlPyjJrAEAOAT7Ag8ZoOnRncgHiv4pJM0mE041G5Vxp_4DtbRI9z8YnuGrXh_PiQ963XOlvIKvU"/>
+</div>
+</div>
+</header>
+<div class="flex pt-20">
+<!-- NavigationDrawer -->
+<aside class="hidden md:flex flex-col gap-xs py-md h-screen bg-surface-container w-72 fixed left-0 top-20 border-r border-outline-variant shadow-lg z-40">
+<div class="px-md mb-lg">
+<div class="flex items-center gap-sm mb-xs">
+<img alt="Property Manager Profile" class="w-12 h-12 rounded-lg object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBuc4zQKtniftt4i0OyRsXBrmqeEYS2sgdmq94WPBztVN1szwEfBBYgyBeFFHOATIjlSsm-Tvl5jHmC2ap4eFYWwpv9b1wratyAAlC6pfr__QgXQdU9IcNJglD508IYTGgFBlPVDB2qQShQGjD7-Por594m5XWJMbbwhpx7toWYg4E9wdoG7ntSvvaOVP4T9VJmEK2GMFw_GoHeWrYtdre6UWt0DQtZkP3Vy-yQ8lIvZSWgKVKdZYRm_q_AfcLeSd4_YqROiRa5tP0"/>
+<div>
+<p class="font-label-md text-label-md text-primary">Real Estate Admin</p>
+<p class="text-xs text-on-surface-variant">Agency Portfolio</p>
+</div>
+</div>
+<span class="inline-block px-2 py-0.5 bg-primary-container text-[10px] font-bold text-on-primary-container rounded-full">Premium Tier</span>
+</div>
+<nav class="flex flex-col gap-1 pr-4">
+<div class="flex items-center gap-md px-md py-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high cursor-pointer transition-all duration-300 ease-in-out">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label-md text-label-md">Admin Dashboard</span>
+</div>
+<div class="flex items-center gap-md px-md py-3 bg-primary-container text-on-primary-container border-l-4 border-primary font-bold rounded-r-full cursor-pointer transition-all duration-300 ease-in-out">
+<span class="material-symbols-outlined" data-icon="domain">domain</span>
+<span class="font-label-md text-label-md">Property Portfolio</span>
+</div>
+<div class="flex items-center gap-md px-md py-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high cursor-pointer transition-all duration-300 ease-in-out">
+<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="font-label-md text-label-md">Owner Statements</span>
+</div>
+<div class="flex items-center gap-md px-md py-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high cursor-pointer transition-all duration-300 ease-in-out">
+<span class="material-symbols-outlined" data-icon="support_agent">support_agent</span>
+<span class="font-label-md text-label-md">Client Requests</span>
+</div>
+<div class="flex items-center gap-md px-md py-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high cursor-pointer transition-all duration-300 ease-in-out">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label-md text-label-md">Platform Settings</span>
+</div>
+</nav>
+</aside>
+<!-- Main Canvas -->
+<main class="flex-1 md:ml-72 p-margin max-w-7xl mx-auto pb-32">
+<!-- Breadcrumbs / Page Title -->
+<div class="mb-lg">
+<nav class="flex items-center gap-xs text-label-sm text-on-surface-variant mb-xs">
+<span>Minsouah</span>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+<span>Portefeuille</span>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+<span class="text-primary font-bold">Nouveau Propriétaire</span>
+</nav>
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-md">
+<div>
+<h2 class="font-h1 text-h1 text-on-surface tracking-tight mb-2">Ajouter un Propriétaire</h2>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-xl">Enregistrez les détails essentiels pour intégrer un nouveau partenaire immobilier dans l'écosystème Minsouah.</p>
+</div>
+<div class="flex gap-sm">
+<button class="px-md py-2.5 rounded-lg border border-outline text-on-surface font-label-md hover:bg-surface-container-high transition-colors">Annuler</button>
+<button class="px-md py-2.5 rounded-lg bg-primary-container text-on-primary-container font-label-md shadow-sm active:scale-95 transition-all hover:brightness-105">Enregistrer le profil</button>
+</div>
+</div>
+</div>
+<!-- Form Layout: Asymmetric Bento Grid -->
+<div class="grid grid-cols-12 gap-gutter">
+<!-- Section Identité (8 columns) -->
+<section class="col-span-12 lg:col-span-8 space-y-gutter">
+<div class="bg-surface shadow-[0px_4px_20px_rgba(62,56,54,0.05)] rounded-xl p-lg border border-surface-variant/30">
+<div class="flex items-center gap-sm mb-lg">
+<div class="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">person</span>
+</div>
+<h3 class="font-h3 text-h3 text-on-surface">Informations d'Identité</h3>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-md">
+<div class="space-y-2">
+<label class="font-label-md text-label-md text-on-surface-variant">Nom complet</label>
+<input class="w-full h-12 px-md rounded-lg border-outline-variant bg-white focus:ring-1 focus:ring-primary-container focus:border-primary-container transition-all text-on-surface outline-none" placeholder="ex: Jean Dupont" type="text"/>
+</div>
+<div class="space-y-2">
+<label class="font-label-md text-label-md text-on-surface-variant">ID national (CNI / Passeport)</label>
+<input class="w-full h-12 px-md rounded-lg border-outline-variant bg-white focus:ring-1 focus:ring-primary-container focus:border-primary-container transition-all text-on-surface outline-none" placeholder="N° de document" type="text"/>
+</div>
+<div class="space-y-2 md:col-span-2">
+<label class="font-label-md text-label-md text-on-surface-variant">Téléphone</label>
+<div class="relative">
+<span class="absolute left-md top-1/2 -translate-y-1/2 text-on-surface-variant font-body-md">+225</span>
+<input class="w-full h-12 pl-16 pr-md rounded-lg border-outline-variant bg-white focus:ring-1 focus:ring-primary-container focus:border-primary-container transition-all text-on-surface outline-none" placeholder="07 00 00 00 00" type="tel"/>
+</div>
+</div>
+</div>
+</div>
+<!-- Section Contact & Localisation -->
+<div class="bg-surface shadow-[0px_4px_20px_rgba(62,56,54,0.05)] rounded-xl p-lg border border-surface-variant/30">
+<div class="flex items-center gap-sm mb-lg">
+<div class="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">location_on</span>
+</div>
+<h3 class="font-h3 text-h3 text-on-surface">Contact &amp; Localisation</h3>
+</div>
+<div class="space-y-md">
+<div class="space-y-2">
+<label class="font-label-md text-label-md text-on-surface-variant">Adresse E-mail</label>
+<div class="relative">
+<span class="absolute left-md top-1/2 -translate-y-1/2 material-symbols-outlined text-outline text-[20px]">mail</span>
+<input class="w-full h-12 pl-12 pr-md rounded-lg border-outline-variant bg-white focus:ring-1 focus:ring-primary-container focus:border-primary-container transition-all text-on-surface outline-none" placeholder="jean.dupont@example.com" type="email"/>
+</div>
+</div>
+<div class="space-y-2">
+<label class="font-label-md text-label-md text-on-surface-variant">Adresse résidentielle</label>
+<textarea class="w-full p-md rounded-lg border-outline-variant bg-white focus:ring-1 focus:ring-primary-container focus:border-primary-container transition-all text-on-surface outline-none resize-none" placeholder="Rue, Quartier, Ville..." rows="3"></textarea>
+</div>
+</div>
+</div>
+</section>
+<!-- Sidebar / Metadata (4 columns) -->
+<aside class="col-span-12 lg:col-span-4 space-y-gutter">
+<!-- Photo Upload Card -->
+<div class="bg-white shadow-[0px_4px_20px_rgba(62,56,54,0.05)] rounded-xl p-md border border-surface-variant/30 text-center">
+<h4 class="font-label-md text-label-md text-on-surface-variant mb-md text-left uppercase tracking-wider">Photo de profil</h4>
+<div class="relative inline-block group cursor-pointer">
+<div class="w-32 h-32 rounded-full border-4 border-surface-container-low overflow-hidden mx-auto mb-4 bg-surface-container-high transition-transform group-hover:scale-105">
+<img class="w-full h-full object-cover" data-alt="A sophisticated headshot portrait of a professional African man in a tailored charcoal suit, set against a warm, softly blurred architectural background with ochre light-mode tones. The lighting is crisp and editorial, highlighting clear skin textures and a confident, friendly expression. The overall aesthetic is premium, stable, and forward-thinking, perfectly integrated into a high-end corporate dashboard environment." src="https://lh3.googleusercontent.com/aida/ADBb0uj58Y8bnT9Hp9lliemAp9abgD671cfZoZVY_bbjfULuuoaagYhq0nOXy6L1KM8QwTSSitm14HK6W8h9I39rIcTL0Aje2yEmtz3ByQhSdA9sWsMCKhvyTa7SXfIecD0f1Tt4q6XTWrS1FHjffGSrOfFrp0CmjnN6CPhwBNuNAgLSE_UjmGMbJyAF49X2xLiT9OqHcCq4rwW_5fMhTZIF04tx9JwH_NPIl9y3YguhI0ohhjarot3D7MMKGe54mhJj1LCFgihuHVmN"/>
+</div>
+<div class="absolute bottom-4 right-0 w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container shadow-md group-active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-[18px]">add_a_photo</span>
+</div>
+</div>
+<p class="text-[11px] text-outline px-4">Formats supportés : JPG, PNG. Taille max : 5MB.</p>
+</div>
+<!-- Quick Stats/Info Card -->
+<div class="bg-surface-container-low rounded-xl p-lg border border-outline-variant/20">
+<h4 class="font-label-md text-label-md text-primary mb-md uppercase tracking-wider">Statut du Compte</h4>
+<div class="flex items-center justify-between mb-sm">
+<span class="text-body-sm text-on-surface-variant">Type</span>
+<span class="font-bold text-on-surface">Premium Gold</span>
+</div>
+<div class="flex items-center justify-between mb-md">
+<span class="text-body-sm text-on-surface-variant">Vérification ID</span>
+<span class="px-2 py-0.5 rounded bg-error-container/40 text-error text-[10px] font-bold uppercase">En attente</span>
+</div>
+<div class="h-px bg-outline-variant/30 my-md"></div>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+                            Le profil restera en mode "Brouillon" jusqu'à ce que les documents d'identité soient validés par l'administration Minsouah.
+                        </p>
+</div>
+<!-- CTA Mini Card -->
+<div class="relative overflow-hidden bg-primary rounded-xl p-lg text-white">
+<div class="absolute -right-4 -top-4 w-24 h-24 bg-primary-container/20 rounded-full blur-2xl"></div>
+<p class="font-h3 text-h3 relative z-10 mb-2">Besoin d'aide ?</p>
+<p class="text-body-sm text-white/80 relative z-10 mb-4">Consultez notre guide d'intégration pour les nouveaux propriétaires.</p>
+<button class="w-full py-2 bg-white text-primary rounded-lg font-label-md hover:bg-surface-bright transition-colors relative z-10">Guide PDF</button>
+</div>
+</aside>
+</div>
+</main>
+</div>
+<!-- BottomNavBar (Mobile only) -->
+<nav class="md:hidden fixed bottom-0 w-full z-50 bg-surface border-t border-outline-variant shadow-[0px_-4px_20px_rgba(62,56,54,0.05)] flex justify-around items-center h-16 pb-safe px-4">
+<div class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline active:scale-90 transition-transform duration-150">
+<span class="material-symbols-outlined" data-icon="home">home</span>
+<span class="font-label-sm text-label-sm">Home</span>
+</div>
+<div class="flex flex-col items-center justify-center text-primary dark:text-primary-fixed-dim font-bold active:scale-90 transition-transform duration-150">
+<span class="material-symbols-outlined" data-icon="apartment">apartment</span>
+<span class="font-label-sm text-label-sm">Assets</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline active:scale-90 transition-transform duration-150">
+<span class="material-symbols-outlined" data-icon="assessment">assessment</span>
+<span class="font-label-sm text-label-sm">Reports</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline active:scale-90 transition-transform duration-150">
+<span class="material-symbols-outlined" data-icon="mail">mail</span>
+<span class="font-label-sm text-label-sm">Inbox</span>
+</div>
+</nav>
+</body></html>

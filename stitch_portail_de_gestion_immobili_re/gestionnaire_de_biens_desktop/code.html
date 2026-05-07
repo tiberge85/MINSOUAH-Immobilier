@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+
+<html class="light" lang="fr"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800;900&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "inverse-surface": "#353026",
+                        "on-secondary": "#ffffff",
+                        "outline-variant": "#d2c5ae",
+                        "outline": "#817662",
+                        "on-error-container": "#93000a",
+                        "surface-container-low": "#fdf2e3",
+                        "on-primary": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "on-primary-fixed-variant": "#5a4300",
+                        "secondary-fixed": "#ebe0dd",
+                        "primary-fixed": "#ffdf9b",
+                        "primary-container": "#e5b228",
+                        "inverse-primary": "#f4bf36",
+                        "on-surface": "#1f1b12",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-container": "#5e4600",
+                        "secondary-container": "#ebe0dd",
+                        "inverse-on-surface": "#faefe0",
+                        "surface-variant": "#ebe1d2",
+                        "primary": "#785a00",
+                        "on-tertiary-fixed-variant": "#004b74",
+                        "on-secondary-fixed-variant": "#4c4543",
+                        "surface": "#fff8f2",
+                        "error": "#ba1a1a",
+                        "tertiary-container": "#75c0ff",
+                        "background": "#fff8f2",
+                        "on-secondary-fixed": "#1f1a19",
+                        "primary-fixed-dim": "#f4bf36",
+                        "on-error": "#ffffff",
+                        "surface-dim": "#e3d9ca",
+                        "surface-container": "#f7edde",
+                        "surface-tint": "#785a00",
+                        "tertiary-fixed-dim": "#94ccff",
+                        "error-container": "#ffdad6",
+                        "on-tertiary-fixed": "#001d32",
+                        "on-secondary-container": "#6a6360",
+                        "on-background": "#1f1b12",
+                        "tertiary": "#006399",
+                        "surface-container-high": "#f1e7d8",
+                        "on-tertiary-container": "#004e79",
+                        "on-primary-fixed": "#251a00",
+                        "secondary-fixed-dim": "#cec4c1",
+                        "on-surface-variant": "#4f4634",
+                        "surface-bright": "#fff8f2",
+                        "secondary": "#645d5a",
+                        "tertiary-fixed": "#cde5ff",
+                        "surface-container-highest": "#ebe1d2"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sm": "16px",
+                        "base": "4px",
+                        "gutter": "24px",
+                        "xl": "64px",
+                        "margin": "32px",
+                        "xs": "8px",
+                        "lg": "40px",
+                        "md": "24px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["Inter"],
+                        "display": ["Manrope"],
+                        "body-md": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "h3": ["Manrope"],
+                        "body-sm": ["Inter"],
+                        "label-sm": ["Inter"],
+                        "h2": ["Manrope"],
+                        "h1": ["Manrope"]
+                    },
+                    "fontSize": {
+                        "label-md": ["14px", {"lineHeight": "1", "fontWeight": "600"}],
+                        "display": ["48px", {"lineHeight": "1.1", "fontWeight": "700"}],
+                        "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "body-lg": ["18px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                        "h3": ["20px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                        "body-sm": ["14px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "label-sm": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "h2": ["24px", {"lineHeight": "1.3", "fontWeight": "600"}],
+                        "h1": ["32px", {"lineHeight": "1.2", "fontWeight": "700"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+            text-transform: none;
+            letter-spacing: normal;
+            word-wrap: normal;
+            white-space: nowrap;
+            direction: ltr;
+        }
+        body {
+            background-color: #fff8f2;
+            color: #1f1b12;
+            -webkit-font-smoothing: antialiased;
+        }
+        .bento-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 24px;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="font-body-md text-body-md overflow-x-hidden">
+<!-- Navigation Drawer (Desktop) -->
+<aside class="hidden md:flex h-full w-72 fixed left-0 top-0 bg-surface-container dark:bg-surface-container-low border-r border-outline-variant dark:border-none shadow-lg flex-col gap-xs py-md z-50">
+<div class="px-margin mb-lg">
+<h1 class="font-h1 text-h1 text-primary dark:text-primary-fixed-dim font-black tracking-tight">Minsouah</h1>
+</div>
+<div class="flex items-center gap-sm px-margin py-md mb-md">
+<div class="w-12 h-12 rounded-full bg-primary-container overflow-hidden">
+<img alt="Real Estate Admin" class="w-full h-full object-cover" data-alt="A professional portrait of a real estate executive in a modern, light-filled office. The individual is dressed in high-end business attire, projecting an air of premium stability and forward-thinking leadership. The lighting is soft and airy, matching a corporate modern aesthetic with warm ochre accents and a clean, minimalist background. The overall mood is sophisticated and reliable, echoing the Minsouah brand identity." src="https://lh3.googleusercontent.com/aida/ADBb0uj58Y8bnT9Hp9lliemAp9abgD671cfZoZVY_bbjfULuuoaagYhq0nOXy6L1KM8QwTSSitm14HK6W8h9I39rIcTL0Aje2yEmtz3ByQhSdA9sWsMCKhvyTa7SXfIecD0f1Tt4q6XTWrS1FHjffGSrOfFrp0CmjnN6CPhwBNuNAgLSE_UjmGMbJyAF49X2xLiT9OqHcCq4rwW_5fMhTZIF04tx9JwH_NPIl9y3YguhI0ohhjarot3D7MMKGe54mhJj1LCFgihuHVmN"/>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-surface">Real Estate Admin</p>
+<p class="text-label-sm font-label-sm text-on-surface-variant">Premium Tier</p>
+</div>
+</div>
+<nav class="flex flex-col gap-base">
+<!-- Active Item: Property Portfolio -->
+<a class="flex items-center gap-md py-sm pl-margin bg-primary-container text-on-primary-container border-l-4 border-primary font-bold rounded-r-full mr-4 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="domain">domain</span>
+<span class="font-label-md text-label-md">Property Portfolio</span>
+</a>
+<a class="flex items-center gap-md py-sm pl-margin text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label-md text-label-md">Admin Dashboard</span>
+</a>
+<a class="flex items-center gap-md py-sm pl-margin text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="font-label-md text-label-md">Owner Statements</span>
+</a>
+<a class="flex items-center gap-md py-sm pl-margin text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="support_agent">support_agent</span>
+<span class="font-label-md text-label-md">Client Requests</span>
+</a>
+<a class="flex items-center gap-md py-sm pl-margin text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label-md text-label-md">Platform Settings</span>
+</a>
+</nav>
+</aside>
+<!-- Top App Bar (Mobile & Desktop Content Header) -->
+<header class="fixed top-0 right-0 left-0 md:left-72 z-40 bg-surface dark:bg-surface-dim shadow-[0px_4px_20px_rgba(62,56,54,0.05)] h-20 flex justify-between items-center px-margin">
+<div class="flex items-center gap-md">
+<button class="md:hidden p-base text-primary cursor-pointer active:scale-95 transition-transform duration-200">
+<span class="material-symbols-outlined" data-icon="menu">menu</span>
+</button>
+<h2 class="font-h2 text-h2 font-bold text-primary dark:text-primary-fixed-dim">Actifs Immobiliers</h2>
+</div>
+<div class="flex items-center gap-md">
+<button class="hidden sm:flex items-center gap-xs px-md py-sm bg-surface-container-high hover:bg-surface-variant rounded-full transition-colors font-label-md text-label-md text-primary">
+<span class="material-symbols-outlined" data-icon="add_business">add_business</span>
+<span>Nouvel Actif</span>
+</button>
+<div class="w-10 h-10 rounded-full border-2 border-outline-variant overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200">
+<img alt="User Profile Avatar" class="w-full h-full object-cover" data-alt="A close-up shot of a sophisticated property manager looking confidently at the camera. The setting is a minimalist architectural space with soft, natural lighting and warm earthy tones. The image conveys high-end professionalism and modern real estate management excellence, perfectly aligned with the Minsouah corporate identity." src="https://lh3.googleusercontent.com/aida/ADBb0uj58Y8bnT9Hp9lliemAp9abgD671cfZoZVY_bbjfULuuoaagYhq0nOXy6L1KM8QwTSSitm14HK6W8h9I39rIcTL0Aje2yEmtz3ByQhSdA9sWsMCKhvyTa7SXfIecD0f1Tt4q6XTWrS1FHjffGSrOfFrp0CmjnN6CPhwBNuNAgLSE_UjmGMbJyAF49X2xLiT9OqHcCq4rwW_5fMhTZIF04tx9JwH_NPIl9y3YguhI0ohhjarot3D7MMKGe54mhJj1LCFgihuHVmN"/>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="pt-20 pb-24 md:pb-8 md:pl-72 min-h-screen">
+<div class="max-w-7xl mx-auto p-margin">
+<!-- Key Stats Header (Bento Style) -->
+<section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-gutter mb-xl">
+<div class="bg-white p-md rounded-xl shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/30 flex flex-col justify-between h-32">
+<div class="flex justify-between items-start">
+<span class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">Unités Totales</span>
+<span class="material-symbols-outlined text-primary" data-icon="apartment">apartment</span>
+</div>
+<div class="font-h1 text-h1 text-on-surface font-bold">124</div>
+</div>
+<div class="bg-white p-md rounded-xl shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/30 flex flex-col justify-between h-32">
+<div class="flex justify-between items-start">
+<span class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">Disponibles</span>
+<span class="material-symbols-outlined text-tertiary" data-icon="check_circle">check_circle</span>
+</div>
+<div class="font-h1 text-h1 text-on-surface font-bold">12</div>
+</div>
+<div class="bg-white p-md rounded-xl shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/30 flex flex-col justify-between h-32">
+<div class="flex justify-between items-start">
+<span class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">Maintenance</span>
+<span class="material-symbols-outlined text-error" data-icon="build">build</span>
+</div>
+<div class="font-h1 text-h1 text-on-surface font-bold">4</div>
+</div>
+<div class="bg-primary-container p-md rounded-xl shadow-[0px_4px_20px_rgba(62,56,54,0.05)] flex flex-col justify-between h-32">
+<div class="flex justify-between items-start">
+<span class="text-label-sm font-label-sm text-on-primary-container uppercase tracking-wider">Revenu MTD</span>
+<span class="material-symbols-outlined text-on-primary-container" data-icon="trending_up">trending_up</span>
+</div>
+<div class="font-h1 text-h1 text-on-primary-container font-black">€142,500</div>
+</div>
+</section>
+<!-- Filters & Actions -->
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-md mb-lg">
+<div class="flex items-center gap-xs overflow-x-auto no-scrollbar">
+<button class="px-md py-sm bg-primary text-white rounded-full font-label-md text-label-md whitespace-nowrap">Tous les biens</button>
+<button class="px-md py-sm bg-surface-container text-on-surface-variant hover:bg-surface-container-high rounded-full font-label-md text-label-md transition-colors whitespace-nowrap">Appartements</button>
+<button class="px-md py-sm bg-surface-container text-on-surface-variant hover:bg-surface-container-high rounded-full font-label-md text-label-md transition-colors whitespace-nowrap">Villas</button>
+</div>
+<div class="relative w-full md:w-72">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline" data-icon="search">search</span>
+<input class="w-full pl-12 pr-4 py-sm bg-white border border-outline-variant rounded-full focus:ring-2 focus:ring-primary focus:border-primary outline-none text-body-sm transition-all" placeholder="Rechercher une propriété..." type="text"/>
+</div>
+</div>
+<!-- Property Grid -->
+<section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-gutter">
+<!-- Card 1 -->
+<div class="bg-white rounded-xl overflow-hidden shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/20 hover:shadow-[0px_10px_30px_rgba(62,56,54,0.12)] transition-shadow duration-300 group">
+<div class="relative h-56 overflow-hidden">
+<img alt="Villa Azur" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="A luxury beachfront villa featuring floor-to-ceiling glass walls and a sleek infinity pool that merges with the ocean horizon. The architecture is ultra-modern with clean lines and warm stone textures. Shot during the golden hour, the scene is bathed in warm, premium light that highlights the high-end residential appeal. Corporate modern photography style with a focus on editorial clarity." src="https://lh3.googleusercontent.com/aida/ADBb0uj58Y8bnT9Hp9lliemAp9abgD671cfZoZVY_bbjfULuuoaagYhq0nOXy6L1KM8QwTSSitm14HK6W8h9I39rIcTL0Aje2yEmtz3ByQhSdA9sWsMCKhvyTa7SXfIecD0f1Tt4q6XTWrS1FHjffGSrOfFrp0CmjnN6CPhwBNuNAgLSE_UjmGMbJyAF49X2xLiT9OqHcCq4rwW_5fMhTZIF04tx9JwH_NPIl9y3YguhI0ohhjarot3D7MMKGe54mhJj1LCFgihuHVmN"/>
+<div class="absolute top-4 right-4 bg-tertiary-container text-on-tertiary-container px-sm py-1 rounded-full font-label-sm text-label-sm font-bold uppercase tracking-wide">Loué</div>
+</div>
+<div class="p-md">
+<h3 class="font-h3 text-h3 text-on-surface mb-xs">Villa Azur</h3>
+<p class="text-body-sm text-on-surface-variant flex items-center gap-xs mb-md">
+<span class="material-symbols-outlined text-sm" data-icon="location_on">location_on</span>
+                            12 Rue de la Marine, Cannes
+                        </p>
+<div class="flex items-center justify-between pt-md border-t border-outline-variant/30">
+<div class="flex items-center gap-xs">
+<div class="w-8 h-8 rounded-full bg-surface-container-high overflow-hidden">
+<div class="w-full h-full bg-secondary-fixed flex items-center justify-center text-on-secondary-container text-xs font-bold">JD</div>
+</div>
+<span class="text-label-sm font-label-sm text-on-surface">Jean Dupont</span>
+</div>
+<div class="text-primary font-bold">4.200€ / mois</div>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-white rounded-xl overflow-hidden shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/20 hover:shadow-[0px_10px_30px_rgba(62,56,54,0.12)] transition-shadow duration-300 group">
+<div class="relative h-56 overflow-hidden">
+<img alt="Le Belvédère" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="A high-rise luxury apartment interior in a metropolitan setting. The space features minimalist furniture, a sophisticated neutral color palette with ochre accents, and a breathtaking city view through large windows. The lighting is bright and airy, emphasizing a premium lifestyle and modern real estate management. The image uses architectural photography techniques for maximum impact." src="https://lh3.googleusercontent.com/aida/ADBb0uj58Y8bnT9Hp9lliemAp9abgD671cfZoZVY_bbjfULuuoaagYhq0nOXy6L1KM8QwTSSitm14HK6W8h9I39rIcTL0Aje2yEmtz3ByQhSdA9sWsMCKhvyTa7SXfIecD0f1Tt4q6XTWrS1FHjffGSrOfFrp0CmjnN6CPhwBNuNAgLSE_UjmGMbJyAF49X2xLiT9OqHcCq4rwW_5fMhTZIF04tx9JwH_NPIl9y3YguhI0ohhjarot3D7MMKGe54mhJj1LCFgihuHVmN"/>
+<div class="absolute top-4 right-4 bg-surface-container-high text-on-surface px-sm py-1 rounded-full font-label-sm text-label-sm font-bold uppercase tracking-wide">Disponible</div>
+</div>
+<div class="p-md">
+<h3 class="font-h3 text-h3 text-on-surface mb-xs">Le Belvédère</h3>
+<p class="text-body-sm text-on-surface-variant flex items-center gap-xs mb-md">
+<span class="material-symbols-outlined text-sm" data-icon="location_on">location_on</span>
+                            45 Avenue des Alpes, Lyon
+                        </p>
+<div class="flex items-center justify-between pt-md border-t border-outline-variant/30">
+<div class="flex items-center gap-xs">
+<div class="w-8 h-8 rounded-full bg-surface-container-high overflow-hidden">
+<div class="w-full h-full bg-secondary-fixed flex items-center justify-center text-on-secondary-container text-xs font-bold">MR</div>
+</div>
+<span class="text-label-sm font-label-sm text-on-surface">Marie Roche</span>
+</div>
+<div class="text-primary font-bold">1.850€ / mois</div>
+</div>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="bg-white rounded-xl overflow-hidden shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/20 hover:shadow-[0px_10px_30px_rgba(62,56,54,0.12)] transition-shadow duration-300 group">
+<div class="relative h-56 overflow-hidden">
+<img alt="Résidence Étoile" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="A classic Haussmann-style building exterior in Paris, showcasing intricate balcony details and elegant stone facades. The image is captured in soft morning light, highlighting the historic yet well-maintained nature of the property. The overall mood is one of prestige and reliability, perfectly matching the corporate real estate management theme of Minsouah." src="https://lh3.googleusercontent.com/aida/ADBb0uj58Y8bnT9Hp9lliemAp9abgD671cfZoZVY_bbjfULuuoaagYhq0nOXy6L1KM8QwTSSitm14HK6W8h9I39rIcTL0Aje2yEmtz3ByQhSdA9sWsMCKhvyTa7SXfIecD0f1Tt4q6XTWrS1FHjffGSrOfFrp0CmjnN6CPhwBNuNAgLSE_UjmGMbJyAF49X2xLiT9OqHcCq4rwW_5fMhTZIF04tx9JwH_NPIl9y3YguhI0ohhjarot3D7MMKGe54mhJj1LCFgihuHVmN"/>
+<div class="absolute top-4 right-4 bg-error-container text-on-error-container px-sm py-1 rounded-full font-label-sm text-label-sm font-bold uppercase tracking-wide">Maintenance</div>
+</div>
+<div class="p-md">
+<h3 class="font-h3 text-h3 text-on-surface mb-xs">Résidence Étoile</h3>
+<p class="text-body-sm text-on-surface-variant flex items-center gap-xs mb-md">
+<span class="material-symbols-outlined text-sm" data-icon="location_on">location_on</span>
+                            88 Rue de Rivoli, Paris
+                        </p>
+<div class="flex items-center justify-between pt-md border-t border-outline-variant/30">
+<div class="flex items-center gap-xs">
+<div class="w-8 h-8 rounded-full bg-surface-container-high overflow-hidden">
+<div class="w-full h-full bg-secondary-fixed flex items-center justify-center text-on-secondary-container text-xs font-bold">AL</div>
+</div>
+<span class="text-label-sm font-label-sm text-on-surface">Arthur Lefebvre</span>
+</div>
+<div class="text-primary font-bold">3.100€ / mois</div>
+</div>
+</div>
+</div>
+<!-- Card 4 -->
+<div class="bg-white rounded-xl overflow-hidden shadow-[0px_4px_20px_rgba(62,56,54,0.05)] border border-outline-variant/20 hover:shadow-[0px_10px_30px_rgba(62,56,54,0.12)] transition-shadow duration-300 group">
+<div class="relative h-56 overflow-hidden">
+<img alt="Château des Pins" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="A contemporary countryside estate surrounded by lush pine forests and manicured gardens. The property features a mix of traditional stone and modern glass elements, creating a unique architectural blend. The lighting is warm and inviting, suggesting a peaceful yet luxurious retreat. Editorial architectural style with high-end color grading in warm ochre and green tones." src="https://lh3.googleusercontent.com/aida/ADBb0uj58Y8bnT9Hp9lliemAp9abgD671cfZoZVY_bbjfULuuoaagYhq0nOXy6L1KM8QwTSSitm14HK6W8h9I39rIcTL0Aje2yEmtz3ByQhSdA9sWsMCKhvyTa7SXfIecD0f1Tt4q6XTWrS1FHjffGSrOfFrp0CmjnN6CPhwBNuNAgLSE_UjmGMbJyAF49X2xLiT9OqHcCq4rwW_5fMhTZIF04tx9JwH_NPIl9y3YguhI0ohhjarot3D7MMKGe54mhJj1LCFgihuHVmN"/>
+<div class="absolute top-4 right-4 bg-tertiary-container text-on-tertiary-container px-sm py-1 rounded-full font-label-sm text-label-sm font-bold uppercase tracking-wide">Loué</div>
+</div>
+<div class="p-md">
+<h3 class="font-h3 text-h3 text-on-surface mb-xs">Château des Pins</h3>
+<p class="text-body-sm text-on-surface-variant flex items-center gap-xs mb-md">
+<span class="material-symbols-outlined text-sm" data-icon="location_on">location_on</span>
+                            Route de Grasse, Mougins
+                        </p>
+<div class="flex items-center justify-between pt-md border-t border-outline-variant/30">
+<div class="flex items-center gap-xs">
+<div class="w-8 h-8 rounded-full bg-surface-container-high overflow-hidden">
+<div class="w-full h-full bg-secondary-fixed flex items-center justify-center text-on-secondary-container text-xs font-bold">PL</div>
+</div>
+<span class="text-label-sm font-label-sm text-on-surface">Paul Lambert</span>
+</div>
+<div class="text-primary font-bold">7.500€ / mois</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+</main>
+<!-- Bottom Nav Bar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 w-full z-50 bg-surface dark:bg-surface-container-lowest border-t border-outline-variant dark:border-none shadow-[0px_-4px_20px_rgba(62,56,54,0.05)] flex justify-around items-center h-16 pb-safe px-4">
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="home">home</span>
+<span class="font-label-sm text-label-sm">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-primary dark:text-primary-fixed-dim font-bold active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="apartment">apartment</span>
+<span class="font-label-sm text-label-sm">Assets</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="assessment">assessment</span>
+<span class="font-label-sm text-label-sm">Reports</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="mail">mail</span>
+<span class="font-label-sm text-label-sm">Inbox</span>
+</a>
+</nav>
+<!-- Floating Action Button (Mobile Contextual) -->
+<button class="md:hidden fixed bottom-20 right-6 w-14 h-14 bg-primary text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform duration-200 z-50">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+</button>
+</body></html>
