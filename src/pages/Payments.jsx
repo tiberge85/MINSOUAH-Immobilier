@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
+import SignaturePad from '../components/SignaturePad';
 
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
@@ -14,7 +15,7 @@ const statusColor = {
 const statusIcon = { 'Payé': 'check_circle', 'Impayé': 'cancel', 'En retard': 'schedule' };
 
 /* ── Receipt HTML ─────────────────────────────────────────────────────────── */
-function buildReceiptHTML(payment, orgSettings) {
+function buildReceiptHTML(payment, orgSettings, signatures = {}) {
   const org = orgSettings || {};
   const receiptNum = `QUI-${payment.id}-${Date.now().toString().slice(-5)}`;
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -50,7 +51,8 @@ function buildReceiptHTML(payment, orgSettings) {
   .details-row span:last-child { font-weight: 600; color: #1c1b19; }
   .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 32px; padding-top: 16px; border-top: 1px solid #e3d9cc; }
   .sig-box { text-align: center; }
-  .sig-line { border-bottom: 1px solid #817662; height: 50px; margin-bottom: 8px; }
+  .sig-line { border-bottom: 1px solid #817662; height: 60px; margin-bottom: 8px; display:flex; align-items:flex-end; justify-content:center; }
+  .sig-line img { max-height:56px; max-width:100%; object-fit:contain; }
   .sig-label { font-size: 11px; color: #817662; text-transform: uppercase; letter-spacing: 1px; }
   .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e3d9cc; font-size: 10px; color: #b0a090; text-align: center; line-height: 1.6; }
   .paid-stamp { position: absolute; top: 160px; right: 60px; border: 4px solid #166534; color: #166534; border-radius: 8px; padding: 8px 16px; font-size: 20px; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; transform: rotate(-15deg); opacity: 0.5; pointer-events: none; }
@@ -107,11 +109,15 @@ function buildReceiptHTML(payment, orgSettings) {
 
   <div class="signatures">
     <div class="sig-box">
-      <div class="sig-line"></div>
+      <div class="sig-line">
+        ${signatures.bailleur ? `<img src="${signatures.bailleur}" alt="signature bailleur" />` : ''}
+      </div>
       <div class="sig-label">Signature du Bailleur</div>
     </div>
     <div class="sig-box">
-      <div class="sig-line"></div>
+      <div class="sig-line">
+        ${signatures.locataire ? `<img src="${signatures.locataire}" alt="signature locataire" />` : ''}
+      </div>
       <div class="sig-label">Signature du Locataire</div>
     </div>
   </div>
@@ -409,30 +415,51 @@ export default function Payments() {
   const handleMarkPaid = (id) => dispatch({ type: 'MARK_PAYMENT_PAID', payload: id });
   const handleReminder = (p) => { dispatch({ type: 'SEND_REMINDER', payload: p.id }); setReminderModal(null); };
 
-  const openReceipt = (payment) => setQuittancePayment(payment);
+  /* ── Quittance / Signature state ── */
+  const [receiptTab, setReceiptTab]       = useState('preview');
+  const [signatures, setSignatures]       = useState({ bailleur: null, locataire: null });
+  const [sigBailleur, setSigBailleur]     = useState(false);
+  const [sigLocataire, setSigLocataire]   = useState(false);
+  const sigBailleurRef                    = useRef(null);
+  const sigLocataireRef                   = useRef(null);
 
-  const printReceipt = () => {
-    const html = buildReceiptHTML(quittancePayment, orgSettings);
-    const win = window.open('', '_blank', 'width=800,height=700');
+  const openReceipt = useCallback((payment) => {
+    setQuittancePayment(payment);
+    setReceiptTab('preview');
+    setSignatures({ bailleur: null, locataire: null });
+    setSigBailleur(false);
+    setSigLocataire(false);
+  }, []);
+
+  const handleConfirmSignatures = useCallback(() => {
+    const bailleur  = sigBailleurRef.current?.getDataURL() || null;
+    const locataire = sigLocataireRef.current?.getDataURL() || null;
+    setSignatures({ bailleur, locataire });
+    setReceiptTab('send');
+  }, []);
+
+  const printReceipt = useCallback(() => {
+    const html = buildReceiptHTML(quittancePayment, orgSettings, signatures);
+    const win = window.open('', '_blank', 'width=820,height=700');
     if (win) { win.document.write(html); win.document.close(); }
-  };
+  }, [quittancePayment, orgSettings, signatures]);
 
-  const whatsappReceipt = () => {
+  const whatsappReceipt = useCallback(() => {
     const phone = (quittancePayment?.tenantPhone || '').replace(/\D/g, '');
     const msg = encodeURIComponent(
-      `Bonjour ${quittancePayment?.tenantName},\n\nVotre quittance de loyer pour ${quittancePayment?.month} d'un montant de ${fmt(quittancePayment?.amount)} a bien été enregistrée.\nMerci pour votre paiement.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
+      `Bonjour ${quittancePayment?.tenantName},\n\nVotre quittance de loyer pour ${quittancePayment?.month} d'un montant de ${fmt(quittancePayment?.amount)} a bien été enregistrée.${signatures.bailleur ? '\n✅ Quittance signée numériquement.' : ''}\nMerci pour votre paiement.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
     );
     window.open(`https://wa.me/${phone || ''}?text=${msg}`, '_blank');
-  };
+  }, [quittancePayment, orgSettings, signatures]);
 
-  const emailReceipt = () => {
+  const emailReceipt = useCallback(() => {
     const email = quittancePayment?.tenantEmail || '';
     const subject = encodeURIComponent(`Quittance de loyer — ${quittancePayment?.month}`);
     const body = encodeURIComponent(
       `Bonjour ${quittancePayment?.tenantName},\n\nVeuillez trouver ci-joint votre quittance de loyer pour la période de ${quittancePayment?.month}.\n\nMontant : ${fmt(quittancePayment?.amount)}\nPropriété : ${quittancePayment?.propertyName}\n\nCordialement,\n${orgSettings?.companyName || 'Minsouah Immobilier'}`
     );
     window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
-  };
+  }, [quittancePayment, orgSettings]);
 
   const handlePrintReport = () => {
     const html = buildReportHTML(selectedMonth, reportPaid, reportUnpaid, orgSettings);
@@ -914,45 +941,174 @@ export default function Payments() {
         open={!!quittancePayment}
         onClose={() => setQuittancePayment(null)}
         title="Quittance de Loyer"
-        size="sm"
+        size="xl"
         footer={
-          <div className="flex gap-3 w-full flex-wrap justify-end">
-            <Btn variant="secondary" onClick={() => setQuittancePayment(null)}>Fermer</Btn>
-            <Btn icon="print" onClick={printReceipt}>Imprimer</Btn>
-            <Btn icon="chat" variant="green" onClick={whatsappReceipt}>WhatsApp</Btn>
-            <Btn icon="mail" variant="secondary" onClick={emailReceipt}>Email</Btn>
-          </div>
+          receiptTab === 'preview' ? (
+            <div className="flex gap-3 w-full justify-between items-center">
+              <Btn variant="secondary" onClick={() => setQuittancePayment(null)}>Fermer</Btn>
+              <div className="flex gap-3">
+                <Btn icon="draw" onClick={() => setReceiptTab('sign')}>Signer numériquement</Btn>
+                <Btn icon="print" variant="secondary" onClick={printReceipt}>Imprimer sans signature</Btn>
+              </div>
+            </div>
+          ) : receiptTab === 'sign' ? (
+            <div className="flex gap-3 w-full justify-between">
+              <Btn variant="secondary" onClick={() => setReceiptTab('preview')}>← Retour</Btn>
+              <Btn icon="check_circle" onClick={handleConfirmSignatures}>
+                Valider les signatures →
+              </Btn>
+            </div>
+          ) : (
+            <div className="flex gap-3 w-full flex-wrap justify-between items-center">
+              <Btn variant="secondary" onClick={() => setReceiptTab('sign')}>← Modifier signatures</Btn>
+              <div className="flex gap-2 flex-wrap">
+                <Btn icon="print" onClick={printReceipt}>Imprimer</Btn>
+                <Btn icon="chat" variant="green" onClick={whatsappReceipt}>WhatsApp</Btn>
+                <Btn icon="mail" variant="secondary" onClick={emailReceipt}>Email</Btn>
+              </div>
+            </div>
+          )
         }
       >
         {quittancePayment && (
           <div className="flex flex-col gap-4">
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
-              <Icon name="check_circle" size={24} className="text-green-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold text-green-800">Paiement enregistré avec succès</p>
-                <p className="text-sm text-green-700 mt-0.5">La quittance est prête à être envoyée au locataire.</p>
-              </div>
-            </div>
-
-            <div className="border border-outline-variant/30 rounded-xl overflow-hidden">
+            {/* Tabs */}
+            <div className="flex gap-1 bg-surface-container-low rounded-xl p-1">
               {[
-                ['Locataire', quittancePayment.tenantName],
-                ['Propriété', quittancePayment.propertyName],
-                ['Période', quittancePayment.month],
-                ['Montant', fmt(quittancePayment.amount)],
-                ['Mode', quittancePayment.method || 'Espèces'],
-                ['Date', quittancePayment.paidDate || new Date().toLocaleDateString('fr-CI')],
-              ].map(([k, v]) => (
-                <div key={k} className="flex justify-between px-4 py-2.5 border-b border-outline-variant/10 last:border-0">
-                  <span className="text-sm text-on-surface-variant">{k}</span>
-                  <span className="text-sm font-semibold text-on-surface">{v}</span>
-                </div>
+                { key: 'preview', label: 'Aperçu', icon: 'preview' },
+                { key: 'sign',    label: 'Signatures', icon: 'draw' },
+                { key: 'send',    label: 'Envoyer', icon: 'send',
+                  badge: (signatures.bailleur || signatures.locataire) },
+              ].map(t => (
+                <button key={t.key} onClick={() => setReceiptTab(t.key)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-colors relative ${
+                    receiptTab === t.key ? 'bg-surface text-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
+                  }`}>
+                  <Icon name={t.icon} size={14} />
+                  {t.label}
+                  {t.badge && <span className="w-2 h-2 bg-green-500 rounded-full absolute top-1 right-1" />}
+                </button>
               ))}
             </div>
 
-            <p className="text-xs text-on-surface-variant text-center">
-              Choisissez comment envoyer la quittance au locataire ci-dessous.
-            </p>
+            {/* ── TAB: APERÇU ── */}
+            {receiptTab === 'preview' && (
+              <div className="flex flex-col gap-3">
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-3">
+                  <Icon name="check_circle" size={20} className="text-green-600 flex-shrink-0" />
+                  <div>
+                    <p className="font-bold text-green-800 text-sm">Paiement enregistré</p>
+                    <p className="text-xs text-green-700">Prévisualisez la quittance avant de la signer ou l'envoyer.</p>
+                  </div>
+                </div>
+                {/* Iframe preview */}
+                <div className="border border-outline-variant/30 rounded-xl overflow-hidden bg-gray-50" style={{ height: '460px' }}>
+                  <iframe
+                    srcDoc={buildReceiptHTML(quittancePayment, orgSettings, signatures)}
+                    title="Aperçu quittance"
+                    className="w-full h-full border-0"
+                    sandbox="allow-same-origin"
+                  />
+                </div>
+                <p className="text-xs text-on-surface-variant text-center">
+                  Aperçu en temps réel — les signatures apparaîtront une fois ajoutées.
+                </p>
+              </div>
+            )}
+
+            {/* ── TAB: SIGNATURES ── */}
+            {receiptTab === 'sign' && (
+              <div className="flex flex-col gap-5">
+                <div className="bg-primary-container/20 border border-primary/20 rounded-xl p-3 flex items-start gap-3">
+                  <Icon name="info" size={18} className="text-primary flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-on-surface">
+                    Dessinez les signatures dans les zones ci-dessous. Elles seront intégrées dans la quittance avant impression ou envoi.
+                    La signature du locataire est <strong>optionnelle</strong>.
+                  </p>
+                </div>
+
+                <SignaturePad
+                  ref={sigBailleurRef}
+                  label="Signature du Bailleur / Gestionnaire"
+                  subtitle={`${orgSettings?.companyName || 'Minsouah Immobilier'}`}
+                  required
+                  onChange={setSigBailleur}
+                />
+
+                <SignaturePad
+                  ref={sigLocataireRef}
+                  label="Signature du Locataire"
+                  subtitle={`${quittancePayment.tenantName} — optionnel`}
+                  onChange={setSigLocataire}
+                />
+
+                {/* Preview of signed receipt */}
+                {(sigBailleur || sigLocataire) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const b = sigBailleurRef.current?.getDataURL();
+                      const l = sigLocataireRef.current?.getDataURL();
+                      const html = buildReceiptHTML(quittancePayment, orgSettings, { bailleur: b, locataire: l });
+                      const win = window.open('', '_blank', 'width=820,height=700');
+                      if (win) { win.document.write(html); win.document.close(); }
+                    }}
+                    className="flex items-center justify-center gap-2 text-xs text-primary hover:underline"
+                  >
+                    <Icon name="preview" size={14} /> Prévisualiser avec les signatures actuelles
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* ── TAB: ENVOYER ── */}
+            {receiptTab === 'send' && (
+              <div className="flex flex-col gap-4">
+                {/* Signature status */}
+                <div className={`rounded-xl p-3 flex items-start gap-3 ${
+                  signatures.bailleur ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'
+                }`}>
+                  <Icon name={signatures.bailleur ? 'verified' : 'warning'} size={20}
+                    className={signatures.bailleur ? 'text-green-600' : 'text-amber-600'} />
+                  <div>
+                    <p className={`font-semibold text-sm ${signatures.bailleur ? 'text-green-800' : 'text-amber-800'}`}>
+                      {signatures.bailleur ? 'Quittance signée numériquement' : 'Quittance sans signature'}
+                    </p>
+                    <div className="flex gap-4 mt-1">
+                      <span className={`text-xs flex items-center gap-1 ${signatures.bailleur ? 'text-green-700' : 'text-amber-600'}`}>
+                        <Icon name={signatures.bailleur ? 'check_circle' : 'radio_button_unchecked'} size={12} />
+                        Bailleur
+                      </span>
+                      <span className={`text-xs flex items-center gap-1 ${signatures.locataire ? 'text-green-700' : 'text-on-surface-variant'}`}>
+                        <Icon name={signatures.locataire ? 'check_circle' : 'radio_button_unchecked'} size={12} />
+                        Locataire
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Details summary */}
+                <div className="border border-outline-variant/30 rounded-xl overflow-hidden">
+                  {[
+                    ['Locataire',  quittancePayment.tenantName],
+                    ['Propriété',  quittancePayment.propertyName],
+                    ['Période',    quittancePayment.month],
+                    ['Montant',    fmt(quittancePayment.amount)],
+                    ['Mode',       quittancePayment.method || 'Espèces'],
+                    ['Date',       quittancePayment.paidDate || new Date().toLocaleDateString('fr-CI')],
+                  ].map(([k, v]) => (
+                    <div key={k} className="flex justify-between px-4 py-2 border-b border-outline-variant/10 last:border-0">
+                      <span className="text-xs text-on-surface-variant">{k}</span>
+                      <span className="text-xs font-semibold text-on-surface">{v}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="text-xs text-on-surface-variant text-center">
+                  Choisissez le canal d'envoi ci-dessous.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </ModalWrap>

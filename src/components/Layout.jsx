@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { useTheme } from '../context/ThemeContext';
 import Icon from './Icon';
 
 const ROLE_LABELS = { ADMIN: 'Administrateur', MANAGER: 'Manager', TENANT: 'Locataire', OWNER: 'Propriétaire', ACCOUNTANT: 'Comptable', TECHNICIAN: 'Technicien' };
@@ -33,6 +34,7 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { state, dispatch } = useApp();
+  const { dark, toggle: toggleDark } = useTheme();
   const { currentUser } = state;
   const unpaidCount = state.payments.filter(p => p.status !== 'Payé').length;
   const title = pageTitles[location.pathname] || 'Minsouah';
@@ -165,6 +167,15 @@ export default function Layout() {
                 className="bg-transparent border-none focus:ring-0 focus:outline-none text-body-sm w-48 text-on-surface placeholder:text-outline"
               />
             </div>
+
+            {/* Dark mode toggle */}
+            <button
+              onClick={toggleDark}
+              className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-high transition-colors text-on-surface-variant"
+              title={dark ? 'Mode clair' : 'Mode sombre'}
+            >
+              <Icon name={dark ? 'light_mode' : 'dark_mode'} size={20} />
+            </button>
 
             <button className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-high transition-colors text-on-surface-variant relative">
               <Icon name="notifications" />

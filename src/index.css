@@ -12,7 +12,43 @@
     background-color: #fff8f2;
     color: #1f1b12;
     font-family: 'Inter', sans-serif;
+    transition: background-color 0.2s, color 0.2s;
   }
+
+  /* ── Dark mode overrides ─────────────────────────────── */
+  .dark body,
+  .dark {
+    background-color: #1a1612;
+    color: #f0e8d8;
+    color-scheme: dark;
+  }
+
+  .dark .bg-surface                   { background-color: #221f18 !important; }
+  .dark .bg-surface-container         { background-color: #2a2720 !important; }
+  .dark .bg-surface-container-low     { background-color: #252218 !important; }
+  .dark .bg-surface-container-high    { background-color: #312e26 !important; }
+  .dark .bg-surface-container-lowest  { background-color: #1a1612 !important; }
+  .dark .bg-background                { background-color: #1a1612 !important; }
+  .dark .bg-surface-container-highest { background-color: #393328 !important; }
+
+  .dark .text-on-surface              { color: #f0e8d8 !important; }
+  .dark .text-on-surface-variant      { color: #c9bda8 !important; }
+  .dark .text-outline                 { color: #8a7e6e !important; }
+
+  .dark .border-outline-variant\/30   { border-color: rgba(82,75,62,0.5) !important; }
+  .dark .border-outline-variant\/20   { border-color: rgba(82,75,62,0.35) !important; }
+  .dark .border-outline-variant\/10   { border-color: rgba(82,75,62,0.25) !important; }
+
+  .dark .bg-primary-container         { background-color: #3d2e00 !important; }
+  .dark .text-on-primary-container    { color: #ffd760 !important; }
+
+  .dark .shadow-card                  { box-shadow: 0 4px 20px rgba(0,0,0,0.35) !important; }
+  .dark .shadow-topbar                { box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important; }
+  .dark .shadow-modal                 { box-shadow: 0 10px 30px rgba(0,0,0,0.5) !important; }
+
+  /* Sidebar dark background */
+  .dark aside { background-color: #1e1b14 !important; }
+  .dark header { background-color: #1e1b14 !important; }
 }
 
 @layer utilities {
@@ -28,22 +64,43 @@
     font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   }
 
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-  .no-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: #d2c5ae; border-radius: 10px; }
+
+  /* Skeleton loader animation */
+  @keyframes skeleton-shimmer {
+    0%   { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
   }
 
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 4px;
+  .skeleton {
+    background: linear-gradient(90deg, #f0e8d8 25%, #e3d9cc 50%, #f0e8d8 75%);
+    background-size: 800px 100%;
+    animation: skeleton-shimmer 1.4s infinite linear;
+    border-radius: 8px;
   }
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
+
+  .dark .skeleton {
+    background: linear-gradient(90deg, #2a2720 25%, #312e26 50%, #2a2720 75%);
+    background-size: 800px 100%;
+    animation: skeleton-shimmer 1.4s infinite linear;
   }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #d2c5ae;
-    border-radius: 10px;
+
+  /* Fade in animation */
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
+  .animate-fade-in { animation: fade-in 0.2s ease-out; }
+
+  /* Slide up animation for modals */
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(16px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .animate-slide-up { animation: slide-up 0.2s ease-out; }
 }
