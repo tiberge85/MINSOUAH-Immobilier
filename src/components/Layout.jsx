@@ -70,9 +70,10 @@ export default function Layout() {
 
         {/* User */}
         <div className="px-sm mb-md flex items-center gap-sm bg-surface-container-high mx-sm rounded-xl py-sm">
-          <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-sm flex-shrink-0">
-            {currentUser?.initials || '?'}
-          </div>
+          {currentUser?.avatar
+            ? <img src={currentUser.avatar} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
+            : <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-sm flex-shrink-0">{currentUser?.initials || '?'}</div>
+          }
           <div className="min-w-0 flex-1">
             <p className="font-label-md text-label-md text-on-surface truncate">{currentUser?.name || 'Utilisateur'}</p>
             <p className="text-label-sm text-on-surface-variant">{ROLE_LABELS[currentUser?.role] || ''}</p>
@@ -170,12 +171,12 @@ export default function Layout() {
               <span className="absolute top-2 right-2 w-2 h-2 bg-error rounded-full" />
             </button>
 
-            <button
-              onClick={() => navigate('/settings')}
-              className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-sm cursor-pointer hover:ring-2 hover:ring-primary transition-all"
-              title="Paramètres"
-            >
-              {currentUser?.initials || '?'}
+            <button onClick={() => navigate('/settings')}
+              className="w-10 h-10 rounded-full overflow-hidden bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-sm cursor-pointer hover:ring-2 hover:ring-primary transition-all"
+              title="Paramètres">
+              {currentUser?.avatar
+                ? <img src={currentUser.avatar} alt="" className="w-full h-full object-cover" />
+                : (currentUser?.initials || '?')}
             </button>
           </div>
         </header>

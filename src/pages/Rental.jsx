@@ -83,10 +83,10 @@ export default function Rental() {
   };
 
   const openAddOwner = () => {
-    setOForm({ name: '', initials: '', email: '', phone: '', bank: '', iban: '', status: 'Actif', properties: 0, revenue: 0, color: COLORS[0] });
+    setOForm({ name: '', initials: '', email: '', phone: '', bank: '', iban: '', status: 'Actif', properties: 0, revenue: 0, color: COLORS[0], propertyIds: [] });
     setModal('owner'); setTarget(null);
   };
-  const openEditOwner = (o) => { setOForm(o); setModal('owner'); setTarget(o); };
+  const openEditOwner = (o) => { setOForm({ propertyIds: [], ...o }); setModal('owner'); setTarget(o); };
 
   // ── Sauvegardes ────────────────────────────────────────────────────────────
   const saveContract = () => {
@@ -109,9 +109,29 @@ export default function Rental() {
 
   const saveOwner = () => {
     const initials = oForm.initials || oForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-    const payload = { ...oForm, initials };
-    if (target) dispatch({ type: 'UPDATE_OWNER', payload: { ...payload, id: target.id } });
-    else dispatch({ type: 'ADD_OWNER', payload });
+    const ids = oForm.propertyIds || [];
+    // Compute revenue from owned properties
+    const revenue = properties
+      .filter(p => ids.includes(p.id))
+      .reduce((s, p) => {
+        if (p.isBuilding) return s + (p.units || []).filter(u => u.status === 'Loué').reduce((a, u) => a + u.rent, 0);
+        return s + (p.rent || 0);
+      }, 0);
+    const payload = { ...oForm, initials, propertyIds: ids, properties: ids.length, revenue };
+    if (target) {
+      dispatch({ type: 'UPDATE_OWNER', payload: { ...payload, id: target.id } });
+      // Update the owner field on each assigned property
+      ids.forEach(pid => {
+        const prop = properties.find(p => p.id === pid);
+        if (prop) dispatch({ type: 'UPDATE_PROPERTY', payload: { ...prop, owner: oForm.name, ownerInitials: initials } });
+      });
+    } else {
+      dispatch({ type: 'ADD_OWNER', payload });
+      ids.forEach(pid => {
+        const prop = properties.find(p => p.id === pid);
+        if (prop) dispatch({ type: 'UPDATE_PROPERTY', payload: { ...prop, owner: oForm.name, ownerInitials: initials } });
+      });
+    }
     setModal(null);
   };
 
@@ -453,6 +473,41 @@ export default function Rental() {
               </select>
             </div>
           </div>
+
+          {/* Biens attribués */}
+          <div className="mt-4">
+            <label className="form-label mb-2 block">Biens immobiliers attribués</label>
+            <div className="max-h-48 overflow-y-auto flex flex-col gap-1 border border-outline-variant/30 rounded-xl p-3 bg-surface-container-low">
+              {properties.length === 0 && <p className="text-xs text-on-surface-variant">Aucun bien enregistré</p>}
+              {properties.map(p => {
+                const checked = (oForm.propertyIds || []).includes(p.id);
+                return (
+                  <label key={p.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${checked ? 'bg-primary-container/40' : 'hover:bg-surface-container-high'}`}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => setOForm(f => ({
+                        ...f,
+                        propertyIds: checked
+                          ? (f.propertyIds || []).filter(id => id !== p.id)
+                          : [...(f.propertyIds || []), p.id],
+                      }))}
+                      className="accent-primary w-4 h-4"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-on-surface truncate">{p.name}</p>
+                      <p className="text-xs text-on-surface-variant truncate">{p.address} — {p.isBuilding ? `${(p.units||[]).length} appts` : fmt(p.rent) + '/mois'}</p>
+                    </div>
+                    {checked && <Icon name="check_circle" size={14} className="text-primary flex-shrink-0" />}
+                  </label>
+                );
+              })}
+            </div>
+            {(oForm.propertyIds || []).length > 0 && (
+              <p className="text-xs text-primary font-semibold mt-1">{(oForm.propertyIds || []).length} bien(s) sélectionné(s)</p>
+            )}
+          </div>
+
           <ModalFooter onCancel={() => setModal(null)} onSave={saveOwner} disabled={!oForm.name} />
         </ModalWrap>
       )}

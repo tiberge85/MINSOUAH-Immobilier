@@ -143,7 +143,10 @@ function reducer(state, action) {
     case 'UPDATE_SETTINGS': {
       const { type: sType, data } = payload;
       if (sType === 'profile') {
-        return { ...state, currentUser: { ...state.currentUser, ...data } };
+        const initials = data.name
+          ? data.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+          : state.currentUser?.initials;
+        return { ...state, currentUser: { ...state.currentUser, ...data, initials } };
       }
       if (sType === 'notif') {
         return { ...state, orgSettings: { ...state.orgSettings, notif: data } };

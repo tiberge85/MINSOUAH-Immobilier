@@ -325,15 +325,28 @@ export default function Payments() {
     if (!payForm.propertyKey) return tenants || [];
     const selected = allPropertyOptions.find(o => o.value === payForm.propertyKey);
     if (!selected) return tenants || [];
-    return (tenants || []).filter(t => {
-      const activeContract = (contracts || []).find(c =>
-        c.tenantId === t.id && c.status === 'Actif' &&
-        (selected.isUnit
-          ? (String(c.buildingId) === String(selected.buildingId) && String(c.unitId) === String(selected.unitId))
-          : String(c.propertyId) === String(selected.buildingId))
-      );
-      return !!activeContract;
+
+    const matched = (tenants || []).filter(t => {
+      const tName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
+      // Via active contract — name OR id based
+      const viaContract = (contracts || []).some(c => {
+        if (c.status !== 'Actif') return false;
+        const tenantMatch = c.tenantId === t.id || c.tenant === tName;
+        const propMatch =
+          c.propertyName === selected.propertyName ||
+          c.propertyName === selected.buildingName ||
+          String(c.propertyId) === String(selected.buildingId) ||
+          (selected.isUnit && String(c.buildingId) === String(selected.buildingId));
+        return tenantMatch && propMatch;
+      });
+      // Direct property field on tenant
+      const directMatch =
+        (t.property || '').includes(selected.buildingName) ||
+        (t.property || '').includes(selected.propertyName);
+      return viaContract || directMatch;
     });
+    // Fallback: if no match found via contract/property, show all active tenants
+    return matched.length > 0 ? matched : (tenants || []).filter(t => t.status === 'Actif' || t.status === 'En cours' || !t.status);
   }, [payForm.propertyKey, allPropertyOptions, tenants, contracts]);
 
   /* ── Filtered payments (main tab) ── */
@@ -372,9 +385,10 @@ export default function Payments() {
     const opt = allPropertyOptions.find(o => o.value === payForm.propertyKey);
     const tenant = (tenants || []).find(t => String(t.id) === String(payForm.tenantId));
     const today = new Date().toLocaleDateString('fr-CI');
+    const tenantFullName = tenant ? (tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim()) : '';
     const newPayment = {
       propertyName: opt?.propertyName || payForm.propertyKey,
-      tenantName: tenant ? `${tenant.firstName} ${tenant.lastName}` : '',
+      tenantName: tenantFullName,
       tenantEmail: tenant?.email || '',
       tenantPhone: tenant?.phone || '',
       amount: parseFloat(payForm.amount) || 0,
@@ -855,9 +869,10 @@ export default function Payments() {
             <select value={payForm.tenantId} onChange={e => setPayForm(f => ({ ...f, tenantId: e.target.value }))}
               className={inputCls} disabled={!payForm.propertyKey}>
               <option value="">— Choisir le locataire —</option>
-              {matchingTenants.map(t => (
-                <option key={t.id} value={t.id}>{t.firstName} {t.lastName}</option>
-              ))}
+              {matchingTenants.map(t => {
+                const name = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
+                return <option key={t.id} value={t.id}>{name}</option>;
+              })}
               {payForm.propertyKey && matchingTenants.length === 0 && (
                 <option disabled>Aucun locataire actif sur ce bien</option>
               )}
