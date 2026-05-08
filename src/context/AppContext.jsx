@@ -24,6 +24,20 @@ const INITIAL_STATE = {
   revenueData:   mockRevenueData,
   alerts:        mockAlerts,
   payments:      mockPayments,
+  currentUser:   null,
+  orgSettings: {
+    companyName: 'Minsouah Immobilier',
+    address: 'Abidjan, Côte d\'Ivoire',
+    phone: '',
+    email: '',
+    currency: 'XOF',
+    language: 'fr',
+    notif: {
+      whatsapp: true, email: true,
+      rentReminder: true, paymentConfirm: true,
+      overdueAlert: true, maintenanceUpdate: false,
+    },
+  },
 };
 
 // ─── Reducer ───────────────────────────────────────────────────────────────────
@@ -120,6 +134,22 @@ function reducer(state, action) {
     }
     case 'MARK_READ':
       return { ...state, conversations: state.conversations.map(c => c.id === payload ? { ...c, unread: 0 } : c) };
+
+    // ── Auth ─────────────────────────────────────────────────────────────────
+    case 'LOGIN':
+      return { ...state, currentUser: payload };
+    case 'LOGOUT':
+      return { ...state, currentUser: null };
+    case 'UPDATE_SETTINGS': {
+      const { type: sType, data } = payload;
+      if (sType === 'profile') {
+        return { ...state, currentUser: { ...state.currentUser, ...data } };
+      }
+      if (sType === 'notif') {
+        return { ...state, orgSettings: { ...state.orgSettings, notif: data } };
+      }
+      return { ...state, orgSettings: { ...state.orgSettings, ...data } };
+    }
 
     // ── Reset to defaults ────────────────────────────────────────────────────
     case 'RESET':

@@ -3,6 +3,8 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Icon from './Icon';
 
+const ROLE_LABELS = { ADMIN: 'Administrateur', MANAGER: 'Manager', TENANT: 'Locataire', OWNER: 'Propriétaire', ACCOUNTANT: 'Comptable', TECHNICIAN: 'Technicien' };
+
 const navItems = [
   { path: '/',            label: 'Tableau de Bord',  icon: 'dashboard',              mobileIcon: 'home' },
   { path: '/assets',      label: 'Patrimoine',        icon: 'domain',                 mobileIcon: 'apartment' },
@@ -23,15 +25,22 @@ const pageTitles = {
   '/inbox':           'Messagerie',
   '/portal/tenant':   'Portail Locataires',
   '/portal/owner':    'Portail Propriétaires',
+  '/settings':        'Paramètres',
 };
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
+  const { currentUser } = state;
   const unpaidCount = state.payments.filter(p => p.status !== 'Payé').length;
   const title = pageTitles[location.pathname] || 'Minsouah';
+
+  const handleLogout = () => {
+    dispatch({ type: 'LOGOUT' });
+    navigate('/login');
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -62,12 +71,15 @@ export default function Layout() {
         {/* User */}
         <div className="px-sm mb-md flex items-center gap-sm bg-surface-container-high mx-sm rounded-xl py-sm">
           <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-sm flex-shrink-0">
-            JD
+            {currentUser?.initials || '?'}
           </div>
-          <div className="min-w-0">
-            <p className="font-label-md text-label-md text-on-surface truncate">Jean Dupont</p>
-            <p className="text-label-sm text-on-surface-variant">Premium Tier</p>
+          <div className="min-w-0 flex-1">
+            <p className="font-label-md text-label-md text-on-surface truncate">{currentUser?.name || 'Utilisateur'}</p>
+            <p className="text-label-sm text-on-surface-variant">{ROLE_LABELS[currentUser?.role] || ''}</p>
           </div>
+          <button onClick={handleLogout} className="text-on-surface-variant hover:text-error transition-colors p-1" title="Déconnexion">
+            <Icon name="logout" size={18} />
+          </button>
         </div>
 
         {/* Nav */}
@@ -117,7 +129,10 @@ export default function Layout() {
             <span className="font-label-md text-label-md">Portail Propriétaires</span>
           </button>
           <div className="border-t border-outline-variant/30 mt-1 pt-1">
-            <button className="flex items-center gap-md py-3 pl-margin text-on-surface-variant hover:text-on-surface transition-colors w-full rounded-r-full mr-4">
+            <button
+              onClick={() => { navigate('/settings'); setSidebarOpen(false); }}
+              className="flex items-center gap-md py-3 pl-margin text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all w-full rounded-r-full mr-4"
+            >
               <Icon name="settings" />
               <span className="font-label-md text-label-md">Paramètres</span>
             </button>
@@ -155,9 +170,13 @@ export default function Layout() {
               <span className="absolute top-2 right-2 w-2 h-2 bg-error rounded-full" />
             </button>
 
-            <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-sm cursor-pointer">
-              JD
-            </div>
+            <button
+              onClick={() => navigate('/settings')}
+              className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-sm cursor-pointer hover:ring-2 hover:ring-primary transition-all"
+              title="Paramètres"
+            >
+              {currentUser?.initials || '?'}
+            </button>
           </div>
         </header>
 
