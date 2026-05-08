@@ -27,12 +27,7 @@ const queryClient = new QueryClient({
 });
 
 function PageLoader() {
-  return (
-    <div className="flex items-center justify-center min-h-[60vh] flex-col gap-4">
-      <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-      <p className="text-on-surface-variant text-body-sm">Chargement...</p>
-    </div>
-  );
+  return null;
 }
 
 function ProtectedRoute({ children, allowedRoles }) {

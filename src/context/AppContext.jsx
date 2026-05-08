@@ -224,7 +224,12 @@ function reducer(state, action) {
         const initials = data.name
           ? data.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
           : state.currentUser?.initials;
-        return { ...state, currentUser: { ...state.currentUser, ...data, initials } };
+        const updatedUser = { ...state.currentUser, ...data, initials };
+        // Also persist to the users[] array so avatar/name survive logout+login
+        const updatedUsers = (state.users || [DEFAULT_ADMIN]).map(u =>
+          u.email === state.currentUser?.email ? { ...u, ...data, initials, name: data.name || u.name } : u
+        );
+        return { ...state, currentUser: updatedUser, users: updatedUsers };
       }
       if (sType === 'notif') {
         return { ...state, orgSettings: { ...state.orgSettings, notif: data } };

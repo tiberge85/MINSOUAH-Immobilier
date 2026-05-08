@@ -44,6 +44,52 @@ export default function Layout() {
     navigate('/login');
   };
 
+  /* ── Minimal layout for TENANT / OWNER accounts ────────────── */
+  const isPortalOnly = currentUser?.role === 'TENANT' || currentUser?.role === 'OWNER';
+  if (isPortalOnly) {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="sticky top-0 z-30 bg-surface shadow-topbar border-b border-outline-variant/10 h-16 flex items-center justify-between px-6">
+          <div className="flex items-center gap-3">
+            <h1 className="font-black text-xl text-primary tracking-tight">Minsouah</h1>
+            <span className="text-label-sm text-on-surface-variant hidden sm:block">
+              {currentUser.role === 'TENANT' ? 'Espace Locataire' : 'Espace Propriétaire'}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleDark}
+              className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-surface-container-high text-on-surface-variant transition-colors"
+              title={dark ? 'Mode clair' : 'Mode sombre'}
+            >
+              <Icon name={dark ? 'light_mode' : 'dark_mode'} size={18} />
+            </button>
+            <button
+              onClick={() => navigate('/settings')}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-surface-container-high transition-colors"
+            >
+              {currentUser?.avatar
+                ? <img src={currentUser.avatar} alt="" className="w-8 h-8 rounded-full object-cover" />
+                : <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${currentUser?.color || 'bg-primary-container text-on-primary-container'}`}>{currentUser?.initials || '?'}</div>
+              }
+              <span className="text-sm font-medium text-on-surface hidden sm:block">{currentUser?.name}</span>
+            </button>
+            <button
+              onClick={handleLogout}
+              className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-error/10 text-on-surface-variant hover:text-error transition-colors"
+              title="Déconnexion"
+            >
+              <Icon name="logout" size={18} />
+            </button>
+          </div>
+        </header>
+        <main className="pb-8">
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Mobile overlay */}
