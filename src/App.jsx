@@ -1,26 +1,38 @@
+import { lazy, Suspense } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
 import Layout from './components/Layout';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Assets from './pages/Assets';
-import Rental from './pages/Rental';
-import Finance from './pages/Finance';
-import Payments from './pages/Payments';
-import Maintenance from './pages/Maintenance';
-import Inbox from './pages/Inbox';
-import TenantPortal from './pages/TenantPortal';
-import OwnerPortal from './pages/OwnerPortal';
-import Settings from './pages/Settings';
+import Icon from './components/Icon';
+
+const Login       = lazy(() => import('./pages/Login'));
+const Dashboard   = lazy(() => import('./pages/Dashboard'));
+const Assets      = lazy(() => import('./pages/Assets'));
+const Rental      = lazy(() => import('./pages/Rental'));
+const Finance     = lazy(() => import('./pages/Finance'));
+const Payments    = lazy(() => import('./pages/Payments'));
+const Maintenance = lazy(() => import('./pages/Maintenance'));
+const Inbox       = lazy(() => import('./pages/Inbox'));
+const TenantPortal = lazy(() => import('./pages/TenantPortal'));
+const OwnerPortal  = lazy(() => import('./pages/OwnerPortal'));
+const Settings     = lazy(() => import('./pages/Settings'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 60_000 },
   },
 });
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-[60vh] flex-col gap-4">
+      <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+      <p className="text-on-surface-variant text-body-sm">Chargement...</p>
+    </div>
+  );
+}
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { state } = useApp();
@@ -39,75 +51,77 @@ function AppRoutes() {
   const user = state.currentUser;
 
   return (
-    <Routes>
-      <Route
-        path="/login"
-        element={user ? <Navigate to={
-          user.role === 'TENANT' ? '/portal/tenant' :
-          user.role === 'OWNER' ? '/portal/owner' : '/'
-        } replace /> : <Login />}
-      />
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route
+          path="/login"
+          element={user ? <Navigate to={
+            user.role === 'TENANT' ? '/portal/tenant' :
+            user.role === 'OWNER' ? '/portal/owner' : '/'
+          } replace /> : <Login />}
+        />
 
-      <Route path="/" element={
-        <ProtectedRoute>
-          <Layout />
-        </ProtectedRoute>
-      }>
-        <Route index element={
-          <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
-            <Dashboard />
-          </ProtectedRoute>
-        } />
-        <Route path="assets" element={
-          <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
-            <Assets />
-          </ProtectedRoute>
-        } />
-        <Route path="rental" element={
-          <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
-            <Rental />
-          </ProtectedRoute>
-        } />
-        <Route path="finance" element={
-          <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'ACCOUNTANT']}>
-            <Finance />
-          </ProtectedRoute>
-        } />
-        <Route path="payments" element={
-          <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'ACCOUNTANT']}>
-            <Payments />
-          </ProtectedRoute>
-        } />
-        <Route path="maintenance" element={
-          <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'TECHNICIAN']}>
-            <Maintenance />
-          </ProtectedRoute>
-        } />
-        <Route path="inbox" element={
-          <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
-            <Inbox />
-          </ProtectedRoute>
-        } />
-        <Route path="portal/tenant" element={
-          <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'TENANT']}>
-            <TenantPortal />
-          </ProtectedRoute>
-        } />
-        <Route path="portal/owner" element={
-          <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'OWNER']}>
-            <OwnerPortal />
-          </ProtectedRoute>
-        } />
-        <Route path="settings" element={
+        <Route path="/" element={
           <ProtectedRoute>
-            <Settings />
+            <Layout />
           </ProtectedRoute>
-        } />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Route>
+        }>
+          <Route index element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
+              <Dashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="assets" element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
+              <Assets />
+            </ProtectedRoute>
+          } />
+          <Route path="rental" element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
+              <Rental />
+            </ProtectedRoute>
+          } />
+          <Route path="finance" element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'ACCOUNTANT']}>
+              <Finance />
+            </ProtectedRoute>
+          } />
+          <Route path="payments" element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'ACCOUNTANT']}>
+              <Payments />
+            </ProtectedRoute>
+          } />
+          <Route path="maintenance" element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'TECHNICIAN']}>
+              <Maintenance />
+            </ProtectedRoute>
+          } />
+          <Route path="inbox" element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
+              <Inbox />
+            </ProtectedRoute>
+          } />
+          <Route path="portal/tenant" element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'TENANT']}>
+              <TenantPortal />
+            </ProtectedRoute>
+          } />
+          <Route path="portal/owner" element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'OWNER']}>
+              <OwnerPortal />
+            </ProtectedRoute>
+          } />
+          <Route path="settings" element={
+            <ProtectedRoute>
+              <Settings />
+            </ProtectedRoute>
+          } />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
 
-      <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 

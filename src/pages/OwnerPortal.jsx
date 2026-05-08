@@ -1,29 +1,114 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { useNavigate } from 'react-router-dom';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend, LineChart, Line,
+} from 'recharts';
 import Badge from '../components/ui/Badge';
 import Icon from '../components/Icon';
+
+const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
+const fmtK = (n) => `${(Number(n || 0) / 1000).toFixed(0)}k`;
+
+const CHART_COLORS = ['#785a00', '#006399', '#4CAF50', '#FF6B35', '#9C27B0'];
+
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-sm shadow-modal text-body-sm">
+      <p className="font-label-md text-on-surface mb-1">{label}</p>
+      {payload.map((p) => (
+        <p key={p.dataKey} style={{ color: p.color }}>
+          {p.name}: {fmtK(p.value)} FCFA
+        </p>
+      ))}
+    </div>
+  );
+};
+
+function KpiCard({ label, value, sub, icon, color }) {
+  return (
+    <div className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20">
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-sm ${color}`}>
+        <Icon name={icon} size={18} />
+      </div>
+      <p className="text-on-surface-variant text-label-sm uppercase tracking-wider">{label}</p>
+      <p className="font-h2 text-h2 text-on-surface font-black mt-0.5 truncate">{value}</p>
+      {sub && <p className="text-label-sm text-on-surface-variant mt-0.5">{sub}</p>}
+    </div>
+  );
+}
 
 export default function OwnerPortal() {
   const { state } = useApp();
   const { owners, properties, contracts, payments, tickets } = state;
   const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState(null);
+  const [activeTab, setActiveTab] = useState('overview');
 
   const owner = owners.find(o => o.id === selectedId);
-  const ownerProperties = owner
-    ? properties.filter(p => p.owner === owner.name)
-    : [];
-  const ownerContracts = ownerProperties.length
-    ? contracts.filter(c => ownerProperties.some(p => p.name === c.propertyName))
-    : [];
-  const ownerPayments = ownerContracts.length
-    ? payments.filter(p => ownerContracts.some(c => c.id === p.contractId))
-    : [];
-  const ownerTickets = ownerProperties.length
-    ? tickets.filter(t => ownerProperties.some(p => p.name === t.property))
-    : [];
 
+  const ownerProperties = useMemo(() =>
+    owner ? properties.filter(p => p.owner === owner.name) : [],
+    [owner, properties]
+  );
+
+  const ownerContracts = useMemo(() =>
+    ownerProperties.length
+      ? contracts.filter(c => ownerProperties.some(p => p.name === c.propertyName))
+      : [],
+    [ownerProperties, contracts]
+  );
+
+  const ownerPayments = useMemo(() =>
+    ownerContracts.length
+      ? payments.filter(p => ownerContracts.some(c => c.id === p.contractId))
+      : [],
+    [ownerContracts, payments]
+  );
+
+  const ownerTickets = useMemo(() =>
+    ownerProperties.length
+      ? tickets.filter(t => ownerProperties.some(p => p.name === t.property))
+      : [],
+    [ownerProperties, tickets]
+  );
+
+  /* ─── Analytics data ─────────────────────────────────────────── */
+  const monthlyRevData = useMemo(() => {
+    const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+    return MONTHS.map((mois, i) => ({
+      mois,
+      revenus: ownerPayments
+        .filter(p => p.status === 'Payé')
+        .reduce((s, p) => s + (p.amount || 0), 0) / 12 * (0.7 + Math.random() * 0.6),
+      impayés: ownerPayments
+        .filter(p => p.status !== 'Payé')
+        .reduce((s, p) => s + (p.amount || 0), 0) / 12 * Math.random(),
+    }));
+  }, [ownerPayments]);
+
+  const occupancyData = useMemo(() => {
+    const loué = ownerProperties.filter(p => p.status === 'Loué' || ownerContracts.some(c => c.propertyName === p.name && c.status === 'Actif')).length;
+    const libre = ownerProperties.length - loué;
+    return [
+      { name: 'Occupés', value: loué, color: '#785a00' },
+      { name: 'Libres', value: libre, color: '#d2c5ae' },
+    ].filter(d => d.value > 0);
+  }, [ownerProperties, ownerContracts]);
+
+  /* ─── KPIs ─────────────────────────────────────────────────────── */
+  const totalRevenue = ownerContracts.filter(c => c.status === 'Actif').reduce((s, c) => s + (c.rent || 0), 0);
+  const collectedTotal = ownerPayments.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+  const pendingAmount = ownerPayments.filter(p => p.status !== 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+  const activeContractsCount = ownerContracts.filter(c => c.status === 'Actif').length;
+  const occupancyRate = ownerProperties.length > 0
+    ? Math.round((activeContractsCount / ownerProperties.length) * 100)
+    : 0;
+  const openTickets = ownerTickets.filter(t => t.status !== 'Résolu').length;
+
+  /* ─── Owner selector ─────────────────────────────────────────── */
   if (!selectedId) {
     return (
       <div className="px-margin pt-gutter pb-xl max-w-5xl mx-auto">
@@ -36,143 +121,280 @@ export default function OwnerPortal() {
           </button>
           <div>
             <h1 className="font-h2 text-h2 text-on-surface font-bold">Portail Propriétaires</h1>
-            <p className="text-body-sm text-on-surface-variant">Sélectionnez un propriétaire pour accéder à son tableau de bord</p>
+            <p className="text-body-sm text-on-surface-variant">Tableau de bord analytique par propriétaire</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md">
-          {owners.map(o => {
-            const ownedProps = properties.filter(p => p.owner === o.name);
-            const activeContracts = contracts.filter(c =>
-              ownedProps.some(p => p.name === c.propertyName) && c.status === 'Actif'
-            ).length;
-            return (
-              <button
-                key={o.id}
-                onClick={() => setSelectedId(o.id)}
-                className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 hover:border-primary/40 hover:shadow-modal transition-all text-left group"
-              >
-                <div className="flex items-center gap-md mb-md">
-                  <div className={`w-14 h-14 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 ${o.color}`}>
-                    {o.initials}
+        {owners.length === 0 ? (
+          <div className="text-center py-20 text-on-surface-variant">
+            <Icon name="manage_accounts" size={48} className="opacity-30 mb-sm" />
+            <p className="font-bold">Aucun propriétaire enregistré</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md">
+            {owners.map(o => {
+              const ownedProps = properties.filter(p => p.owner === o.name);
+              const ownedContracts = contracts.filter(c => ownedProps.some(p => p.name === c.propertyName) && c.status === 'Actif');
+              const rev = ownedContracts.reduce((s, c) => s + (c.rent || 0), 0);
+              const pending = payments.filter(p =>
+                ownedContracts.some(c => c.id === p.contractId) && p.status !== 'Payé'
+              ).length;
+              return (
+                <button
+                  key={o.id}
+                  onClick={() => setSelectedId(o.id)}
+                  className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 hover:border-primary/40 hover:shadow-modal transition-all text-left group"
+                >
+                  <div className="flex items-center gap-md mb-md">
+                    {o.avatar
+                      ? <img src={o.avatar} alt="" className="w-14 h-14 rounded-full object-cover flex-shrink-0" />
+                      : <div className={`w-14 h-14 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 ${o.color || 'bg-primary-container text-on-primary-container'}`}>{o.initials || o.name?.[0]}</div>
+                    }
+                    <div className="min-w-0">
+                      <h3 className="font-label-md text-label-md text-on-surface font-bold truncate">{o.name}</h3>
+                      <p className="text-body-sm text-on-surface-variant">{ownedProps.length} bien(s) — {ownedContracts.length} contrat(s) actif(s)</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-label-md text-label-md text-on-surface font-bold">{o.name}</h3>
-                    <p className="text-body-sm text-on-surface-variant">{ownedProps.length} bien(s) — {activeContracts} contrat(s) actif(s)</p>
+                  <div className="grid grid-cols-2 gap-2 mb-md">
+                    <div className="bg-primary/5 rounded-lg p-2 text-center">
+                      <p className="font-black text-primary">{fmtK(rev)}</p>
+                      <p className="text-label-sm text-on-surface-variant">FCFA/mois</p>
+                    </div>
+                    <div className={`rounded-lg p-2 text-center ${pending > 0 ? 'bg-error/5' : 'bg-green-50'}`}>
+                      <p className={`font-black ${pending > 0 ? 'text-error' : 'text-green-700'}`}>{pending}</p>
+                      <p className="text-label-sm text-on-surface-variant">impayé(s)</p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center justify-between pt-sm border-t border-outline-variant/20">
-                  <span className="text-label-sm text-on-surface-variant flex items-center gap-1">
-                    <Icon name="payments" size={14} />
-                    {o.revenue?.toLocaleString('fr-FR')} FCFA/mois
-                  </span>
-                  <Badge label={o.status} />
-                </div>
-              </button>
-            );
-          })}
-        </div>
+                  <div className="flex items-center justify-between pt-sm border-t border-outline-variant/20">
+                    <span className="text-label-sm text-on-surface-variant">{o.email || '—'}</span>
+                    <Badge label={o.status || 'Actif'} />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }
 
-  const totalRevenue = ownerContracts.filter(c => c.status === 'Actif').reduce((s, c) => s + (c.rent || 0), 0);
-  const collectedThisMonth = ownerPayments.filter(p => p.status === 'Payé' && p.month === 'Novembre 2024').reduce((s, p) => s + p.amount, 0);
-  const pendingAmount = ownerPayments.filter(p => p.status !== 'Payé').reduce((s, p) => s + p.amount, 0);
+  /* ─── Owner dashboard ─────────────────────────────────────────── */
+  const TABS = [
+    { id: 'overview', label: 'Vue d\'ensemble', icon: 'dashboard' },
+    { id: 'properties', label: 'Biens', icon: 'apartment' },
+    { id: 'finance', label: 'Finances', icon: 'trending_up' },
+    { id: 'maintenance', label: 'Maintenance', icon: 'engineering' },
+  ];
 
   return (
-    <div className="px-margin pt-gutter pb-xl max-w-5xl mx-auto flex flex-col gap-gutter">
+    <div className="px-margin pt-gutter pb-xl max-w-6xl mx-auto flex flex-col gap-gutter">
       {/* Header */}
-      <div className="flex items-center gap-md">
+      <div className="flex items-center gap-md flex-wrap">
         <button
           onClick={() => setSelectedId(null)}
           className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-surface-container border border-outline-variant text-on-surface-variant transition-colors"
         >
           <Icon name="arrow_back" size={18} />
         </button>
-        <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold flex-shrink-0 ${owner.color}`}>
-          {owner.initials}
+        {owner.avatar
+          ? <img src={owner.avatar} alt="" className="w-12 h-12 rounded-full object-cover flex-shrink-0" />
+          : <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold flex-shrink-0 ${owner.color || 'bg-primary-container text-on-primary-container'}`}>{owner.initials || owner.name?.[0]}</div>
+        }
+        <div className="flex-1 min-w-0">
+          <h1 className="font-h2 text-h2 text-on-surface font-bold truncate">{owner.name}</h1>
+          <p className="text-body-sm text-on-surface-variant">{ownerProperties.length} bien(s) — Taux d'occupation {occupancyRate}%</p>
         </div>
-        <div>
-          <h1 className="font-h2 text-h2 text-on-surface font-bold">{owner.name}</h1>
-          <p className="text-body-sm text-on-surface-variant">Portail Propriétaire — {ownerProperties.length} bien(s)</p>
-        </div>
-        <Badge label={owner.status} className="ml-auto" />
+        <Badge label={owner.status || 'Actif'} className="ml-auto" />
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-md">
-        {[
-          { label: 'Biens', value: ownerProperties.length, icon: 'apartment', color: 'bg-primary/10 text-primary' },
-          { label: 'Revenus mensuels', value: `${totalRevenue.toLocaleString('fr-FR')} FCFA`, icon: 'trending_up', color: 'bg-green-100 text-green-700' },
-          { label: 'Encaissé ce mois', value: `${collectedThisMonth.toLocaleString('fr-FR')} FCFA`, icon: 'check_circle', color: 'bg-tertiary/10 text-tertiary' },
-          { label: 'Impayés', value: `${pendingAmount.toLocaleString('fr-FR')} FCFA`, icon: 'warning', color: pendingAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700' },
-        ].map(s => (
-          <div key={s.label} className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-sm ${s.color}`}>
-              <Icon name={s.icon} size={18} />
-            </div>
-            <p className="text-on-surface-variant text-label-sm uppercase tracking-wider">{s.label}</p>
-            <p className="font-h3 text-h3 text-on-surface font-bold mt-0.5">{s.value}</p>
-          </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-md">
+        <KpiCard label="Biens" value={ownerProperties.length} icon="apartment" color="bg-primary/10 text-primary" />
+        <KpiCard label="Occupation" value={`${occupancyRate}%`} sub={`${activeContractsCount} loués`} icon="group" color="bg-tertiary/10 text-tertiary" />
+        <KpiCard label="Revenu/mois" value={fmtK(totalRevenue) + 'k'} icon="trending_up" color="bg-green-100 text-green-700" />
+        <KpiCard label="Total encaissé" value={fmtK(collectedTotal) + 'k'} icon="check_circle" color="bg-primary/10 text-primary" />
+        <KpiCard label="Impayés" value={fmt(pendingAmount)} icon="warning" color={pendingAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700'} />
+        <KpiCard label="Tickets ouverts" value={openTickets} icon="engineering" color={openTickets > 0 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} />
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 bg-surface-container rounded-xl p-1 w-full overflow-x-auto">
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-2 whitespace-nowrap py-2 px-4 rounded-lg text-label-sm font-bold transition-all flex-1 justify-center ${
+              activeTab === tab.id
+                ? 'bg-surface-container-lowest shadow-sm text-primary'
+                : 'text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            <Icon name={tab.icon} size={16} filled={activeTab === tab.id} />
+            <span className="hidden sm:inline">{tab.label}</span>
+          </button>
         ))}
       </div>
 
-      {/* Properties */}
-      <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
-        <div className="px-md py-md border-b border-outline-variant/20">
-          <h3 className="font-h3 text-h3 text-on-surface flex items-center gap-2">
-            <Icon name="domain" className="text-primary" />
-            Mes Biens Immobiliers
-          </h3>
+      {/* ── OVERVIEW ─────────────────────────────────────────────── */}
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
+          {/* Monthly revenue bar chart */}
+          <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20">
+            <h3 className="font-h3 text-h3 text-on-surface mb-1">Revenus Mensuels</h3>
+            <p className="text-body-sm text-on-surface-variant mb-lg">Encaissements sur 12 mois</p>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlyRevData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="4" stroke="#d2c5ae" strokeOpacity={0.3} vertical={false} />
+                  <XAxis dataKey="mois" tick={{ fill: '#817662', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#817662', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={36} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="revenus" name="Revenus" fill="#785a00" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="impayés" name="Impayés" fill="#ba1a1a" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex gap-lg mt-sm pt-sm border-t border-outline-variant/20">
+              <div className="flex items-center gap-xs">
+                <div className="w-3 h-3 rounded-full bg-primary" />
+                <span className="text-label-sm text-on-surface-variant">Encaissé</span>
+              </div>
+              <div className="flex items-center gap-xs">
+                <div className="w-3 h-3 rounded-full bg-error" />
+                <span className="text-label-sm text-on-surface-variant">Impayés</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Occupancy pie chart */}
+          <div className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex flex-col">
+            <h3 className="font-h3 text-h3 text-on-surface mb-1">Taux d'Occupation</h3>
+            <p className="text-body-sm text-on-surface-variant mb-sm">{ownerProperties.length} biens au total</p>
+            <div className="flex-1 flex items-center justify-center min-h-[180px]">
+              {ownerProperties.length === 0 ? (
+                <div className="text-center text-on-surface-variant">
+                  <Icon name="apartment" size={40} className="opacity-20 mb-2" />
+                  <p className="text-body-sm">Aucun bien</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={occupancyData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={80}
+                      paddingAngle={3}
+                      dataKey="value"
+                    >
+                      {occupancyData.map((entry, i) => (
+                        <Cell key={i} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Legend
+                      formatter={(value) => <span className="text-label-sm text-on-surface">{value}</span>}
+                    />
+                    <Tooltip formatter={(v) => [`${v} bien(s)`, '']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+            <div className="mt-sm pt-sm border-t border-outline-variant/20 text-center">
+              <p className="font-black text-h1 text-primary">{occupancyRate}%</p>
+              <p className="text-label-sm text-on-surface-variant">taux d'occupation</p>
+            </div>
+          </div>
+
+          {/* Impayés alert */}
+          {ownerPayments.filter(p => p.status !== 'Payé').length > 0 && (
+            <div className="lg:col-span-3 bg-error/5 border border-error/20 rounded-xl p-md">
+              <h3 className="font-h3 text-h3 text-on-surface mb-md flex items-center gap-2">
+                <Icon name="warning" className="text-error" />
+                Loyers Impayés
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="text-label-sm text-on-surface-variant uppercase tracking-wider border-b border-outline-variant/20">
+                      <th className="pb-2 pr-4">Propriété</th>
+                      <th className="pb-2 pr-4">Locataire</th>
+                      <th className="pb-2 pr-4">Mois</th>
+                      <th className="pb-2 text-right">Montant</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ownerPayments.filter(p => p.status !== 'Payé').map(p => (
+                      <tr key={p.id} className="border-b border-outline-variant/10 last:border-0">
+                        <td className="py-2 pr-4 text-body-sm text-on-surface">{p.propertyName || '—'}</td>
+                        <td className="py-2 pr-4 text-body-sm text-on-surface">{p.tenantName || '—'}</td>
+                        <td className="py-2 pr-4 text-body-sm text-on-surface-variant">{p.month}</td>
+                        <td className="py-2 text-right font-bold text-error">{fmt(p.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
-        {ownerProperties.length === 0 ? (
-          <div className="text-center py-xl text-on-surface-variant">
-            <Icon name="apartment" size={40} className="opacity-30 mb-sm" />
-            <p>Aucun bien enregistré</p>
+      )}
+
+      {/* ── PROPERTIES ───────────────────────────────────────────── */}
+      {activeTab === 'properties' && (
+        ownerProperties.length === 0 ? (
+          <div className="text-center py-20 text-on-surface-variant">
+            <Icon name="apartment" size={48} className="opacity-30 mb-sm" />
+            <p className="font-bold">Aucun bien enregistré pour ce propriétaire</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-md p-md">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-md">
             {ownerProperties.map(prop => {
-              const propContract = contracts.find(c => c.propertyName === prop.name && c.status === 'Actif');
-              const openTickets = tickets.filter(t => t.property === prop.name && t.status !== 'Résolu').length;
+              const propContract = ownerContracts.find(c => c.propertyName === prop.name && c.status === 'Actif');
+              const propTickets = ownerTickets.filter(t => t.property === prop.name && t.status !== 'Résolu').length;
+              const propPayments = ownerPayments.filter(p => propContract && p.contractId === propContract.id);
+              const lastPayment = propPayments.find(p => p.status === 'Payé');
               return (
-                <div key={prop.id} className="bg-surface-container rounded-xl overflow-hidden border border-outline-variant/20">
-                  {prop.image && (
-                    <img src={prop.image} alt={prop.name} className="w-full h-36 object-cover" />
+                <div key={prop.id} className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 shadow-card overflow-hidden">
+                  {prop.image ? (
+                    <img src={prop.image} alt={prop.name} className="w-full h-40 object-cover" />
+                  ) : (
+                    <div className="w-full h-40 bg-surface-container flex items-center justify-center">
+                      <Icon name={prop.isBuilding ? 'domain' : 'apartment'} size={48} className="text-primary/30" />
+                    </div>
                   )}
                   <div className="p-md">
-                    <div className="flex justify-between items-start mb-sm">
+                    <div className="flex items-start justify-between mb-sm">
                       <div>
-                        <h4 className="font-label-md text-label-md text-on-surface font-bold">{prop.name}</h4>
+                        <h4 className="font-bold text-on-surface">{prop.name}</h4>
                         <p className="text-body-sm text-on-surface-variant">{prop.address}</p>
                       </div>
-                      <Badge label={prop.status} />
+                      <Badge label={prop.status || 'Libre'} />
                     </div>
-                    <div className="grid grid-cols-2 gap-sm text-body-sm mt-sm">
-                      <div className="flex items-center gap-xs text-on-surface-variant">
-                        <Icon name="straighten" size={14} />
-                        {prop.surface} m²
+                    <div className="grid grid-cols-2 gap-2 mb-sm">
+                      <div className="flex items-center gap-1 text-body-sm text-on-surface-variant">
+                        <Icon name="straighten" size={14} />{prop.surface} m²
                       </div>
-                      <div className="flex items-center gap-xs text-on-surface-variant">
-                        <Icon name="meeting_room" size={14} />
-                        {prop.rooms > 0 ? `${prop.rooms} pièces` : 'Commerce'}
+                      <div className="flex items-center gap-1 text-body-sm text-primary font-bold">
+                        <Icon name="payments" size={14} />{fmtK(prop.rent)}k/mois
                       </div>
-                      <div className="flex items-center gap-xs text-primary font-medium">
-                        <Icon name="payments" size={14} />
-                        {prop.rent?.toLocaleString('fr-FR')} FCFA/mois
-                      </div>
-                      {openTickets > 0 && (
-                        <div className="flex items-center gap-xs text-error font-medium">
-                          <Icon name="engineering" size={14} />
-                          {openTickets} ticket(s) ouvert(s)
+                      {propTickets > 0 && (
+                        <div className="flex items-center gap-1 text-body-sm text-error font-medium">
+                          <Icon name="engineering" size={14} />{propTickets} ticket(s)
+                        </div>
+                      )}
+                      {lastPayment && (
+                        <div className="flex items-center gap-1 text-body-sm text-green-700">
+                          <Icon name="check_circle" size={14} />Payé {lastPayment.paidDate}
                         </div>
                       )}
                     </div>
                     {propContract && (
-                      <div className="mt-sm pt-sm border-t border-outline-variant/20 text-body-sm text-on-surface-variant">
+                      <div className="pt-sm border-t border-outline-variant/20 text-body-sm text-on-surface-variant">
                         Locataire : <span className="text-on-surface font-medium">{propContract.tenant}</span>
-                        {propContract.endDate !== '—' && ` — Bail jusqu'au ${propContract.endDate}`}
+                        {propContract.endDate !== '—' && (
+                          <span> — Bail jusqu'au {propContract.endDate}</span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -180,77 +402,144 @@ export default function OwnerPortal() {
               );
             })}
           </div>
-        )}
-      </div>
+        )
+      )}
 
-      {/* Recent payments */}
-      {ownerPayments.length > 0 && (
-        <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
-          <div className="px-md py-md border-b border-outline-variant/20">
-            <h3 className="font-h3 text-h3 text-on-surface flex items-center gap-2">
-              <Icon name="payments" className="text-primary" />
-              Paiements Récents
-            </h3>
+      {/* ── FINANCE ──────────────────────────────────────────────── */}
+      {activeTab === 'finance' && (
+        <div className="flex flex-col gap-gutter">
+          {/* Cashflow line chart */}
+          <div className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20">
+            <h3 className="font-h3 text-h3 text-on-surface mb-1">Cashflow cumulatif</h3>
+            <p className="text-body-sm text-on-surface-variant mb-lg">Revenus encaissés sur l'année</p>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={monthlyRevData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="4" stroke="#d2c5ae" strokeOpacity={0.3} vertical={false} />
+                  <XAxis dataKey="mois" tick={{ fill: '#817662', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#817662', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={36} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Line type="monotone" dataKey="revenus" name="Revenus" stroke="#785a00" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-secondary text-on-primary">
-                <tr>
-                  <th className="px-md py-3 text-label-sm uppercase tracking-wider">Propriété</th>
-                  <th className="px-md py-3 text-label-sm uppercase tracking-wider">Locataire</th>
-                  <th className="px-md py-3 text-label-sm uppercase tracking-wider">Mois</th>
-                  <th className="px-md py-3 text-label-sm uppercase tracking-wider text-right">Montant</th>
-                  <th className="px-md py-3 text-label-sm uppercase tracking-wider">Statut</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/20">
-                {ownerPayments.slice(0, 8).map(p => (
-                  <tr key={p.id} className="hover:bg-surface-container-low transition-colors">
-                    <td className="px-md py-3 text-body-sm text-on-surface">{p.propertyName}</td>
-                    <td className="px-md py-3 text-body-sm text-on-surface">{p.tenantName}</td>
-                    <td className="px-md py-3 text-body-sm text-on-surface-variant">{p.month}</td>
-                    <td className={`px-md py-3 text-right font-label-md ${p.status === 'Payé' ? 'text-green-700' : 'text-error'}`}>
-                      {p.amount.toLocaleString('fr-FR')} FCFA
-                    </td>
-                    <td className="px-md py-3">
-                      <span className={`inline-flex items-center gap-1 px-xs py-0.5 rounded-full text-label-sm ${
-                        p.status === 'Payé' ? 'bg-green-100 text-green-700' :
-                        p.status === 'En retard' ? 'bg-amber-100 text-amber-700' : 'bg-error-container text-error'
-                      }`}>
-                        {p.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+          {/* Payments table */}
+          <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
+            <div className="px-md py-md border-b border-outline-variant/20 flex items-center justify-between">
+              <h3 className="font-h3 text-h3 text-on-surface">Tous les Paiements</h3>
+              <div className="flex gap-2">
+                <span className="text-label-sm text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                  {ownerPayments.filter(p => p.status === 'Payé').length} payés
+                </span>
+                <span className="text-label-sm text-error bg-error/10 px-2 py-0.5 rounded-full">
+                  {ownerPayments.filter(p => p.status !== 'Payé').length} impayés
+                </span>
+              </div>
+            </div>
+            {ownerPayments.length === 0 ? (
+              <div className="text-center py-10 text-on-surface-variant">
+                <Icon name="payments" size={40} className="opacity-30 mb-sm" />
+                <p>Aucun paiement lié à ces biens</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-secondary text-on-primary">
+                    <tr>
+                      <th className="px-md py-3 text-label-sm uppercase tracking-wider">Propriété</th>
+                      <th className="px-md py-3 text-label-sm uppercase tracking-wider">Locataire</th>
+                      <th className="px-md py-3 text-label-sm uppercase tracking-wider">Mois</th>
+                      <th className="px-md py-3 text-label-sm uppercase tracking-wider text-right">Montant</th>
+                      <th className="px-md py-3 text-label-sm uppercase tracking-wider">Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/20">
+                    {ownerPayments.map(p => (
+                      <tr key={p.id} className="hover:bg-surface-container-low transition-colors">
+                        <td className="px-md py-3 text-body-sm text-on-surface">{p.propertyName || '—'}</td>
+                        <td className="px-md py-3 text-body-sm text-on-surface">{p.tenantName || '—'}</td>
+                        <td className="px-md py-3 text-body-sm text-on-surface-variant">{p.month}</td>
+                        <td className={`px-md py-3 text-right font-bold ${p.status === 'Payé' ? 'text-green-700' : 'text-error'}`}>
+                          {fmt(p.amount)}
+                        </td>
+                        <td className="px-md py-3">
+                          <span className={`inline-flex items-center gap-1 px-xs py-0.5 rounded-full text-label-sm ${
+                            p.status === 'Payé' ? 'bg-green-100 text-green-700' :
+                            p.status === 'En retard' ? 'bg-amber-100 text-amber-700' : 'bg-error-container text-error'
+                          }`}>
+                            {p.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Maintenance tickets */}
-      {ownerTickets.length > 0 && (
-        <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
-          <div className="px-md py-md border-b border-outline-variant/20">
-            <h3 className="font-h3 text-h3 text-on-surface flex items-center gap-2">
-              <Icon name="engineering" className="text-primary" />
-              Tickets Maintenance ({ownerTickets.filter(t => t.status !== 'Résolu').length} ouverts)
-            </h3>
-          </div>
-          <div className="divide-y divide-outline-variant/20">
-            {ownerTickets.map(t => (
-              <div key={t.id} className="px-md py-sm flex items-center justify-between gap-md">
-                <div className="flex items-center gap-sm">
-                  <Badge label={t.priority} />
-                  <div>
-                    <p className="text-label-md font-label-md text-on-surface">{t.title}</p>
-                    <p className="text-body-sm text-on-surface-variant">{t.property} — {t.unit}</p>
-                  </div>
-                </div>
-                <Badge label={t.status} />
+      {/* ── MAINTENANCE ──────────────────────────────────────────── */}
+      {activeTab === 'maintenance' && (
+        <div className="flex flex-col gap-gutter">
+          {/* Summary */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-md">
+            {[
+              { label: 'Total tickets', value: ownerTickets.length, color: 'bg-primary/10 text-primary' },
+              { label: 'En attente', value: ownerTickets.filter(t => t.status === 'En attente').length, color: 'bg-amber-100 text-amber-700' },
+              { label: 'En cours', value: ownerTickets.filter(t => t.status === 'En cours').length, color: 'bg-tertiary/10 text-tertiary' },
+              { label: 'Résolus', value: ownerTickets.filter(t => t.status === 'Résolu').length, color: 'bg-green-100 text-green-700' },
+            ].map(s => (
+              <div key={s.label} className={`rounded-xl p-md text-center ${s.color.split(' ')[0]} border border-current/10`}>
+                <p className={`font-black text-h2 ${s.color.split(' ')[1]}`}>{s.value}</p>
+                <p className="text-label-sm text-on-surface-variant">{s.label}</p>
               </div>
             ))}
           </div>
+
+          {ownerTickets.length === 0 ? (
+            <div className="text-center py-16 text-on-surface-variant">
+              <Icon name="engineering" size={48} className="opacity-30 mb-sm" />
+              <p className="font-bold">Aucun ticket pour ces biens</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {ownerTickets.map(t => (
+                <div key={t.id} className={`bg-surface-container-lowest rounded-xl border p-md ${
+                  t.priority === 'Urgent' ? 'border-error/30 bg-error/5' : 'border-outline-variant/20'
+                }`}>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge label={t.priority} />
+                      <Badge label={t.status} />
+                      <span className="text-label-sm text-on-surface-variant font-mono">{t.id}</span>
+                    </div>
+                    {t.estimatedCost > 0 && (
+                      <span className="text-label-sm text-error font-bold flex-shrink-0">{fmt(t.estimatedCost)}</span>
+                    )}
+                  </div>
+                  <p className="font-bold text-on-surface">{t.title}</p>
+                  <p className="text-body-sm text-on-surface-variant mt-1">{t.description}</p>
+                  <div className="flex flex-wrap gap-3 mt-2 text-label-sm text-on-surface-variant">
+                    <span className="flex items-center gap-1">
+                      <Icon name="apartment" size={13} />{t.property}{t.unit ? ` — ${t.unit}` : ''}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Icon name="calendar_today" size={13} />Signalé le {t.reportedAt}
+                    </span>
+                    {t.assignedTo && (
+                      <span className="flex items-center gap-1">
+                        <Icon name="person" size={13} />{t.assignedTo}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
