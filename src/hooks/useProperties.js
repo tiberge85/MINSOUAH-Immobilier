@@ -1,53 +1,62 @@
-// ─────────────────────────────────────────────────────────────────────────────
-//  Hook : useProperties
-//  Utilise les données mockées par défaut.
-//  Pour activer Supabase, décommente les lignes marquées [SUPABASE].
-// ─────────────────────────────────────────────────────────────────────────────
-import { useState, useEffect } from 'react';
-import { properties as mockProperties } from '../data/mockData';
-// [SUPABASE] import { supabase } from '../lib/supabase';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import api from '../lib/api';
 
-export function useProperties() {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+export const useBuildings = (params = {}) =>
+  useQuery({
+    queryKey: ['buildings', params],
+    queryFn: () => api.get('/buildings', { params }).then(r => r.data),
+  });
 
-  useEffect(() => {
-    // ── Mode mock (actif par défaut) ────────────────────────────────────────
-    setData(mockProperties);
-    setLoading(false);
+export const useBuilding = (id) =>
+  useQuery({
+    queryKey: ['buildings', id],
+    queryFn: () => api.get(`/buildings/${id}`).then(r => r.data),
+    enabled: !!id,
+  });
 
-    // ── Mode Supabase (décommente quand prêt) ──────────────────────────────
-    // async function fetch() {
-    //   const { data, error } = await supabase.from('properties').select('*');
-    //   if (error) setError(error.message);
-    //   else setData(data);
-    //   setLoading(false);
-    // }
-    // fetch();
-  }, []);
+export const useCreateBuilding = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => api.post('/buildings', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['buildings'] }),
+  });
+};
 
-  const addProperty = async (property) => {
-    // ── Mode mock ───────────────────────────────────────────────────────────
-    const newProp = { ...property, id: Date.now() };
-    setData((prev) => [newProp, ...prev]);
-    return newProp;
+export const useUpdateBuilding = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.patch(`/buildings/${id}`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['buildings'] }),
+  });
+};
 
-    // ── Mode Supabase ───────────────────────────────────────────────────────
-    // const { data, error } = await supabase.from('properties').insert([property]).select().single();
-    // if (!error) setData((prev) => [data, ...prev]);
-    // return data;
-  };
+export const useDeleteBuilding = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.delete(`/buildings/${id}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['buildings'] }),
+  });
+};
 
-  const deleteProperty = async (id) => {
-    setData((prev) => prev.filter((p) => p.id !== id));
-    // [SUPABASE] await supabase.from('properties').delete().eq('id', id);
-  };
+export const useUnits = (buildingId) =>
+  useQuery({
+    queryKey: ['units', buildingId],
+    queryFn: () => api.get(`/buildings/${buildingId}/units`).then(r => r.data),
+    enabled: !!buildingId,
+  });
 
-  const updateProperty = async (id, updates) => {
-    setData((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
-    // [SUPABASE] await supabase.from('properties').update(updates).eq('id', id);
-  };
+export const useCreateUnit = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ buildingId, ...data }) => api.post(`/buildings/${buildingId}/units`, data).then(r => r.data),
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['units', vars.buildingId] }),
+  });
+};
 
-  return { data, loading, error, addProperty, deleteProperty, updateProperty };
-}
+export const useUpdateUnit = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.patch(`/units/${id}`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['units'] }),
+  });
+};

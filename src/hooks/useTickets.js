@@ -1,28 +1,36 @@
-import { useState, useEffect } from 'react';
-import { tickets as mockTickets } from '../data/mockData';
-// [SUPABASE] import { supabase } from '../lib/supabase';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import api from '../lib/api';
 
-export function useTickets() {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
+export const useTickets = (params = {}) =>
+  useQuery({
+    queryKey: ['tickets', params],
+    queryFn: () => api.get('/maintenance', { params }).then(r => r.data),
+  });
 
-  useEffect(() => {
-    setData(mockTickets);
-    setLoading(false);
-    // [SUPABASE] supabase.from('tickets').select('*').then(({ data }) => { setData(data); setLoading(false); });
-  }, []);
+export const useTicketStats = () =>
+  useQuery({
+    queryKey: ['tickets-stats'],
+    queryFn: () => api.get('/maintenance/stats').then(r => r.data),
+  });
 
-  const addTicket = (ticket) => {
-    const newTicket = { ...ticket, id: `MNT-${9000 + data.length}`, status: 'En attente', reportedAt: new Date().toLocaleString('fr-FR') };
-    setData((prev) => [newTicket, ...prev]);
-    // [SUPABASE] supabase.from('tickets').insert([newTicket]);
-    return newTicket;
-  };
+export const useCreateTicket = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => api.post('/maintenance', data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tickets'] });
+      qc.invalidateQueries({ queryKey: ['tickets-stats'] });
+    },
+  });
+};
 
-  const updateStatus = (id, status) => {
-    setData((prev) => prev.map((t) => (t.id === id ? { ...t, status } : t)));
-    // [SUPABASE] supabase.from('tickets').update({ status }).eq('id', id);
-  };
-
-  return { data, loading, addTicket, updateStatus };
-}
+export const useUpdateTicket = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.patch(`/maintenance/${id}`, data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tickets'] });
+      qc.invalidateQueries({ queryKey: ['tickets-stats'] });
+    },
+  });
+};

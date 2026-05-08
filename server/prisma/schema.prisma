@@ -1,0 +1,515 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Plan {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  ACCOUNTANT
+  TECHNICIAN
+  OWNER
+  TENANT
+}
+
+enum BuildingType {
+  IMMEUBLE
+  VILLA
+  RESIDENCE
+  COMMERCE
+  TERRAIN
+}
+
+enum UnitType {
+  STUDIO
+  F1
+  F2
+  F3
+  F4
+  F5
+  VILLA
+  BUREAU
+  BOUTIQUE
+  AUTRE
+}
+
+enum UnitStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+  RESERVED
+}
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  EXPIRING
+  TERMINATED
+  ARCHIVED
+}
+
+enum RentPeriodStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+  WAIVED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  ORANGE_MONEY
+  MTN_MONEY
+  WAVE
+  MOOV
+  CHEQUE
+  AUTRE
+}
+
+enum PaymentType {
+  RENT
+  DEPOSIT
+  ADVANCE
+  CHARGES
+  PENALTY
+  REFUND
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum TicketCategory {
+  PLOMBERIE
+  ELECTRICITE
+  HVAC
+  MENUISERIE
+  PEINTURE
+  AUTRE
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+enum NotificationChannel {
+  WHATSAPP
+  SMS
+  EMAIL
+  PUSH
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum IdType {
+  CNI
+  PASSEPORT
+  SEJOUR
+  AUTRE
+}
+
+// ─── Organizations (Multi-tenant) ─────────────────────────────────────────────
+
+model Organization {
+  id              String   @id @default(uuid())
+  name            String
+  slug            String   @unique
+  plan            Plan     @default(FREE)
+  logoUrl         String?
+  phone           String?
+  address         String?
+  city            String?
+  country         String   @default("CI")
+  currency        String   @default("XOF")
+  whatsappToken   String?
+  cinetpayKey     String?
+  cinetpaySiteId  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  users           User[]
+  buildings       Building[]
+  tenants         Tenant[]
+  contracts       Contract[]
+  payments        Payment[]
+  rentPeriods     RentPeriod[]
+  tickets         MaintenanceTicket[]
+  notifications   NotificationLog[]
+  auditLogs       AuditLog[]
+
+  @@map("organizations")
+}
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+model User {
+  id             String    @id @default(uuid())
+  orgId          String
+  email          String    @unique
+  phone          String?
+  passwordHash   String
+  firstName      String
+  lastName       String
+  role           UserRole  @default(MANAGER)
+  avatarUrl      String?
+  isActive       Boolean   @default(true)
+  isVerified     Boolean   @default(false)
+  twoFaSecret    String?
+  twoFaEnabled   Boolean   @default(false)
+  lastLoginAt    DateTime?
+  refreshToken   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  org            Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  ownedBuildings Building[]      @relation("BuildingOwner")
+  contracts      Contract[]      @relation("ContractCreator")
+  assignedTickets MaintenanceTicket[] @relation("TicketAssignee")
+  payments       Payment[]       @relation("PaymentRecorder")
+  auditLogs      AuditLog[]
+
+  @@index([orgId])
+  @@map("users")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  orgId      String
+  userId     String?
+  action     String
+  entity     String
+  entityId   String?
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  org  Organization @relation(fields: [orgId], references: [id])
+  user User?        @relation(fields: [userId], references: [id])
+
+  @@index([orgId])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
+
+// ─── Properties ───────────────────────────────────────────────────────────────
+
+model Building {
+  id               String       @id @default(uuid())
+  orgId            String
+  ownerId          String?
+  name             String
+  address          String
+  commune          String?
+  city             String       @default("Abidjan")
+  latitude         Float?
+  longitude        Float?
+  type             BuildingType @default(IMMEUBLE)
+  totalUnits       Int          @default(0)
+  constructionYear Int?
+  description      String?
+  amenities        Json         @default("[]")
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  owner User?        @relation("BuildingOwner", fields: [ownerId], references: [id])
+  units Unit[]
+
+  @@index([orgId])
+  @@map("buildings")
+}
+
+model Unit {
+  id            String     @id @default(uuid())
+  orgId         String
+  buildingId    String
+  unitNumber    String
+  floor         Int        @default(0)
+  type          UnitType   @default(F2)
+  surfaceM2     Float?
+  rooms         Int        @default(1)
+  bathrooms     Int        @default(1)
+  status        UnitStatus @default(AVAILABLE)
+  baseRent      Float
+  charges       Float      @default(0)
+  depositMonths Int        @default(2)
+  description   String?
+  amenities     Json       @default("[]")
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  building  Building    @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  photos    UnitPhoto[]
+  contracts Contract[]
+  tickets   MaintenanceTicket[]
+
+  @@unique([buildingId, unitNumber])
+  @@index([orgId, status])
+  @@map("units")
+}
+
+model UnitPhoto {
+  id        String   @id @default(uuid())
+  unitId    String
+  url       String
+  publicId  String
+  isCover   Boolean  @default(false)
+  caption   String?
+  createdAt DateTime @default(now())
+
+  unit Unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@map("unit_photos")
+}
+
+// ─── Tenants ──────────────────────────────────────────────────────────────────
+
+model Tenant {
+  id             String   @id @default(uuid())
+  orgId          String
+  userId         String?
+  firstName      String
+  lastName       String
+  phone          String
+  phoneWhatsapp  String?
+  email          String?
+  idType         IdType?
+  idNumber       String?
+  idExpiry       DateTime?
+  idDocumentUrl  String?
+  photoUrl       String?
+  nationality    String   @default("Ivoirienne")
+  profession     String?
+  employer       String?
+  emergencyName  String?
+  emergencyPhone String?
+  notes          String?
+  isActive       Boolean  @default(true)
+  portalToken    String   @default(uuid())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  contracts Contract[]
+  payments  Payment[]
+  tickets   MaintenanceTicket[]
+
+  @@index([orgId])
+  @@index([orgId, phone])
+  @@map("tenants")
+}
+
+// ─── Contracts ────────────────────────────────────────────────────────────────
+
+model Contract {
+  id               String         @id @default(uuid())
+  orgId            String
+  unitId           String
+  tenantId         String
+  contractNumber   String         @unique
+  startDate        DateTime
+  endDate          DateTime?
+  durationMonths   Int?
+  monthlyRent      Float
+  charges          Float          @default(0)
+  depositAmount    Float
+  advanceMonths    Int            @default(0)
+  advanceAmount    Float          @default(0)
+  paymentDay       Int            @default(5)
+  status           ContractStatus @default(DRAFT)
+  autoRenew        Boolean        @default(false)
+  terminationDate  DateTime?
+  terminationReason String?
+  signedAt         DateTime?
+  pdfUrl           String?
+  notes            String?
+  createdById      String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  unit        Unit         @relation(fields: [unitId], references: [id])
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  createdBy   User?        @relation("ContractCreator", fields: [createdById], references: [id])
+  rentPeriods RentPeriod[]
+  payments    Payment[]
+
+  @@index([orgId, status])
+  @@index([unitId])
+  @@index([tenantId])
+  @@map("contracts")
+}
+
+// ─── Rent Periods ─────────────────────────────────────────────────────────────
+
+model RentPeriod {
+  id             String           @id @default(uuid())
+  orgId          String
+  contractId     String
+  periodMonth    Int
+  periodYear     Int
+  amountDue      Float
+  chargesDue     Float            @default(0)
+  dueDate        DateTime
+  status         RentPeriodStatus @default(PENDING)
+  amountPaid     Float            @default(0)
+  reminderCount  Int              @default(0)
+  lastReminderAt DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  org      Organization @relation(fields: [orgId], references: [id])
+  contract Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@unique([contractId, periodMonth, periodYear])
+  @@index([orgId, status])
+  @@index([orgId, dueDate])
+  @@map("rent_periods")
+}
+
+// ─── Payments ─────────────────────────────────────────────────────────────────
+
+model Payment {
+  id              String        @id @default(uuid())
+  orgId           String
+  contractId      String
+  rentPeriodId    String?
+  tenantId        String
+  reference       String        @unique
+  amount          Float
+  currency        String        @default("XOF")
+  paymentMethod   PaymentMethod @default(CASH)
+  paymentType     PaymentType   @default(RENT)
+  status          PaymentStatus @default(PENDING)
+  mmTransactionId String?
+  mmPhone         String?
+  mmOperator      String?
+  mmWebhookData   Json?
+  notes           String?
+  receiptUrl      String?
+  recordedById    String?
+  paidAt          DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  org        Organization @relation(fields: [orgId], references: [id])
+  contract   Contract     @relation(fields: [contractId], references: [id])
+  rentPeriod RentPeriod?  @relation(fields: [rentPeriodId], references: [id])
+  tenant     Tenant       @relation(fields: [tenantId], references: [id])
+  recordedBy User?        @relation("PaymentRecorder", fields: [recordedById], references: [id])
+
+  @@index([orgId, status])
+  @@index([contractId])
+  @@index([tenantId])
+  @@map("payments")
+}
+
+// ─── Maintenance ──────────────────────────────────────────────────────────────
+
+model MaintenanceTicket {
+  id             String         @id @default(uuid())
+  orgId          String
+  unitId         String
+  tenantId       String?
+  assignedToId   String?
+  ticketNumber   String         @unique
+  title          String
+  description    String?
+  category       TicketCategory @default(AUTRE)
+  priority       TicketPriority @default(MEDIUM)
+  status         TicketStatus   @default(OPEN)
+  estimatedCost  Float?
+  actualCost     Float?
+  scheduledAt    DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  org        Organization     @relation(fields: [orgId], references: [id])
+  unit       Unit             @relation(fields: [unitId], references: [id])
+  tenant     Tenant?          @relation(fields: [tenantId], references: [id])
+  assignedTo User?            @relation("TicketAssignee", fields: [assignedToId], references: [id])
+  photos     MaintenancePhoto[]
+
+  @@index([orgId, status])
+  @@index([unitId])
+  @@map("maintenance_tickets")
+}
+
+model MaintenancePhoto {
+  id        String   @id @default(uuid())
+  ticketId  String
+  url       String
+  publicId  String
+  type      String   @default("before")
+  createdAt DateTime @default(now())
+
+  ticket MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@map("maintenance_photos")
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+model NotificationLog {
+  id             String              @id @default(uuid())
+  orgId          String
+  recipientPhone String
+  recipientName  String?
+  channel        NotificationChannel @default(WHATSAPP)
+  template       String?
+  content        String?
+  status         NotificationStatus  @default(QUEUED)
+  errorMessage   String?
+  externalId     String?
+  retries        Int                 @default(0)
+  entityType     String?
+  entityId       String?
+  sentAt         DateTime?
+  createdAt      DateTime            @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId])
+  @@index([status])
+  @@map("notification_logs")
+}
