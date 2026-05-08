@@ -1,9 +1,12 @@
 services:
   - type: web
-    name: minsouah
+    name: minsouah-immobilier-cy30
     runtime: static
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
+    envVars:
+      - key: NODE_VERSION
+        value: 20
     routes:
       - type: rewrite
         source: /*
