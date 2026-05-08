@@ -1,349 +1,783 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import Badge from '../components/ui/Badge';
-import Button from '../components/ui/Button';
-import Input, { Select } from '../components/ui/Input';
-import Modal from '../components/ui/Modal';
 import Icon from '../components/Icon';
 
-const CATEGORIES = ['Tous les biens', 'Appartement', 'Villa', 'Commerce'];
-const TYPE_OPTIONS = [
-  { value: 'Appartement', label: 'Appartement' },
-  { value: 'Villa', label: 'Villa' },
-  { value: 'Commerce', label: 'Commerce' },
-];
-const STATUS_OPTIONS = [
-  { value: 'Disponible', label: 'Disponible' },
-  { value: 'Loué', label: 'Loué' },
-  { value: 'Maintenance', label: 'En Maintenance' },
-];
+// ── Constantes ────────────────────────────────────────────────────────────────
+const CATEGORIES = ['Tous', 'Immeuble', 'Villa', 'Appartement', 'Commerce'];
 const STATUS_COLORS = {
-  Loué: 'bg-green-100 text-green-800',
-  Disponible: 'bg-surface-container-highest text-on-surface',
+  Loué:        'bg-green-100 text-green-800',
+  Disponible:  'bg-surface-container text-on-surface-variant',
   Maintenance: 'bg-error-container text-on-error-container',
 };
+const UNIT_STATUS_COLORS = {
+  Loué:        'bg-green-100 text-green-700 border-green-200',
+  Disponible:  'bg-blue-50 text-blue-700 border-blue-200',
+  Maintenance: 'bg-red-50 text-red-700 border-red-200',
+};
+const FLOOR_OPTIONS = ['RDC', '1er étage', '2ème étage', '3ème étage', '4ème étage', '5ème étage', '6ème étage+'];
+const EMPTY_UNIT = { number: '', floor: 'RDC', surface: '', rooms: '', rent: '', status: 'Disponible' };
 const EMPTY_FORM = {
   name: '', address: '', type: 'Appartement', status: 'Disponible',
   rent: '', surface: '', rooms: '', owner: '', ownerInitials: '', image: '',
+  isBuilding: false, units: [],
 };
 
-function PropertyForm({ form, onChange, step }) {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
+const buildingRevenue = (units = []) =>
+  units.filter(u => u.status === 'Loué').reduce((s, u) => s + Number(u.rent || 0), 0);
+
+// ── Sous-composants ───────────────────────────────────────────────────────────
+function UnitRow({ unit, onEdit, onDelete }) {
   return (
-    <>
-      {step === 1 && (
-        <div className="flex flex-col gap-md">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-            <Input label="Nom du bien" name="name" placeholder="Ex: Villa Azur" value={form.name} onChange={onChange} required />
-            <Select label="Type" value={form.type} onChange={(e) => onChange({ target: { name: 'type', value: e.target.value } })} options={TYPE_OPTIONS} required />
-          </div>
-          <Input label="Adresse complète" name="address" placeholder="Abidjan, Cocody Danga" value={form.address} onChange={onChange} icon="location_on" required />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-            <Select label="Statut" value={form.status} onChange={(e) => onChange({ target: { name: 'status', value: e.target.value } })} options={STATUS_OPTIONS} />
-            <Input label="Loyer mensuel (FCFA)" name="rent" type="number" placeholder="Ex: 450000" value={form.rent} onChange={onChange} icon="payments" required />
-          </div>
+    <div className={`flex items-center gap-3 p-3 rounded-xl border ${UNIT_STATUS_COLORS[unit.status] || 'bg-surface-container border-outline-variant/20'} group`}>
+      <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+        <div>
+          <p className="font-bold text-on-surface">{unit.number}</p>
+          <p className="text-xs text-on-surface-variant">{unit.floor}</p>
         </div>
-      )}
-      {step === 2 && (
-        <div className="flex flex-col gap-md">
-          <div className="grid grid-cols-2 gap-md">
-            <Input label="Surface (m²)" name="surface" type="number" placeholder="Ex: 85" value={form.surface} onChange={onChange} icon="straighten" />
-            <Input label="Nombre de pièces" name="rooms" type="number" placeholder="Ex: 3" value={form.rooms} onChange={onChange} icon="door_open" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-            <Input label="Propriétaire" name="owner" placeholder="Nom du propriétaire" value={form.owner} onChange={onChange} icon="person" />
-            <Input label="Initiales (2 lettres)" name="ownerInitials" placeholder="Ex: JD" value={form.ownerInitials} onChange={onChange} />
-          </div>
-          <Input label="URL de l'image (optionnel)" name="image" placeholder="https://..." value={form.image} onChange={onChange} icon="image" />
-          {form.name && (
-            <div className="bg-surface-container rounded-xl p-md border border-outline-variant/20">
-              <p className="text-label-sm text-on-surface-variant mb-sm uppercase tracking-wider">Récapitulatif</p>
-              <div className="grid grid-cols-2 gap-xs text-body-sm">
-                <span className="text-on-surface-variant">Nom :</span>
-                <span className="font-medium text-on-surface">{form.name}</span>
-                <span className="text-on-surface-variant">Adresse :</span>
-                <span className="font-medium text-on-surface truncate">{form.address}</span>
-                <span className="text-on-surface-variant">Loyer :</span>
-                <span className="font-bold text-primary">{Number(form.rent || 0).toLocaleString('fr-FR')} FCFA/mois</span>
-              </div>
-            </div>
-          )}
+        <div>
+          <p className="text-on-surface">{unit.surface ? `${unit.surface} m²` : '—'}</p>
+          <p className="text-xs text-on-surface-variant">{unit.rooms ? `${unit.rooms} pièces` : ''}</p>
         </div>
-      )}
-    </>
-  );
-}
-
-export default function Assets() {
-  const { state, dispatch } = useApp();
-  const properties = state.properties;
-
-  const [filter, setFilter] = useState('Tous les biens');
-  const [search, setSearch] = useState('');
-  const [step, setStep] = useState(1);
-  const [addOpen, setAddOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState(null);
-  const [detailTarget, setDetailTarget] = useState(null);
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [form, setForm] = useState(EMPTY_FORM);
-
-  const filtered = properties.filter((p) => {
-    const matchCat = filter === 'Tous les biens' || p.type === filter;
-    const matchSearch =
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.address.toLowerCase().includes(search.toLowerCase());
-    return matchCat && matchSearch;
-  });
-
-  const stats = [
-    { label: 'Unités Totales', value: properties.length, icon: 'apartment', iconColor: 'text-primary', highlight: false },
-    { label: 'Disponibles', value: properties.filter(p => p.status === 'Disponible').length, icon: 'check_circle', iconColor: 'text-tertiary', highlight: false },
-    { label: 'Maintenance', value: properties.filter(p => p.status === 'Maintenance').length, icon: 'build', iconColor: 'text-error', highlight: false },
-    {
-      label: 'Revenu MTD',
-      value: properties.filter(p => p.status === 'Loué').reduce((s, p) => s + Number(p.rent), 0).toLocaleString('fr-FR') + ' FCFA',
-      icon: 'trending_up',
-      iconColor: 'text-on-primary-container',
-      highlight: true,
-    },
-  ];
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm(f => ({ ...f, [name]: value }));
-  };
-
-  const openAdd = () => { setForm(EMPTY_FORM); setStep(1); setAddOpen(true); };
-  const openEdit = (p, e) => {
-    e?.stopPropagation();
-    setForm({ ...p, rent: String(p.rent), surface: String(p.surface), rooms: String(p.rooms) });
-    setStep(1);
-    setEditTarget(p);
-  };
-
-  const handleSave = () => {
-    const payload = {
-      ...form,
-      rent: Number(form.rent) || 0,
-      surface: Number(form.surface) || 0,
-      rooms: Number(form.rooms) || 0,
-    };
-    if (editTarget) {
-      dispatch({ type: 'UPDATE_PROPERTY', payload: { ...payload, id: editTarget.id } });
-      setEditTarget(null);
-    } else {
-      dispatch({ type: 'ADD_PROPERTY', payload });
-      setAddOpen(false);
-    }
-    setForm(EMPTY_FORM);
-    setStep(1);
-  };
-
-  const handleDelete = () => {
-    dispatch({ type: 'DELETE_PROPERTY', payload: deleteTarget.id });
-    setDeleteTarget(null);
-    if (detailTarget?.id === deleteTarget?.id) setDetailTarget(null);
-  };
-
-  return (
-    <div className="px-margin pt-gutter pb-xl max-w-7xl mx-auto">
-
-      {/* Stats */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-gutter mb-xl">
-        {stats.map(s => (
-          <div key={s.label} className={`p-md rounded-xl shadow-card border border-outline-variant/20 flex flex-col justify-between h-32 ${s.highlight ? 'bg-primary-container' : 'bg-surface-container-lowest'}`}>
-            <div className="flex justify-between items-start">
-              <span className={`text-label-sm font-label-sm uppercase tracking-wider ${s.highlight ? 'text-on-primary-container' : 'text-on-surface-variant'}`}>{s.label}</span>
-              <Icon name={s.icon} className={s.highlight ? 'text-on-primary-container' : s.iconColor} />
-            </div>
-            <div className={`font-h1 text-h1 font-bold ${s.highlight ? 'text-on-primary-container' : 'text-on-surface'}`}>{s.value}</div>
-          </div>
-        ))}
-      </section>
-
-      {/* Filters */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-md mb-lg">
-        <div className="flex items-center gap-xs overflow-x-auto no-scrollbar">
-          {CATEGORIES.map(cat => (
-            <button key={cat} onClick={() => setFilter(cat)}
-              className={`px-md py-sm rounded-full text-label-md font-label-md whitespace-nowrap transition-colors ${filter === cat ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}>
-              {cat}
-            </button>
-          ))}
+        <div>
+          <p className="font-bold text-primary">{fmt(unit.rent)}/mois</p>
         </div>
-        <div className="flex items-center gap-sm">
-          <div className="relative flex-1 md:w-72">
-            <Icon name="search" className="absolute left-4 top-1/2 -translate-y-1/2 text-outline" size={18} />
-            <input type="text" placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-sm bg-surface-container-lowest border border-outline-variant rounded-full focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-body-sm" />
-          </div>
-          <Button icon="add_home" onClick={openAdd}>Nouveau Bien</Button>
+        <div>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${UNIT_STATUS_COLORS[unit.status]}`}>
+            {unit.status}
+          </span>
         </div>
       </div>
-
-      {/* Grid */}
-      {filtered.length === 0 ? (
-        <div className="text-center py-xl text-on-surface-variant">
-          <Icon name="search_off" size={48} className="mb-md opacity-40" />
-          <p className="text-body-lg">Aucun bien trouvé</p>
-        </div>
-      ) : (
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-gutter">
-          {filtered.map(property => (
-            <div key={property.id} onClick={() => setDetailTarget(property)}
-              className="bg-surface-container-lowest rounded-xl overflow-hidden shadow-card border border-outline-variant/20 hover:shadow-modal transition-shadow duration-300 cursor-pointer group">
-              <div className="relative h-52 overflow-hidden bg-surface-container">
-                {property.image ? (
-                  <img src={property.image} alt={property.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    onError={e => { e.target.style.display = 'none'; }} />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Icon name="apartment" size={48} className="text-outline-variant" />
-                  </div>
-                )}
-                <div className="absolute top-3 left-3">
-                  <span className={`px-sm py-1 rounded-full text-label-sm font-bold uppercase tracking-wide ${STATUS_COLORS[property.status] || 'bg-surface-container text-on-surface'}`}>
-                    {property.status}
-                  </span>
-                </div>
-                {/* Action buttons on hover */}
-                <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={e => openEdit(property, e)}
-                    className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-primary shadow hover:bg-white transition-colors">
-                    <Icon name="edit" size={15} />
-                  </button>
-                  <button onClick={e => { e.stopPropagation(); setDeleteTarget(property); }}
-                    className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-error shadow hover:bg-white transition-colors">
-                    <Icon name="delete" size={15} />
-                  </button>
-                </div>
-              </div>
-              <div className="p-md">
-                <h3 className="font-h3 text-h3 text-on-surface mb-xs">{property.name}</h3>
-                <p className="text-body-sm text-on-surface-variant flex items-center gap-xs mb-md">
-                  <Icon name="location_on" size={14} />{property.address}
-                </p>
-                {property.surface > 0 && (
-                  <div className="flex gap-md mb-md text-body-sm text-on-surface-variant">
-                    <span className="flex items-center gap-1"><Icon name="straighten" size={13} />{property.surface} m²</span>
-                    {property.rooms > 0 && <span className="flex items-center gap-1"><Icon name="door_open" size={13} />{property.rooms} pièces</span>}
-                  </div>
-                )}
-                <div className="flex items-center justify-between pt-md border-t border-outline-variant/20">
-                  <div className="flex items-center gap-xs">
-                    <div className="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container text-xs font-bold">
-                      {property.ownerInitials || '?'}
-                    </div>
-                    <span className="text-label-sm text-on-surface">{property.owner}</span>
-                  </div>
-                  <span className="text-primary font-bold text-body-sm">{Number(property.rent).toLocaleString('fr-FR')} FCFA/mois</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </section>
-      )}
-
-      {/* ── Add Modal ──────────────────────────────────────────────────── */}
-      <Modal open={addOpen} onClose={() => { setAddOpen(false); setStep(1); }} title="Ajouter un Nouveau Bien" size="md"
-        footer={
-          <>
-            {step > 1 && <Button variant="secondary" onClick={() => setStep(s => s - 1)}>Précédent</Button>}
-            {step < 2
-              ? <Button onClick={() => setStep(2)}>Suivant <Icon name="arrow_forward" size={16} /></Button>
-              : <Button icon="check" onClick={handleSave} disabled={!form.name || !form.rent}>Enregistrer</Button>}
-          </>
-        }>
-        <StepIndicator step={step} />
-        <PropertyForm form={form} onChange={handleChange} step={step} />
-      </Modal>
-
-      {/* ── Edit Modal ─────────────────────────────────────────────────── */}
-      <Modal open={!!editTarget} onClose={() => { setEditTarget(null); setStep(1); }} title={`Modifier — ${editTarget?.name || ''}`} size="md"
-        footer={
-          <>
-            {step > 1 && <Button variant="secondary" onClick={() => setStep(s => s - 1)}>Précédent</Button>}
-            {step < 2
-              ? <Button onClick={() => setStep(2)}>Suivant <Icon name="arrow_forward" size={16} /></Button>
-              : <Button icon="save" onClick={handleSave}>Enregistrer les modifications</Button>}
-          </>
-        }>
-        <StepIndicator step={step} />
-        <PropertyForm form={form} onChange={handleChange} step={step} />
-      </Modal>
-
-      {/* ── Detail Modal ───────────────────────────────────────────────── */}
-      <Modal open={!!detailTarget && !editTarget} onClose={() => setDetailTarget(null)} title={detailTarget?.name || ''} size="sm"
-        footer={
-          <>
-            <Button variant="secondary" icon="delete" onClick={() => { setDeleteTarget(detailTarget); setDetailTarget(null); }}>Supprimer</Button>
-            <Button icon="edit" onClick={() => { openEdit(detailTarget); setDetailTarget(null); }}>Modifier</Button>
-          </>
-        }>
-        {detailTarget && (
-          <div className="flex flex-col gap-md">
-            <div className="h-48 rounded-xl overflow-hidden bg-surface-container">
-              {detailTarget.image ? (
-                <img src={detailTarget.image} alt={detailTarget.name} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center"><Icon name="apartment" size={48} className="text-outline-variant" /></div>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-sm">
-              <Badge label={detailTarget.status} />
-              <span className="inline-flex items-center bg-surface-container px-sm py-1 rounded-full text-label-sm text-on-surface-variant gap-1">
-                <Icon name="category" size={14} />{detailTarget.type}
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-sm text-body-sm">
-              {[
-                ['Adresse', detailTarget.address],
-                ['Loyer', Number(detailTarget.rent).toLocaleString('fr-FR') + ' FCFA/mois'],
-                ['Surface', detailTarget.surface ? detailTarget.surface + ' m²' : '—'],
-                ['Pièces', detailTarget.rooms || '—'],
-              ].map(([label, val]) => (
-                <div key={label} className="bg-surface-container rounded-xl p-sm">
-                  <p className="text-on-surface-variant text-label-sm mb-1">{label}</p>
-                  <p className={`font-medium ${label === 'Loyer' ? 'text-primary font-bold' : 'text-on-surface'}`}>{val}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* ── Confirm Delete ─────────────────────────────────────────────── */}
-      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Confirmer la suppression" size="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setDeleteTarget(null)}>Annuler</Button>
-            <Button variant="danger" icon="delete" onClick={handleDelete}>Supprimer définitivement</Button>
-          </>
-        }>
-        <div className="flex flex-col items-center text-center gap-md py-md">
-          <div className="w-16 h-16 rounded-full bg-error-container flex items-center justify-center">
-            <Icon name="warning" size={32} className="text-error" />
-          </div>
-          <div>
-            <p className="text-body-md text-on-surface">Voulez-vous vraiment supprimer</p>
-            <p className="font-bold text-on-surface text-body-lg">"{deleteTarget?.name}"</p>
-            <p className="text-body-sm text-on-surface-variant mt-sm">Cette action est irréversible.</p>
-          </div>
-        </div>
-      </Modal>
+      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        <button onClick={() => onEdit(unit)} className="w-7 h-7 rounded-full bg-white/80 hover:bg-white flex items-center justify-center text-primary shadow-sm">
+          <Icon name="edit" size={13} />
+        </button>
+        <button onClick={() => onDelete(unit.id)} className="w-7 h-7 rounded-full bg-white/80 hover:bg-white flex items-center justify-center text-error shadow-sm">
+          <Icon name="delete" size={13} />
+        </button>
+      </div>
     </div>
   );
 }
 
-function StepIndicator({ step }) {
+function UnitForm({ unit, onChange, onSave, onCancel }) {
   return (
-    <div className="flex items-center gap-2 mb-lg">
-      {[1, 2].map((s, i) => (
-        <div key={s} className="flex items-center gap-2">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-colors ${step >= s ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'}`}>{s}</div>
-          <span className={`text-label-md ${step >= s ? 'text-primary font-bold' : 'text-on-surface-variant'}`}>{s === 1 ? 'Informations' : 'Détails'}</span>
-          {i < 1 && <Icon name="chevron_right" className="text-outline" size={18} />}
+    <div className="bg-surface-container rounded-xl p-4 border border-outline-variant/30">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
+        <div>
+          <label className="text-xs font-medium text-on-surface-variant mb-1 block">Numéro / Nom</label>
+          <input value={unit.number} onChange={e => onChange({ ...unit, number: e.target.value })}
+            placeholder="Ex: Appt 01" className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm" />
         </div>
-      ))}
+        <div>
+          <label className="text-xs font-medium text-on-surface-variant mb-1 block">Étage</label>
+          <select value={unit.floor} onChange={e => onChange({ ...unit, floor: e.target.value })}
+            className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm">
+            {FLOOR_OPTIONS.map(f => <option key={f}>{f}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-on-surface-variant mb-1 block">Statut</label>
+          <select value={unit.status} onChange={e => onChange({ ...unit, status: e.target.value })}
+            className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm">
+            {['Disponible', 'Loué', 'Maintenance'].map(s => <option key={s}>{s}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-on-surface-variant mb-1 block">Surface (m²)</label>
+          <input type="number" value={unit.surface} onChange={e => onChange({ ...unit, surface: e.target.value })}
+            placeholder="65" className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-on-surface-variant mb-1 block">Pièces</label>
+          <input type="number" value={unit.rooms} onChange={e => onChange({ ...unit, rooms: e.target.value })}
+            placeholder="2" className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-on-surface-variant mb-1 block">Loyer (FCFA)</label>
+          <input type="number" value={unit.rent} onChange={e => onChange({ ...unit, rent: e.target.value })}
+            placeholder="150000" className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm" />
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={onSave} disabled={!unit.number}
+          className="px-4 py-1.5 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
+          Enregistrer l'appartement
+        </button>
+        <button onClick={onCancel} className="px-4 py-1.5 bg-surface-container-high rounded-lg text-sm text-on-surface-variant hover:text-on-surface">
+          Annuler
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Page principale ───────────────────────────────────────────────────────────
+export default function Assets() {
+  const { state, dispatch } = useApp();
+  const properties = state.properties;
+
+  const [filter, setFilter]         = useState('Tous');
+  const [search, setSearch]         = useState('');
+  const [modal, setModal]           = useState(null); // 'add' | 'edit' | 'detail' | 'delete'
+  const [target, setTarget]         = useState(null);
+  const [form, setForm]             = useState(EMPTY_FORM);
+  const [step, setStep]             = useState(1);
+  const [editingUnit, setEditingUnit] = useState(null); // unit being edited in building form
+  const [addingUnit, setAddingUnit]  = useState(false);
+  const [newUnit, setNewUnit]        = useState(EMPTY_UNIT);
+  const [detailUnitEdit, setDetailUnitEdit] = useState(null);
+  const [addingUnitToDetail, setAddingUnitToDetail] = useState(false);
+  const [newDetailUnit, setNewDetailUnit] = useState(EMPTY_UNIT);
+
+  // ── Filtres ────────────────────────────────────────────────────────────────
+  const filtered = properties.filter(p => {
+    const matchCat = filter === 'Tous' || p.type === filter;
+    const q = search.toLowerCase();
+    const matchSearch = p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q) || (p.owner || '').toLowerCase().includes(q);
+    return matchCat && matchSearch;
+  });
+
+  // ── Stats ──────────────────────────────────────────────────────────────────
+  const totalUnits = properties.reduce((s, p) => s + (p.isBuilding ? (p.units?.length || 0) : 1), 0);
+  const loued = properties.reduce((s, p) => {
+    if (p.isBuilding) return s + (p.units?.filter(u => u.status === 'Loué').length || 0);
+    return p.status === 'Loué' ? s + 1 : s;
+  }, 0);
+  const revenue = properties.reduce((s, p) => {
+    if (p.isBuilding) return s + buildingRevenue(p.units);
+    return p.status === 'Loué' ? s + Number(p.rent || 0) : s;
+  }, 0);
+  const maintenance = properties.reduce((s, p) => {
+    if (p.isBuilding) return s + (p.units?.filter(u => u.status === 'Maintenance').length || 0);
+    return p.status === 'Maintenance' ? s + 1 : s;
+  }, 0);
+
+  // ── Gestion formulaire ─────────────────────────────────────────────────────
+  const openAdd = () => { setForm(EMPTY_FORM); setStep(1); setAddingUnit(false); setModal('add'); };
+  const openEdit = (p) => {
+    setForm({ ...p, rent: String(p.rent), surface: String(p.surface), rooms: String(p.rooms), units: p.units ? [...p.units] : [] });
+    setStep(1); setAddingUnit(false); setTarget(p); setModal('edit');
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    if (name === 'type') {
+      setForm(f => ({ ...f, type: value, isBuilding: value === 'Immeuble' }));
+    } else {
+      setForm(f => ({ ...f, [name]: value }));
+    }
+  };
+
+  // Ajouter un appartement dans le formulaire
+  const addUnitToForm = () => {
+    if (!newUnit.number) return;
+    const unit = { ...newUnit, id: `u${Date.now()}`, rent: Number(newUnit.rent) || 0, surface: Number(newUnit.surface) || 0, rooms: Number(newUnit.rooms) || 0 };
+    setForm(f => ({ ...f, units: [...f.units, unit] }));
+    setNewUnit(EMPTY_UNIT);
+    setAddingUnit(false);
+  };
+
+  const removeUnitFromForm = (id) => setForm(f => ({ ...f, units: f.units.filter(u => u.id !== id) }));
+
+  const handleSave = () => {
+    const payload = {
+      ...form,
+      rent: form.isBuilding ? 0 : (Number(form.rent) || 0),
+      surface: Number(form.surface) || 0,
+      rooms: Number(form.rooms) || 0,
+    };
+    if (modal === 'edit') {
+      dispatch({ type: 'UPDATE_PROPERTY', payload: { ...payload, id: target.id } });
+    } else {
+      dispatch({ type: 'ADD_PROPERTY', payload });
+    }
+    setModal(null); setTarget(null); setForm(EMPTY_FORM); setStep(1);
+  };
+
+  const handleDelete = () => {
+    dispatch({ type: 'DELETE_PROPERTY', payload: target.id });
+    setModal(null); setTarget(null);
+  };
+
+  // Ajouter une unité directement dans la fiche immeuble (détail)
+  const addUnitToBuilding = (building) => {
+    if (!newDetailUnit.number) return;
+    const unit = { ...newDetailUnit, id: `u${Date.now()}`, rent: Number(newDetailUnit.rent) || 0, surface: Number(newDetailUnit.surface) || 0, rooms: Number(newDetailUnit.rooms) || 0 };
+    const updated = { ...building, units: [...(building.units || []), unit] };
+    dispatch({ type: 'UPDATE_PROPERTY', payload: updated });
+    setTarget(updated);
+    setNewDetailUnit(EMPTY_UNIT); setAddingUnitToDetail(false);
+  };
+
+  const updateUnitInBuilding = (building, updatedUnit) => {
+    const updated = { ...building, units: building.units.map(u => u.id === updatedUnit.id ? updatedUnit : u) };
+    dispatch({ type: 'UPDATE_PROPERTY', payload: updated });
+    setTarget(updated); setDetailUnitEdit(null);
+  };
+
+  const deleteUnitFromBuilding = (building, unitId) => {
+    const updated = { ...building, units: building.units.filter(u => u.id !== unitId) };
+    dispatch({ type: 'UPDATE_PROPERTY', payload: updated });
+    setTarget(updated);
+  };
+
+  // ── Rendu ──────────────────────────────────────────────────────────────────
+  return (
+    <div className="px-4 md:px-6 pt-6 pb-20 max-w-7xl mx-auto">
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {[
+          { label: 'Unités totales',  value: totalUnits, icon: 'apartment',      color: 'text-primary' },
+          { label: 'Louées',          value: loued,      icon: 'check_circle',   color: 'text-green-600' },
+          { label: 'En maintenance',  value: maintenance, icon: 'build',         color: 'text-error' },
+          { label: 'Revenus mensuels', value: fmt(revenue), icon: 'trending_up', color: 'text-on-primary-container', highlight: true },
+        ].map(s => (
+          <div key={s.label} className={`p-4 rounded-2xl border border-outline-variant/20 flex flex-col gap-2 ${s.highlight ? 'bg-primary-container' : 'bg-surface'}`}>
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">{s.label}</span>
+              <Icon name={s.icon} size={20} className={s.color} />
+            </div>
+            <p className={`text-2xl font-black ${s.highlight ? 'text-on-primary-container' : 'text-on-surface'}`}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filtres + Recherche */}
+      <div className="flex flex-col md:flex-row gap-3 mb-6">
+        <div className="flex gap-2 overflow-x-auto no-scrollbar flex-1">
+          {CATEGORIES.map(c => (
+            <button key={c} onClick={() => setFilter(c)}
+              className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-all ${filter === c ? 'bg-primary text-on-primary' : 'bg-surface text-on-surface-variant hover:bg-surface-container-high border border-outline-variant/20'}`}>
+              {c}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-3">
+          <div className="relative flex-1 md:w-64">
+            <Icon name="search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-outline" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..."
+              className="w-full pl-9 pr-4 py-2 rounded-full border border-outline-variant/30 bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+          <button onClick={openAdd}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-full text-sm font-bold hover:bg-primary/90 transition-colors whitespace-nowrap">
+            <Icon name="add" size={18} /> Nouveau bien
+          </button>
+        </div>
+      </div>
+
+      {/* Grille des biens */}
+      {filtered.length === 0 ? (
+        <div className="text-center py-16 text-on-surface-variant">
+          <Icon name="search_off" size={48} className="mb-4 opacity-30 mx-auto" />
+          <p>Aucun bien trouvé</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filtered.map(p => (
+            p.isBuilding ? (
+              <BuildingCard key={p.id} building={p}
+                onDetail={() => { setTarget(p); setModal('detail'); setAddingUnitToDetail(false); setDetailUnitEdit(null); }}
+                onEdit={() => openEdit(p)}
+                onDelete={() => { setTarget(p); setModal('delete'); }}
+              />
+            ) : (
+              <PropertyCard key={p.id} property={p}
+                onDetail={() => { setTarget(p); setModal('detail'); }}
+                onEdit={() => openEdit(p)}
+                onDelete={() => { setTarget(p); setModal('delete'); }}
+              />
+            )
+          ))}
+        </div>
+      )}
+
+      {/* ── Modal Ajouter / Modifier ──────────────────────────────────────── */}
+      {(modal === 'add' || modal === 'edit') && (
+        <ModalOverlay onClose={() => { setModal(null); setTarget(null); }}>
+          <div className="bg-surface rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-surface border-b border-outline-variant/20 px-6 py-4 flex items-center justify-between rounded-t-3xl">
+              <h2 className="font-bold text-lg text-on-surface">
+                {modal === 'edit' ? `Modifier — ${target?.name}` : 'Nouveau bien'}
+              </h2>
+              <button onClick={() => { setModal(null); setTarget(null); }} className="text-on-surface-variant hover:text-on-surface">
+                <Icon name="close" size={22} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {/* Steps */}
+              <div className="flex gap-4 mb-6">
+                {[{ n: 1, l: 'Informations' }, { n: 2, l: form.isBuilding ? 'Appartements' : 'Détails' }].map((s, i) => (
+                  <div key={s.n} className="flex items-center gap-2">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step >= s.n ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'}`}>{s.n}</div>
+                    <span className={`text-sm ${step >= s.n ? 'text-primary font-semibold' : 'text-on-surface-variant'}`}>{s.l}</span>
+                    {i < 1 && <Icon name="chevron_right" size={16} className="text-outline-variant" />}
+                  </div>
+                ))}
+              </div>
+
+              {/* Step 1 — Infos générales */}
+              {step === 1 && (
+                <div className="flex flex-col gap-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2">
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">Nom du bien *</label>
+                      <input name="name" value={form.name} onChange={handleChange} placeholder="Ex: Résidence Les Palmiers"
+                        className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">Type *</label>
+                      <select name="type" value={form.type} onChange={handleChange}
+                        className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30">
+                        {['Immeuble', 'Villa', 'Appartement', 'Commerce'].map(t => <option key={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    {!form.isBuilding && (
+                      <div>
+                        <label className="text-sm font-medium text-on-surface-variant mb-1 block">Statut</label>
+                        <select name="status" value={form.status} onChange={handleChange}
+                          className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30">
+                          {['Disponible', 'Loué', 'Maintenance'].map(s => <option key={s}>{s}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    <div className="col-span-2">
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">Adresse *</label>
+                      <input name="address" value={form.address} onChange={handleChange} placeholder="Abidjan, Cocody Angré"
+                        className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">Propriétaire</label>
+                      <input name="owner" value={form.owner} onChange={handleChange} placeholder="Nom complet"
+                        className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">Initiales (2 lettres)</label>
+                      <input name="ownerInitials" value={form.ownerInitials} onChange={handleChange} placeholder="JD" maxLength={2}
+                        className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    </div>
+                    {!form.isBuilding && (
+                      <div>
+                        <label className="text-sm font-medium text-on-surface-variant mb-1 block">Loyer mensuel (FCFA) *</label>
+                        <input name="rent" type="number" value={form.rent} onChange={handleChange} placeholder="150000"
+                          className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                      </div>
+                    )}
+                    <div>
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">URL photo (optionnel)</label>
+                      <input name="image" value={form.image} onChange={handleChange} placeholder="https://..."
+                        className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    </div>
+                  </div>
+
+                  {form.isBuilding && (
+                    <div className="bg-primary-container/30 rounded-xl p-4 flex gap-3">
+                      <Icon name="info" size={18} className="text-primary flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-on-surface-variant">
+                        Un <strong className="text-on-surface">Immeuble</strong> contient plusieurs appartements.
+                        À l'étape suivante, vous pourrez ajouter chaque appartement avec son loyer et son statut individuel.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step 2 — Appartements (immeuble) ou détails (bien simple) */}
+              {step === 2 && !form.isBuilding && (
+                <div className="flex flex-col gap-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">Surface (m²)</label>
+                      <input name="surface" type="number" value={form.surface} onChange={handleChange} placeholder="85"
+                        className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">Nombre de pièces</label>
+                      <input name="rooms" type="number" value={form.rooms} onChange={handleChange} placeholder="3"
+                        className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    </div>
+                  </div>
+                  {form.name && (
+                    <div className="bg-surface-container rounded-xl p-4 text-sm">
+                      <p className="font-bold text-on-surface mb-2">{form.name}</p>
+                      <p className="text-on-surface-variant">{form.address}</p>
+                      <p className="text-primary font-bold mt-1">{fmt(form.rent)}/mois</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {step === 2 && form.isBuilding && (
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold text-on-surface">
+                      Appartements <span className="text-primary">({form.units.length})</span>
+                    </p>
+                    {!addingUnit && (
+                      <button onClick={() => { setNewUnit(EMPTY_UNIT); setAddingUnit(true); }}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:bg-primary/90">
+                        <Icon name="add" size={16} /> Ajouter un appartement
+                      </button>
+                    )}
+                  </div>
+
+                  {addingUnit && (
+                    <UnitForm unit={newUnit} onChange={setNewUnit} onSave={addUnitToForm} onCancel={() => setAddingUnit(false)} />
+                  )}
+
+                  {form.units.length === 0 && !addingUnit && (
+                    <div className="text-center py-8 text-on-surface-variant border-2 border-dashed border-outline-variant/30 rounded-xl">
+                      <Icon name="apartment" size={32} className="mb-2 opacity-30 mx-auto" />
+                      <p className="text-sm">Aucun appartement ajouté</p>
+                      <p className="text-xs mt-1">Cliquez sur "Ajouter un appartement" pour commencer</p>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-2 max-h-60 overflow-y-auto pr-1">
+                    {form.units.map(u => (
+                      editingUnit?.id === u.id ? (
+                        <UnitForm key={u.id} unit={editingUnit} onChange={setEditingUnit}
+                          onSave={() => { setForm(f => ({ ...f, units: f.units.map(x => x.id === editingUnit.id ? editingUnit : x) })); setEditingUnit(null); }}
+                          onCancel={() => setEditingUnit(null)} />
+                      ) : (
+                        <UnitRow key={u.id} unit={u}
+                          onEdit={u => setEditingUnit(u)}
+                          onDelete={id => removeUnitFromForm(id)} />
+                      )
+                    ))}
+                  </div>
+
+                  {form.units.length > 0 && (
+                    <div className="bg-surface-container rounded-xl p-3 flex justify-between text-sm">
+                      <span className="text-on-surface-variant">Revenu total potentiel</span>
+                      <span className="font-bold text-primary">{fmt(form.units.reduce((s, u) => s + Number(u.rent || 0), 0))}/mois</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="sticky bottom-0 bg-surface border-t border-outline-variant/20 px-6 py-4 flex justify-between rounded-b-3xl">
+              <button onClick={() => { setModal(null); setTarget(null); }}
+                className="px-4 py-2 rounded-xl text-on-surface-variant hover:bg-surface-container-high text-sm font-medium">
+                Annuler
+              </button>
+              <div className="flex gap-3">
+                {step > 1 && (
+                  <button onClick={() => setStep(1)} className="px-4 py-2 rounded-xl bg-surface-container text-on-surface text-sm font-semibold">
+                    ← Précédent
+                  </button>
+                )}
+                {step < 2 ? (
+                  <button onClick={() => setStep(2)} disabled={!form.name || !form.address}
+                    className="px-5 py-2 rounded-xl bg-primary text-on-primary text-sm font-bold hover:bg-primary/90 disabled:opacity-40">
+                    Suivant →
+                  </button>
+                ) : (
+                  <button onClick={handleSave} disabled={!form.name || (!form.isBuilding && !form.rent)}
+                    className="px-5 py-2 rounded-xl bg-primary text-on-primary text-sm font-bold hover:bg-primary/90 disabled:opacity-40 flex items-center gap-2">
+                    <Icon name="save" size={16} /> Enregistrer
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* ── Modal Détail bien simple ──────────────────────────────────────── */}
+      {modal === 'detail' && target && !target.isBuilding && (
+        <ModalOverlay onClose={() => setModal(null)}>
+          <div className="bg-surface rounded-3xl w-full max-w-md">
+            <div className="relative h-48 rounded-t-3xl overflow-hidden bg-surface-container">
+              {target.image
+                ? <img src={target.image} alt={target.name} className="w-full h-full object-cover" onError={e => e.target.style.display = 'none'} />
+                : <div className="w-full h-full flex items-center justify-center"><Icon name="apartment" size={48} className="text-outline-variant" /></div>
+              }
+              <button onClick={() => setModal(null)} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60">
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="flex justify-between items-start mb-4">
+                <h2 className="font-bold text-xl text-on-surface">{target.name}</h2>
+                <span className={`text-xs px-2 py-1 rounded-full font-semibold ${STATUS_COLORS[target.status]}`}>{target.status}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm mb-6">
+                {[
+                  ['Adresse', target.address], ['Type', target.type],
+                  ['Loyer', fmt(target.rent) + '/mois'], ['Propriétaire', target.owner || '—'],
+                  ['Surface', target.surface ? `${target.surface} m²` : '—'], ['Pièces', target.rooms || '—'],
+                ].map(([l, v]) => (
+                  <div key={l} className="bg-surface-container rounded-xl p-3">
+                    <p className="text-xs text-on-surface-variant mb-0.5">{l}</p>
+                    <p className={`font-semibold ${l === 'Loyer' ? 'text-primary' : 'text-on-surface'}`}>{v}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => { setModal('delete'); }}
+                  className="flex-1 py-2.5 rounded-xl border border-error text-error font-semibold text-sm hover:bg-error-container/30">
+                  Supprimer
+                </button>
+                <button onClick={() => { openEdit(target); }}
+                  className="flex-1 py-2.5 rounded-xl bg-primary text-on-primary font-semibold text-sm hover:bg-primary/90">
+                  Modifier
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* ── Modal Détail immeuble ─────────────────────────────────────────── */}
+      {modal === 'detail' && target?.isBuilding && (
+        <ModalOverlay onClose={() => setModal(null)}>
+          <div className="bg-surface rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-surface border-b border-outline-variant/20 px-6 py-4 flex items-center justify-between rounded-t-3xl">
+              <div>
+                <h2 className="font-bold text-lg text-on-surface">{target.name}</h2>
+                <p className="text-sm text-on-surface-variant flex items-center gap-1 mt-0.5">
+                  <Icon name="location_on" size={14} />{target.address}
+                </p>
+              </div>
+              <button onClick={() => setModal(null)} className="text-on-surface-variant hover:text-on-surface">
+                <Icon name="close" size={22} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {/* Stats immeuble */}
+              <div className="grid grid-cols-4 gap-3 mb-6">
+                {[
+                  { l: 'Total', v: target.units?.length || 0, c: 'text-primary' },
+                  { l: 'Loués', v: target.units?.filter(u => u.status === 'Loué').length || 0, c: 'text-green-600' },
+                  { l: 'Libres', v: target.units?.filter(u => u.status === 'Disponible').length || 0, c: 'text-blue-600' },
+                  { l: 'Maintenance', v: target.units?.filter(u => u.status === 'Maintenance').length || 0, c: 'text-error' },
+                ].map(s => (
+                  <div key={s.l} className="bg-surface-container rounded-xl p-3 text-center">
+                    <p className={`text-2xl font-black ${s.c}`}>{s.v}</p>
+                    <p className="text-xs text-on-surface-variant mt-0.5">{s.l}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-primary-container/30 rounded-xl p-3 mb-6 flex justify-between items-center">
+                <span className="text-sm text-on-surface-variant font-medium">Revenu mensuel total</span>
+                <span className="font-black text-primary">{fmt(buildingRevenue(target.units))}/mois</span>
+              </div>
+
+              {/* Liste des unités */}
+              <div className="flex items-center justify-between mb-3">
+                <p className="font-semibold text-on-surface">Liste des appartements</p>
+                {!addingUnitToDetail && (
+                  <button onClick={() => { setNewDetailUnit(EMPTY_UNIT); setAddingUnitToDetail(true); setDetailUnitEdit(null); }}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:bg-primary/90">
+                    <Icon name="add" size={16} /> Ajouter
+                  </button>
+                )}
+              </div>
+
+              {addingUnitToDetail && (
+                <div className="mb-3">
+                  <UnitForm unit={newDetailUnit} onChange={setNewDetailUnit}
+                    onSave={() => addUnitToBuilding(target)}
+                    onCancel={() => setAddingUnitToDetail(false)} />
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2">
+                {(target.units || []).map(u => (
+                  detailUnitEdit?.id === u.id ? (
+                    <UnitForm key={u.id} unit={detailUnitEdit} onChange={setDetailUnitEdit}
+                      onSave={() => updateUnitInBuilding(target, detailUnitEdit)}
+                      onCancel={() => setDetailUnitEdit(null)} />
+                  ) : (
+                    <UnitRow key={u.id} unit={u}
+                      onEdit={u => { setDetailUnitEdit(u); setAddingUnitToDetail(false); }}
+                      onDelete={id => deleteUnitFromBuilding(target, id)} />
+                  )
+                ))}
+                {(target.units || []).length === 0 && !addingUnitToDetail && (
+                  <div className="text-center py-8 text-on-surface-variant border-2 border-dashed border-outline-variant/30 rounded-xl">
+                    <p className="text-sm">Aucun appartement enregistré</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-surface border-t border-outline-variant/20 px-6 py-4 flex gap-3 rounded-b-3xl">
+              <button onClick={() => { setModal('delete'); }}
+                className="px-4 py-2 rounded-xl border border-error text-error font-semibold text-sm hover:bg-error-container/30">
+                Supprimer l'immeuble
+              </button>
+              <button onClick={() => openEdit(target)}
+                className="flex-1 py-2 rounded-xl bg-primary text-on-primary font-semibold text-sm hover:bg-primary/90">
+                Modifier les infos
+              </button>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* ── Modal Confirmation suppression ───────────────────────────────── */}
+      {modal === 'delete' && target && (
+        <ModalOverlay onClose={() => setModal(null)}>
+          <div className="bg-surface rounded-3xl w-full max-w-sm p-6 text-center">
+            <div className="w-16 h-16 rounded-full bg-error-container flex items-center justify-center mx-auto mb-4">
+              <Icon name="warning" size={32} className="text-error" />
+            </div>
+            <h3 className="font-bold text-lg text-on-surface mb-2">Supprimer ce bien ?</h3>
+            <p className="text-sm text-on-surface-variant mb-2">
+              <strong className="text-on-surface">"{target.name}"</strong>
+            </p>
+            <p className="text-xs text-on-surface-variant mb-6">Cette action est irréversible.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setModal(null)}
+                className="flex-1 py-2.5 rounded-xl bg-surface-container text-on-surface font-semibold text-sm">
+                Annuler
+              </button>
+              <button onClick={handleDelete}
+                className="flex-1 py-2.5 rounded-xl bg-error text-on-error font-bold text-sm">
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+    </div>
+  );
+}
+
+// ── Cartes ────────────────────────────────────────────────────────────────────
+function BuildingCard({ building, onDetail, onEdit, onDelete }) {
+  const units = building.units || [];
+  const loued = units.filter(u => u.status === 'Loué').length;
+  const libres = units.filter(u => u.status === 'Disponible').length;
+  const maint = units.filter(u => u.status === 'Maintenance').length;
+  const revenue = buildingRevenue(units);
+  const rate = units.length > 0 ? Math.round((loued / units.length) * 100) : 0;
+
+  return (
+    <div onClick={onDetail} className="bg-surface rounded-2xl overflow-hidden border border-outline-variant/20 shadow-sm hover:shadow-md transition-shadow cursor-pointer group">
+      <div className="relative h-44 overflow-hidden bg-surface-container">
+        {building.image
+          ? <img src={building.image} alt={building.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" onError={e => e.target.style.display = 'none'} />
+          : <div className="w-full h-full flex items-center justify-center"><Icon name="domain" size={48} className="text-outline-variant" /></div>
+        }
+        <div className="absolute top-3 left-3">
+          <span className="bg-primary text-on-primary text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1">
+            <Icon name="domain" size={12} /> Immeuble · {units.length} appts
+          </span>
+        </div>
+        <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={e => { e.stopPropagation(); onEdit(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-primary shadow hover:bg-white">
+            <Icon name="edit" size={14} />
+          </button>
+          <button onClick={e => { e.stopPropagation(); onDelete(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-error shadow hover:bg-white">
+            <Icon name="delete" size={14} />
+          </button>
+        </div>
+      </div>
+
+      <div className="p-4">
+        <h3 className="font-bold text-on-surface mb-1">{building.name}</h3>
+        <p className="text-xs text-on-surface-variant flex items-center gap-1 mb-3">
+          <Icon name="location_on" size={12} />{building.address}
+        </p>
+
+        {/* Barre de taux */}
+        <div className="mb-3">
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-on-surface-variant">Occupation</span>
+            <span className="font-bold text-green-600">{rate}%</span>
+          </div>
+          <div className="h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+            <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${rate}%` }} />
+          </div>
+        </div>
+
+        {/* Stats unités */}
+        <div className="flex gap-2 mb-3">
+          {[
+            { v: loued,  l: 'Loués',  c: 'bg-green-100 text-green-700' },
+            { v: libres, l: 'Libres', c: 'bg-blue-50 text-blue-700' },
+            { v: maint,  l: 'Maint.', c: 'bg-red-50 text-red-700' },
+          ].map(s => (
+            <div key={s.l} className={`flex-1 text-center py-1 rounded-lg text-xs font-semibold ${s.c}`}>
+              <p className="font-black text-base leading-tight">{s.v}</p>
+              <p>{s.l}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between pt-3 border-t border-outline-variant/10">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container text-xs font-bold">
+              {building.ownerInitials || '?'}
+            </div>
+            <span className="text-xs text-on-surface-variant">{building.owner}</span>
+          </div>
+          <span className="font-bold text-primary text-sm">{fmt(revenue)}/mois</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PropertyCard({ property, onDetail, onEdit, onDelete }) {
+  return (
+    <div onClick={onDetail} className="bg-surface rounded-2xl overflow-hidden border border-outline-variant/20 shadow-sm hover:shadow-md transition-shadow cursor-pointer group">
+      <div className="relative h-44 overflow-hidden bg-surface-container">
+        {property.image
+          ? <img src={property.image} alt={property.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" onError={e => e.target.style.display = 'none'} />
+          : <div className="w-full h-full flex items-center justify-center"><Icon name="apartment" size={48} className="text-outline-variant" /></div>
+        }
+        <div className="absolute top-3 left-3">
+          <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${STATUS_COLORS[property.status] || 'bg-surface-container text-on-surface'}`}>{property.status}</span>
+        </div>
+        <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={e => { e.stopPropagation(); onEdit(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-primary shadow hover:bg-white">
+            <Icon name="edit" size={14} />
+          </button>
+          <button onClick={e => { e.stopPropagation(); onDelete(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-error shadow hover:bg-white">
+            <Icon name="delete" size={14} />
+          </button>
+        </div>
+      </div>
+      <div className="p-4">
+        <h3 className="font-bold text-on-surface mb-1">{property.name}</h3>
+        <p className="text-xs text-on-surface-variant flex items-center gap-1 mb-3">
+          <Icon name="location_on" size={12} />{property.address}
+        </p>
+        {(property.surface > 0 || property.rooms > 0) && (
+          <div className="flex gap-3 text-xs text-on-surface-variant mb-3">
+            {property.surface > 0 && <span className="flex items-center gap-1"><Icon name="straighten" size={12} />{property.surface} m²</span>}
+            {property.rooms > 0 && <span className="flex items-center gap-1"><Icon name="door_open" size={12} />{property.rooms} pièces</span>}
+          </div>
+        )}
+        <div className="flex items-center justify-between pt-3 border-t border-outline-variant/10">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container text-xs font-bold">
+              {property.ownerInitials || '?'}
+            </div>
+            <span className="text-xs text-on-surface-variant">{property.owner}</span>
+          </div>
+          <span className="font-bold text-primary text-sm">{fmt(property.rent)}/mois</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModalOverlay({ children, onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+      {children}
     </div>
   );
 }

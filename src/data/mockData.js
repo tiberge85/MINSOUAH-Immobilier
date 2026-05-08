@@ -2,11 +2,11 @@
 export const properties = [
   {
     id: 1,
-    name: 'IMMEUBLE NORA',
-    address: '12 Rue de la Marine, Cannes',
+    name: 'Villa Azur',
+    address: 'Abidjan, Cocody Angré',
     type: 'Villa',
     status: 'Loué',
-    rent: 4200,
+    rent: 450000,
     surface: 320,
     rooms: 6,
     owner: 'Jean Dupont',
@@ -15,11 +15,11 @@ export const properties = [
   },
   {
     id: 2,
-    name: 'Le Belvédère',
-    address: '45 Avenue des Alpes, Lyon',
+    name: 'Appartement Plateau',
+    address: 'Abidjan, Plateau',
     type: 'Appartement',
     status: 'Disponible',
-    rent: 1850,
+    rent: 180000,
     surface: 85,
     rooms: 3,
     owner: 'Marie Roche',
@@ -28,11 +28,11 @@ export const properties = [
   },
   {
     id: 3,
-    name: 'Résidence Étoile',
-    address: '88 Rue de Rivoli, Paris',
-    type: 'Appartement',
+    name: 'Villa Riviera',
+    address: 'Abidjan, Bingerville',
+    type: 'Villa',
     status: 'Maintenance',
-    rent: 3100,
+    rent: 320000,
     surface: 110,
     rooms: 4,
     owner: 'Arthur Lefebvre',
@@ -42,10 +42,10 @@ export const properties = [
   {
     id: 4,
     name: 'Château des Pins',
-    address: 'Route de Grasse, Mougins',
+    address: 'Abidjan, Riviera 3',
     type: 'Villa',
     status: 'Loué',
-    rent: 7500,
+    rent: 750000,
     surface: 580,
     rooms: 9,
     owner: 'Paul Lambert',
@@ -55,10 +55,10 @@ export const properties = [
   {
     id: 5,
     name: 'Espace Commerce Plus',
-    address: '22 Boulevard Hausmann, Paris',
+    address: 'Abidjan, Zone 4',
     type: 'Commerce',
     status: 'Loué',
-    rent: 8900,
+    rent: 890000,
     surface: 210,
     rooms: 0,
     owner: 'Sophie Martin',
@@ -67,16 +67,61 @@ export const properties = [
   },
   {
     id: 6,
-    name: 'Studio Gambetta',
-    address: '14 Rue de la Paix, Marseille',
+    name: 'Studio Marcory',
+    address: 'Abidjan, Marcory',
     type: 'Appartement',
-    status: 'Disponible',
-    rent: 920,
+    status: 'Loué',
+    rent: 95000,
     surface: 32,
     rooms: 1,
     owner: 'Jean Dupont',
     ownerInitials: 'JD',
     image: 'https://images.unsplash.com/photo-1493809842364-78817add7ffb?w=400&h=250&fit=crop&q=80',
+  },
+  // ── Immeuble avec plusieurs appartements ────────────────────────────────────
+  {
+    id: 7,
+    name: 'Résidence Les Cocotiers',
+    address: 'Abidjan, Cocody 2 Plateaux',
+    type: 'Immeuble',
+    status: 'Loué',
+    rent: 0,
+    surface: 0,
+    rooms: 0,
+    owner: 'Jean Dupont',
+    ownerInitials: 'JD',
+    isBuilding: true,
+    image: 'https://images.unsplash.com/photo-1486325212027-8081e485255e?w=400&h=250&fit=crop&q=80',
+    units: [
+      { id: 'u1', number: 'Appt 01', floor: 'RDC', surface: 65, rooms: 2, rent: 150000, status: 'Loué' },
+      { id: 'u2', number: 'Appt 02', floor: 'RDC', surface: 65, rooms: 2, rent: 150000, status: 'Disponible' },
+      { id: 'u3', number: 'Appt 03', floor: '1er étage', surface: 75, rooms: 3, rent: 200000, status: 'Loué' },
+      { id: 'u4', number: 'Appt 04', floor: '1er étage', surface: 75, rooms: 3, rent: 200000, status: 'Loué' },
+      { id: 'u5', number: 'Appt 05', floor: '2ème étage', surface: 80, rooms: 3, rent: 220000, status: 'Maintenance' },
+      { id: 'u6', number: 'Appt 06', floor: '2ème étage', surface: 80, rooms: 3, rent: 220000, status: 'Disponible' },
+      { id: 'u7', number: 'Appt 07', floor: '3ème étage', surface: 90, rooms: 4, rent: 280000, status: 'Loué' },
+      { id: 'u8', number: 'Appt 08', floor: '3ème étage', surface: 90, rooms: 4, rent: 280000, status: 'Loué' },
+    ],
+  },
+  {
+    id: 8,
+    name: 'Immeuble Nora',
+    address: 'Abidjan, Yopougon',
+    type: 'Immeuble',
+    status: 'Loué',
+    rent: 0,
+    surface: 0,
+    rooms: 0,
+    owner: 'Marie Roche',
+    ownerInitials: 'MR',
+    isBuilding: true,
+    image: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=400&h=250&fit=crop&q=80',
+    units: [
+      { id: 'n1', number: 'Appt A1', floor: 'RDC', surface: 55, rooms: 2, rent: 100000, status: 'Loué' },
+      { id: 'n2', number: 'Appt A2', floor: 'RDC', surface: 55, rooms: 2, rent: 100000, status: 'Loué' },
+      { id: 'n3', number: 'Appt B1', floor: '1er étage', surface: 60, rooms: 2, rent: 120000, status: 'Disponible' },
+      { id: 'n4', number: 'Appt B2', floor: '1er étage', surface: 60, rooms: 2, rent: 120000, status: 'Loué' },
+    ],
   },
 ];
 
@@ -99,7 +144,7 @@ export const contracts = [
     propertyIcon: 'storefront',
     tenant: 'Vertex Solutions Inc.',
     rent: 8900,
-    endDate: '02 Nov 2024',
+    endDate: '02 Nov 2025',
     status: 'Expirant',
   },
   {
@@ -129,7 +174,7 @@ export const contracts = [
     propertyIcon: 'apartment',
     tenant: 'Clara Fontaine',
     rent: 3100,
-    endDate: '28 Fév 2024',
+    endDate: '28 Fév 2025',
     status: 'Résilié',
   },
   {
@@ -266,7 +311,7 @@ export const owners = [
 export const transactions = [
   {
     id: 1,
-    date: '24 Oct 2024',
+    date: '08 Mai 2025',
     entity: 'Villa Azur',
     description: 'Loyer Résidentiel',
     type: 'Loyer',
@@ -276,8 +321,8 @@ export const transactions = [
   },
   {
     id: 2,
-    date: '22 Oct 2024',
-    entity: 'Résidence Étoile',
+    date: '06 Mai 2025',
+    entity: 'Villa Riviera',
     description: 'Réparation HVAC urgente',
     type: 'Réparations',
     status: 'Payé',
@@ -286,7 +331,7 @@ export const transactions = [
   },
   {
     id: 3,
-    date: '20 Oct 2024',
+    date: '05 Mai 2025',
     entity: 'Portefeuille Global',
     description: 'Taxes foncières T3',
     type: 'Taxes',
@@ -296,7 +341,7 @@ export const transactions = [
   },
   {
     id: 4,
-    date: '18 Oct 2024',
+    date: '05 Mai 2025',
     entity: 'Espace Commerce Plus',
     description: 'Loyer Commercial',
     type: 'Loyer',
@@ -306,7 +351,7 @@ export const transactions = [
   },
   {
     id: 5,
-    date: '16 Oct 2024',
+    date: '04 Mai 2025',
     entity: 'Château des Pins',
     description: 'Loyer Résidentiel',
     type: 'Loyer',
@@ -316,7 +361,7 @@ export const transactions = [
   },
   {
     id: 6,
-    date: '15 Oct 2024',
+    date: '03 Mai 2025',
     entity: 'Le Belvédère',
     description: 'Travaux de peinture',
     type: 'Réparations',
@@ -326,7 +371,7 @@ export const transactions = [
   },
   {
     id: 7,
-    date: '10 Oct 2024',
+    date: '02 Mai 2025',
     entity: 'Studio Gambetta',
     description: 'Loyer Résidentiel',
     type: 'Loyer',
@@ -336,7 +381,7 @@ export const transactions = [
   },
   {
     id: 8,
-    date: '08 Oct 2024',
+    date: '01 Mai 2025',
     entity: 'Villa Azur',
     description: 'Frais de gestion',
     type: 'Taxes',
@@ -476,22 +521,26 @@ export const alerts = [
 
 // ─── Rent Payments ─────────────────────────────────────────────────────────────
 export const payments = [
-  // Villa Azur — Julianne Moore (contractId 1)
-  { id: 1,  contractId: 1, propertyName: 'Villa Azur',           tenantName: 'Julianne Moore',       amount: 4200, month: 'Septembre 2024', dueDate: '05 Sep 2024', paidDate: '04 Sep 2024', status: 'Payé',     reminderSent: false, reminderCount: 0 },
-  { id: 2,  contractId: 1, propertyName: 'Villa Azur',           tenantName: 'Julianne Moore',       amount: 4200, month: 'Octobre 2024',   dueDate: '05 Oct 2024', paidDate: '03 Oct 2024', status: 'Payé',     reminderSent: false, reminderCount: 0 },
-  { id: 3,  contractId: 1, propertyName: 'Villa Azur',           tenantName: 'Julianne Moore',       amount: 4200, month: 'Novembre 2024',  dueDate: '05 Nov 2024', paidDate: null,          status: 'Impayé',   reminderSent: false, reminderCount: 0 },
-  // Espace Commerce Plus — Vertex Solutions (contractId 2)
-  { id: 4,  contractId: 2, propertyName: 'Espace Commerce Plus', tenantName: 'Vertex Solutions Inc.',amount: 8900, month: 'Septembre 2024', dueDate: '01 Sep 2024', paidDate: '01 Sep 2024', status: 'Payé',     reminderSent: false, reminderCount: 0 },
-  { id: 5,  contractId: 2, propertyName: 'Espace Commerce Plus', tenantName: 'Vertex Solutions Inc.',amount: 8900, month: 'Octobre 2024',   dueDate: '01 Oct 2024', paidDate: '01 Oct 2024', status: 'Payé',     reminderSent: false, reminderCount: 0 },
-  { id: 6,  contractId: 2, propertyName: 'Espace Commerce Plus', tenantName: 'Vertex Solutions Inc.',amount: 8900, month: 'Novembre 2024',  dueDate: '01 Nov 2024', paidDate: null,          status: 'En retard',reminderSent: true,  reminderCount: 1 },
-  // Château des Pins — Sarah Connor (contractId 3)
-  { id: 7,  contractId: 3, propertyName: 'Château des Pins',     tenantName: 'Sarah Connor',         amount: 7500, month: 'Septembre 2024', dueDate: '05 Sep 2024', paidDate: '05 Sep 2024', status: 'Payé',     reminderSent: false, reminderCount: 0 },
-  { id: 8,  contractId: 3, propertyName: 'Château des Pins',     tenantName: 'Sarah Connor',         amount: 7500, month: 'Octobre 2024',   dueDate: '05 Oct 2024', paidDate: '08 Oct 2024', status: 'Payé',     reminderSent: true,  reminderCount: 1 },
-  { id: 9,  contractId: 3, propertyName: 'Château des Pins',     tenantName: 'Sarah Connor',         amount: 7500, month: 'Novembre 2024',  dueDate: '05 Nov 2024', paidDate: null,          status: 'Impayé',   reminderSent: false, reminderCount: 0 },
-  // Studio Gambetta — Hugo Bernard (contractId 6)
-  { id: 10, contractId: 6, propertyName: 'Studio Gambetta',      tenantName: 'Hugo Bernard',         amount: 920,  month: 'Septembre 2024', dueDate: '05 Sep 2024', paidDate: '05 Sep 2024', status: 'Payé',     reminderSent: false, reminderCount: 0 },
-  { id: 11, contractId: 6, propertyName: 'Studio Gambetta',      tenantName: 'Hugo Bernard',         amount: 920,  month: 'Octobre 2024',   dueDate: '05 Oct 2024', paidDate: '12 Oct 2024', status: 'Payé',     reminderSent: true,  reminderCount: 2 },
-  { id: 12, contractId: 6, propertyName: 'Studio Gambetta',      tenantName: 'Hugo Bernard',         amount: 920,  month: 'Novembre 2024',  dueDate: '05 Nov 2024', paidDate: null,          status: 'En retard',reminderSent: true,  reminderCount: 1 },
+  // Villa Azur — Julianne Moore (contractId 1) — 450 000 FCFA
+  { id: 1,  contractId: 1, propertyName: 'Villa Azur',           tenantName: 'Julianne Moore',       amount: 450000, month: 'Février 2025',  dueDate: '05 Fév 2025', paidDate: '04 Fév 2025', status: 'Payé',     reminderSent: false, reminderCount: 0 },
+  { id: 2,  contractId: 1, propertyName: 'Villa Azur',           tenantName: 'Julianne Moore',       amount: 450000, month: 'Mars 2025',      dueDate: '05 Mar 2025', paidDate: '03 Mar 2025', status: 'Payé',     reminderSent: false, reminderCount: 0 },
+  { id: 3,  contractId: 1, propertyName: 'Villa Azur',           tenantName: 'Julianne Moore',       amount: 450000, month: 'Avril 2025',     dueDate: '05 Avr 2025', paidDate: '07 Avr 2025', status: 'Payé',     reminderSent: false, reminderCount: 0 },
+  { id: 4,  contractId: 1, propertyName: 'Villa Azur',           tenantName: 'Julianne Moore',       amount: 450000, month: 'Mai 2025',       dueDate: '05 Mai 2025', paidDate: null,          status: 'Impayé',   reminderSent: false, reminderCount: 0 },
+  // Espace Commerce Plus — Vertex Solutions (contractId 2) — 890 000 FCFA
+  { id: 5,  contractId: 2, propertyName: 'Espace Commerce Plus', tenantName: 'Vertex Solutions Inc.',amount: 890000, month: 'Février 2025',  dueDate: '01 Fév 2025', paidDate: '01 Fév 2025', status: 'Payé',     reminderSent: false, reminderCount: 0 },
+  { id: 6,  contractId: 2, propertyName: 'Espace Commerce Plus', tenantName: 'Vertex Solutions Inc.',amount: 890000, month: 'Mars 2025',      dueDate: '01 Mar 2025', paidDate: '01 Mar 2025', status: 'Payé',     reminderSent: false, reminderCount: 0 },
+  { id: 7,  contractId: 2, propertyName: 'Espace Commerce Plus', tenantName: 'Vertex Solutions Inc.',amount: 890000, month: 'Avril 2025',     dueDate: '01 Avr 2025', paidDate: '03 Avr 2025', status: 'Payé',     reminderSent: false, reminderCount: 0 },
+  { id: 8,  contractId: 2, propertyName: 'Espace Commerce Plus', tenantName: 'Vertex Solutions Inc.',amount: 890000, month: 'Mai 2025',       dueDate: '01 Mai 2025', paidDate: null,          status: 'En retard',reminderSent: true,  reminderCount: 1 },
+  // Château des Pins — Sarah Connor (contractId 3) — 750 000 FCFA
+  { id: 9,  contractId: 3, propertyName: 'Château des Pins',     tenantName: 'Sarah Connor',         amount: 750000, month: 'Février 2025',  dueDate: '05 Fév 2025', paidDate: '05 Fév 2025', status: 'Payé',     reminderSent: false, reminderCount: 0 },
+  { id: 10, contractId: 3, propertyName: 'Château des Pins',     tenantName: 'Sarah Connor',         amount: 750000, month: 'Mars 2025',      dueDate: '05 Mar 2025', paidDate: '08 Mar 2025', status: 'Payé',     reminderSent: true,  reminderCount: 1 },
+  { id: 11, contractId: 3, propertyName: 'Château des Pins',     tenantName: 'Sarah Connor',         amount: 750000, month: 'Avril 2025',     dueDate: '05 Avr 2025', paidDate: '05 Avr 2025', status: 'Payé',     reminderSent: false, reminderCount: 0 },
+  { id: 12, contractId: 3, propertyName: 'Château des Pins',     tenantName: 'Sarah Connor',         amount: 750000, month: 'Mai 2025',       dueDate: '05 Mai 2025', paidDate: null,          status: 'Impayé',   reminderSent: false, reminderCount: 0 },
+  // Studio Marcory — Hugo Bernard (contractId 6) — 95 000 FCFA
+  { id: 13, contractId: 6, propertyName: 'Studio Marcory',       tenantName: 'Hugo Bernard',         amount: 95000,  month: 'Février 2025',  dueDate: '05 Fév 2025', paidDate: '05 Fév 2025', status: 'Payé',     reminderSent: false, reminderCount: 0 },
+  { id: 14, contractId: 6, propertyName: 'Studio Marcory',       tenantName: 'Hugo Bernard',         amount: 95000,  month: 'Mars 2025',      dueDate: '05 Mar 2025', paidDate: '12 Mar 2025', status: 'Payé',     reminderSent: true,  reminderCount: 1 },
+  { id: 15, contractId: 6, propertyName: 'Studio Marcory',       tenantName: 'Hugo Bernard',         amount: 95000,  month: 'Avril 2025',     dueDate: '05 Avr 2025', paidDate: '05 Avr 2025', status: 'Payé',     reminderSent: false, reminderCount: 0 },
+  { id: 16, contractId: 6, propertyName: 'Studio Marcory',       tenantName: 'Hugo Bernard',         amount: 95000,  month: 'Mai 2025',       dueDate: '05 Mai 2025', paidDate: null,          status: 'En retard',reminderSent: true,  reminderCount: 1 },
 ];
 
 // ─── Conversations ─────────────────────────────────────────────────────────────
