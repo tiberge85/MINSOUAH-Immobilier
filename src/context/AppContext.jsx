@@ -12,8 +12,58 @@ import {
   payments as mockPayments,
 } from '../data/mockData';
 
-// ─── Initial state ─────────────────────────────────────────────────────────────
-const INITIAL_STATE = {
+// ─── Default admin account (always preserved) ─────────────────────────────────
+export const DEFAULT_ADMIN = {
+  id: 1,
+  email: 'admin@minsouah.ci',
+  password: 'admin123',
+  role: 'ADMIN',
+  name: 'Administrateur',
+  initials: 'AD',
+  color: 'bg-primary text-on-primary',
+  personId: null,
+  firstLogin: false,
+  suspended: false,
+  createdAt: new Date().toISOString(),
+  lastLogin: null,
+  failedAttempts: 0,
+  lockedUntil: null,
+};
+
+const DEFAULT_ORG = {
+  companyName: 'Minsouah Immobilier',
+  address: "Abidjan, Côte d'Ivoire",
+  phone: '',
+  email: '',
+  currency: 'XOF',
+  language: 'fr',
+  notif: {
+    whatsapp: true, email: true,
+    rentReminder: true, paymentConfirm: true,
+    overdueAlert: true, maintenanceUpdate: false,
+  },
+};
+
+// ─── EMPTY state — used by full reset (no demo data) ──────────────────────────
+const EMPTY_STATE = {
+  properties:    [],
+  contracts:     [],
+  tenants:       [],
+  owners:        [],
+  transactions:  [],
+  tickets:       [],
+  conversations: [],
+  revenueData:   mockRevenueData,
+  alerts:        [],
+  payments:      [],
+  currentUser:   null,
+  users:         [DEFAULT_ADMIN],
+  orgSettings:   DEFAULT_ORG,
+};
+
+// ─── DEMO state — used by demo reload ─────────────────────────────────────────
+const DEMO_STATE = {
+  ...EMPTY_STATE,
   properties:    mockProperties,
   contracts:     mockContracts,
   tenants:       mockTenants,
@@ -21,23 +71,8 @@ const INITIAL_STATE = {
   transactions:  mockTransactions,
   tickets:       mockTickets,
   conversations: mockConversations,
-  revenueData:   mockRevenueData,
   alerts:        mockAlerts,
   payments:      mockPayments,
-  currentUser:   null,
-  orgSettings: {
-    companyName: 'Minsouah Immobilier',
-    address: 'Abidjan, Côte d\'Ivoire',
-    phone: '',
-    email: '',
-    currency: 'XOF',
-    language: 'fr',
-    notif: {
-      whatsapp: true, email: true,
-      rentReminder: true, paymentConfirm: true,
-      overdueAlert: true, maintenanceUpdate: false,
-    },
-  },
 };
 
 // ─── Reducer ───────────────────────────────────────────────────────────────────
@@ -122,18 +157,61 @@ function reducer(state, action) {
         ...state,
         conversations: state.conversations.map(c => {
           if (c.id !== convId) return c;
-          return {
-            ...c,
-            lastMessage: message.text,
-            time: message.time,
-            unread: 0,
-            messages: [...c.messages, message],
-          };
+          return { ...c, lastMessage: message.text, time: message.time, unread: 0, messages: [...c.messages, message] };
         }),
       };
     }
     case 'MARK_READ':
       return { ...state, conversations: state.conversations.map(c => c.id === payload ? { ...c, unread: 0 } : c) };
+
+    // ── User accounts ─────────────────────────────────────────────────────────
+    case 'ADD_USER': {
+      const users = state.users || [DEFAULT_ADMIN];
+      if (users.some(u => u.email === payload.email)) return state;
+      return { ...state, users: [...users, { ...payload, id: Date.now(), failedAttempts: 0, lockedUntil: null, suspended: false, createdAt: new Date().toISOString(), lastLogin: null }] };
+    }
+    case 'UPDATE_USER':
+      return { ...state, users: (state.users || [DEFAULT_ADMIN]).map(u => u.id === payload.id ? { ...u, ...payload } : u) };
+    case 'DELETE_USER':
+      return { ...state, users: (state.users || [DEFAULT_ADMIN]).filter(u => u.id !== payload && u.id !== 1) };
+    case 'SUSPEND_USER':
+      return { ...state, users: (state.users || [DEFAULT_ADMIN]).map(u => u.id === payload ? { ...u, suspended: !u.suspended } : u) };
+    case 'CHANGE_PASSWORD':
+      return {
+        ...state,
+        users: (state.users || [DEFAULT_ADMIN]).map(u =>
+          u.email === payload.email
+            ? { ...u, password: payload.newPassword, firstLogin: false, failedAttempts: 0, lockedUntil: null }
+            : u
+        ),
+        currentUser: state.currentUser?.email === payload.email
+          ? { ...state.currentUser, firstLogin: false }
+          : state.currentUser,
+      };
+    case 'LOGIN_ATTEMPT': {
+      const { email, success } = payload;
+      if (success) {
+        return {
+          ...state,
+          users: (state.users || [DEFAULT_ADMIN]).map(u =>
+            u.email === email
+              ? { ...u, failedAttempts: 0, lockedUntil: null, lastLogin: new Date().toISOString() }
+              : u
+          ),
+        };
+      }
+      return {
+        ...state,
+        users: (state.users || [DEFAULT_ADMIN]).map(u => {
+          if (u.email !== email) return u;
+          const attempts = (u.failedAttempts || 0) + 1;
+          const lockedUntil = attempts >= 5
+            ? new Date(Date.now() + 15 * 60 * 1000).toISOString()
+            : null;
+          return { ...u, failedAttempts: attempts, lockedUntil };
+        }),
+      };
+    }
 
     // ── Auth ─────────────────────────────────────────────────────────────────
     case 'LOGIN':
@@ -154,9 +232,11 @@ function reducer(state, action) {
       return { ...state, orgSettings: { ...state.orgSettings, ...data } };
     }
 
-    // ── Reset to defaults ────────────────────────────────────────────────────
+    // ── Reset ────────────────────────────────────────────────────────────────
     case 'RESET':
-      return INITIAL_STATE;
+      return { ...EMPTY_STATE, users: (state.users || [DEFAULT_ADMIN]).filter(u => u.id === 1) };
+    case 'RESET_DEMO':
+      return { ...DEMO_STATE, users: state.users || [DEFAULT_ADMIN] };
 
     default:
       return state;
@@ -169,18 +249,22 @@ const AppContext = createContext(null);
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(
     reducer,
-    INITIAL_STATE,
+    EMPTY_STATE,
     (init) => {
       try {
         const saved = localStorage.getItem('minsouah_v1');
-        return saved ? JSON.parse(saved) : init;
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (!parsed.users) parsed.users = [DEFAULT_ADMIN];
+          return parsed;
+        }
+        return { ...DEMO_STATE };
       } catch {
-        return init;
+        return { ...DEMO_STATE };
       }
     }
   );
 
-  // Persist every change to localStorage
   useEffect(() => {
     localStorage.setItem('minsouah_v1', JSON.stringify(state));
   }, [state]);

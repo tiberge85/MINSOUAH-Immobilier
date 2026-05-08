@@ -266,12 +266,19 @@ export default function Settings() {
     if (importRef.current) importRef.current.value = '';
   };
 
-  /* ── Full reset ── */
+  /* ── Full reset (truly empty) ── */
   const handleFullReset = () => {
-    if (!window.confirm('Réinitialiser TOUTES les données et redémarrer ? Cette action est irréversible.')) return;
+    if (!window.confirm('Effacer TOUTES les données (biens, locataires, contrats, paiements) ?\n\nLes comptes utilisateurs sont conservés.\nCette action est irréversible.')) return;
     localStorage.removeItem('minsouah_v1');
     dispatch({ type: 'RESET' });
     navigate('/login');
+  };
+
+  /* ── Demo reload ── */
+  const handleDemoReload = () => {
+    if (!window.confirm('Recharger les données de démonstration ? Cela remplacera vos données actuelles.')) return;
+    dispatch({ type: 'RESET_DEMO' });
+    showToast('Données de démonstration rechargées');
   };
 
   return (
@@ -450,68 +457,12 @@ export default function Settings() {
 
           {/* ══════════ UTILISATEURS ══════════ */}
           {tab === 'users' && (
-            <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6">
-              <h2 className="font-bold text-lg text-on-surface mb-6 flex items-center gap-2">
-                <Icon name="group" filled /> Utilisateurs
-              </h2>
-
-              <section className="mb-6">
-                <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-3">Administrateurs</p>
-                <div className="flex items-center gap-3 p-3 bg-surface-container-high rounded-xl">
-                  {currentUser?.avatar
-                    ? <img src={currentUser.avatar} alt="" className="w-10 h-10 rounded-full object-cover" />
-                    : <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-sm">{currentUser?.initials || 'AD'}</div>
-                  }
-                  <div className="flex-1">
-                    <p className="font-semibold text-on-surface text-sm">{currentUser?.name || 'Administrateur'}</p>
-                    <p className="text-xs text-on-surface-variant">{currentUser?.email || 'admin@minsouah.ci'}</p>
-                  </div>
-                  <span className="text-xs bg-primary-container text-on-primary-container px-2 py-0.5 rounded-full font-semibold">Admin</span>
-                </div>
-              </section>
-
-              <section className="mb-6">
-                <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-3">Locataires ({state.tenants.length})</p>
-                <div className="flex flex-col gap-2 max-h-60 overflow-y-auto">
-                  {state.tenants.map(t => (
-                    <div key={t.id} className="flex items-center gap-3 p-3 bg-surface-container rounded-xl">
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${t.color}`}>{t.initials}</div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-on-surface text-sm truncate">{t.name}</p>
-                        <p className="text-xs text-on-surface-variant truncate">{t.email}</p>
-                      </div>
-                      <span className="text-xs bg-secondary-container text-on-secondary-container px-2 py-0.5 rounded-full font-semibold flex-shrink-0">Locataire</span>
-                    </div>
-                  ))}
-                  {state.tenants.length === 0 && <p className="text-sm text-on-surface-variant text-center py-4">Aucun locataire</p>}
-                </div>
-              </section>
-
-              <section>
-                <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-3">Propriétaires ({state.owners.length})</p>
-                <div className="flex flex-col gap-2 max-h-60 overflow-y-auto">
-                  {state.owners.map(o => (
-                    <div key={o.id} className="flex items-center gap-3 p-3 bg-surface-container rounded-xl">
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${o.color}`}>{o.initials}</div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-on-surface text-sm truncate">{o.name}</p>
-                        <p className="text-xs text-on-surface-variant truncate">{o.email}</p>
-                      </div>
-                      <span className="text-xs bg-tertiary-container text-on-tertiary-container px-2 py-0.5 rounded-full font-semibold flex-shrink-0">Propriétaire</span>
-                    </div>
-                  ))}
-                  {state.owners.length === 0 && <p className="text-sm text-on-surface-variant text-center py-4">Aucun propriétaire</p>}
-                </div>
-              </section>
-
-              <div className="mt-6 p-4 bg-surface-container-low rounded-xl border border-outline-variant/20">
-                <p className="text-sm text-on-surface-variant">
-                  Pour ajouter des locataires et propriétaires, utilisez la page
-                  <span className="font-semibold text-primary"> Gestion Locative</span>, onglet correspondant.
-                  Pour l'import en masse, allez dans l'onglet <span className="font-semibold text-primary">Données</span>.
-                </p>
-              </div>
-            </div>
+            <UserManagementTab
+              state={state}
+              dispatch={dispatch}
+              currentUser={currentUser}
+              showToast={showToast}
+            />
           )}
 
           {/* ══════════ NOTIFICATIONS ══════════ */}
@@ -687,7 +638,7 @@ export default function Settings() {
                     <Icon name="restart_alt" size={16} /> Réinitialisation partielle
                   </p>
                   <p className="text-xs text-amber-700 mb-3">Recharge les données de démonstration sans toucher au compte.</p>
-                  <button onClick={() => { if (window.confirm('Recharger les données de démonstration ?')) { dispatch({ type: 'RESET' }); showToast('Données réinitialisées'); } }}
+                  <button onClick={handleDemoReload}
                     className="px-4 py-2 bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-sm font-semibold hover:bg-amber-200 transition-colors">
                     Recharger les données démo
                   </button>
@@ -722,5 +673,321 @@ function Toggle({ checked, onChange }) {
       className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${checked ? 'bg-primary' : 'bg-outline-variant'}`}>
       <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${checked ? 'translate-x-7' : 'translate-x-1'}`} />
     </button>
+  );
+}
+
+/* ── Role config ────────────────────────────────────────────────────────────── */
+const ALL_ROLES = [
+  { value: 'ADMIN',      label: 'Administrateur',  color: 'bg-primary-container text-on-primary-container',     icon: 'admin_panel_settings' },
+  { value: 'MANAGER',    label: 'Manager',          color: 'bg-secondary-container text-on-secondary-container', icon: 'manage_history' },
+  { value: 'ACCOUNTANT', label: 'Comptable',        color: 'bg-tertiary-container text-on-tertiary-container',   icon: 'calculate' },
+  { value: 'TECHNICIAN', label: 'Technicien',       color: 'bg-surface-container-high text-on-surface',         icon: 'engineering' },
+  { value: 'OWNER',      label: 'Propriétaire',     color: 'bg-tertiary-container text-on-tertiary-container',   icon: 'manage_accounts' },
+  { value: 'TENANT',     label: 'Locataire',        color: 'bg-secondary-container text-on-secondary-container', icon: 'person' },
+];
+
+const ROLE_MAP = Object.fromEntries(ALL_ROLES.map(r => [r.value, r]));
+
+function UserManagementTab({ state, dispatch, currentUser, showToast }) {
+  const users = state.users || [];
+  const [showCreate, setShowCreate] = useState(false);
+  const [editUser, setEditUser] = useState(null);
+  const [filter, setFilter] = useState('');
+  const [newUser, setNewUser] = useState({
+    name: '', email: '', password: '', role: 'TENANT',
+    personId: null, firstLogin: true,
+  });
+
+  const filtered = users.filter(u =>
+    u.name?.toLowerCase().includes(filter.toLowerCase()) ||
+    u.email?.toLowerCase().includes(filter.toLowerCase())
+  );
+
+  const getInitials = (name) =>
+    name ? name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : '??';
+
+  const handleCreate = () => {
+    if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) {
+      showToast('Remplissez tous les champs obligatoires');
+      return;
+    }
+    if (users.some(u => u.email.toLowerCase() === newUser.email.toLowerCase())) {
+      showToast('Cet email est déjà utilisé');
+      return;
+    }
+    const initials = getInitials(newUser.name);
+    const roleInfo = ROLE_MAP[newUser.role] || ROLE_MAP.TENANT;
+    dispatch({
+      type: 'ADD_USER',
+      payload: {
+        ...newUser,
+        email: newUser.email.trim().toLowerCase(),
+        initials,
+        color: roleInfo.color,
+        firstLogin: true,
+      },
+    });
+    showToast(`Compte créé pour ${newUser.name} — mot de passe temporaire : ${newUser.password}`);
+    setNewUser({ name: '', email: '', password: '', role: 'TENANT', personId: null, firstLogin: true });
+    setShowCreate(false);
+  };
+
+  const handleSuspend = (u) => {
+    dispatch({ type: 'SUSPEND_USER', payload: u.id });
+    showToast(u.suspended ? `${u.name} réactivé` : `${u.name} suspendu`);
+  };
+
+  const handleDelete = (u) => {
+    if (!window.confirm(`Supprimer le compte de ${u.name} ? Cette action est irréversible.`)) return;
+    dispatch({ type: 'DELETE_USER', payload: u.id });
+    showToast(`Compte de ${u.name} supprimé`);
+  };
+
+  const handleResetPassword = (u) => {
+    const tmpPw = 'Tmp' + Math.random().toString(36).slice(2, 8);
+    dispatch({ type: 'CHANGE_PASSWORD', payload: { email: u.email, newPassword: tmpPw } });
+    dispatch({ type: 'UPDATE_USER', payload: { ...u, firstLogin: true, password: tmpPw } });
+    showToast(`Nouveau mot de passe temporaire pour ${u.name} : ${tmpPw}`);
+    alert(`Mot de passe temporaire de ${u.name} :\n\n${tmpPw}\n\nCommuniquez-le à l'utilisateur. Il devra le changer à sa prochaine connexion.`);
+  };
+
+  return (
+    <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6">
+      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
+        <h2 className="font-bold text-lg text-on-surface flex items-center gap-2">
+          <Icon name="group" filled /> Gestion des Comptes
+        </h2>
+        {currentUser?.role === 'ADMIN' && (
+          <button
+            onClick={() => setShowCreate(v => !v)}
+            className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors"
+          >
+            <Icon name={showCreate ? 'close' : 'person_add'} size={16} />
+            {showCreate ? 'Annuler' : 'Créer un compte'}
+          </button>
+        )}
+      </div>
+
+      {/* Create form */}
+      {showCreate && (
+        <div className="bg-primary/5 border border-primary/20 rounded-2xl p-5 mb-6">
+          <h3 className="font-bold text-on-surface mb-4 flex items-center gap-2">
+            <Icon name="person_add" size={18} className="text-primary" />
+            Nouveau compte utilisateur
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Nom complet *</label>
+              <input
+                type="text"
+                value={newUser.name}
+                onChange={e => setNewUser(u => ({ ...u, name: e.target.value }))}
+                placeholder="Prénom Nom"
+                className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Email *</label>
+              <input
+                type="email"
+                value={newUser.email}
+                onChange={e => setNewUser(u => ({ ...u, email: e.target.value }))}
+                placeholder="email@exemple.com"
+                className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Rôle *</label>
+              <select
+                value={newUser.role}
+                onChange={e => setNewUser(u => ({ ...u, role: e.target.value }))}
+                className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface text-sm"
+              >
+                {ALL_ROLES.map(r => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Mot de passe temporaire *</label>
+              <input
+                type="text"
+                value={newUser.password}
+                onChange={e => setNewUser(u => ({ ...u, password: e.target.value }))}
+                placeholder="Ex: Bienvenue2024!"
+                className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface text-sm font-mono"
+              />
+            </div>
+            {(newUser.role === 'TENANT') && (
+              <div className="md:col-span-2">
+                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Lier à un locataire</label>
+                <select
+                  value={newUser.personId || ''}
+                  onChange={e => setNewUser(u => ({ ...u, personId: e.target.value ? Number(e.target.value) : null }))}
+                  className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface text-sm"
+                >
+                  <option value="">— Aucun lien —</option>
+                  {(state.tenants || []).map(t => (
+                    <option key={t.id} value={t.id}>{t.name || `${t.firstName} ${t.lastName}`} — {t.email}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {(newUser.role === 'OWNER') && (
+              <div className="md:col-span-2">
+                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Lier à un propriétaire</label>
+                <select
+                  value={newUser.personId || ''}
+                  onChange={e => setNewUser(u => ({ ...u, personId: e.target.value ? Number(e.target.value) : null }))}
+                  className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface text-sm"
+                >
+                  <option value="">— Aucun lien —</option>
+                  {(state.owners || []).map(o => (
+                    <option key={o.id} value={o.id}>{o.name} — {o.email}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
+            <Icon name="info" size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-800">
+              L'utilisateur devra <strong>changer son mot de passe</strong> dès sa première connexion.
+              Communiquez-lui l'email et le mot de passe temporaire ci-dessus.
+            </p>
+          </div>
+          <div className="flex gap-3 mt-4 justify-end">
+            <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-high rounded-xl transition-colors">
+              Annuler
+            </button>
+            <button onClick={handleCreate} className="px-5 py-2 bg-primary text-on-primary text-sm font-bold rounded-xl hover:bg-primary/90 transition-colors flex items-center gap-2">
+              <Icon name="person_add" size={16} />
+              Créer le compte
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Search */}
+      <div className="relative mb-4">
+        <Icon name="search" size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+        <input
+          type="text"
+          placeholder="Rechercher par nom ou email..."
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface text-sm"
+        />
+      </div>
+
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        {[
+          { label: 'Total', value: users.length, color: 'bg-primary/10 text-primary' },
+          { label: 'Actifs', value: users.filter(u => !u.suspended).length, color: 'bg-green-100 text-green-700' },
+          { label: 'Suspendus', value: users.filter(u => u.suspended).length, color: 'bg-error/10 text-error' },
+        ].map(s => (
+          <div key={s.label} className={`rounded-xl p-3 text-center ${s.color.split(' ')[0]}`}>
+            <p className={`font-black text-xl ${s.color.split(' ')[1]}`}>{s.value}</p>
+            <p className="text-xs text-on-surface-variant">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* User list */}
+      <div className="flex flex-col gap-2">
+        {filtered.length === 0 && (
+          <div className="text-center py-10 text-on-surface-variant">
+            <Icon name="person_off" size={40} className="opacity-30 mb-2" />
+            <p>Aucun compte trouvé</p>
+          </div>
+        )}
+        {filtered.map(u => {
+          const roleInfo = ROLE_MAP[u.role] || ROLE_MAP.TENANT;
+          const isLocked = u.lockedUntil && new Date(u.lockedUntil) > new Date();
+          const isMe = u.email === currentUser?.email;
+          return (
+            <div key={u.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+              u.suspended ? 'border-error/20 bg-error/5 opacity-70' :
+              isMe ? 'border-primary/30 bg-primary/5' :
+              'border-outline-variant/20 bg-surface-container hover:bg-surface-container-high'
+            }`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${u.color || roleInfo.color}`}>
+                {u.initials || u.name?.[0] || '?'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-semibold text-on-surface text-sm truncate">{u.name}</p>
+                  {isMe && <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">Moi</span>}
+                  {u.firstLogin && !u.suspended && (
+                    <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Première connexion</span>
+                  )}
+                  {u.suspended && <span className="text-xs bg-error/20 text-error px-1.5 py-0.5 rounded-full">Suspendu</span>}
+                  {isLocked && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Bloqué</span>}
+                </div>
+                <p className="text-xs text-on-surface-variant truncate">{u.email}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${roleInfo.color}`}>{roleInfo.label}</span>
+                  {u.lastLogin && (
+                    <span className="text-xs text-on-surface-variant">
+                      Dernière co. : {new Date(u.lastLogin).toLocaleDateString('fr-FR')}
+                    </span>
+                  )}
+                  {u.failedAttempts > 0 && !isLocked && (
+                    <span className="text-xs text-amber-600">{u.failedAttempts} tentative(s) échouée(s)</span>
+                  )}
+                </div>
+              </div>
+              {currentUser?.role === 'ADMIN' && !isMe && (
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => handleResetPassword(u)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low hover:text-primary transition-colors"
+                    title="Réinitialiser le mot de passe"
+                  >
+                    <Icon name="lock_reset" size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleSuspend(u)}
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                      u.suspended
+                        ? 'text-green-600 hover:bg-green-50'
+                        : 'text-amber-600 hover:bg-amber-50'
+                    }`}
+                    title={u.suspended ? 'Réactiver' : 'Suspendre'}
+                  >
+                    <Icon name={u.suspended ? 'play_circle' : 'pause_circle'} size={16} />
+                  </button>
+                  {u.id !== 1 && (
+                    <button
+                      onClick={() => handleDelete(u)}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-error/10 hover:text-error transition-colors"
+                      title="Supprimer"
+                    >
+                      <Icon name="delete" size={16} />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-5 p-4 bg-surface-container-low rounded-xl border border-outline-variant/20 text-sm text-on-surface-variant">
+        <p className="font-semibold text-on-surface mb-1 flex items-center gap-1">
+          <Icon name="info" size={15} className="text-primary" />
+          Comment ça fonctionne
+        </p>
+        <ul className="list-disc list-inside space-y-1 text-xs">
+          <li>Créez un compte avec un email, rôle et mot de passe temporaire</li>
+          <li>L'utilisateur se connecte sur la page de connexion avec cet email</li>
+          <li>À la première connexion, il est invité à changer son mot de passe</li>
+          <li>Pour les locataires/propriétaires, liez le compte à leur profil</li>
+          <li>Un compte suspendu ne peut plus se connecter</li>
+          <li>5 tentatives échouées → blocage de 15 minutes</li>
+        </ul>
+      </div>
+    </div>
   );
 }

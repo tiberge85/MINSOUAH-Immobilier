@@ -7,7 +7,8 @@ import { ToastProvider } from './context/ToastContext';
 import Layout from './components/Layout';
 import Icon from './components/Icon';
 
-const Login       = lazy(() => import('./pages/Login'));
+const Login          = lazy(() => import('./pages/Login'));
+const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 const Dashboard   = lazy(() => import('./pages/Dashboard'));
 const Assets      = lazy(() => import('./pages/Assets'));
 const Rental      = lazy(() => import('./pages/Rental'));
@@ -56,9 +57,14 @@ function AppRoutes() {
         <Route
           path="/login"
           element={user ? <Navigate to={
+            user.firstLogin ? '/change-password' :
             user.role === 'TENANT' ? '/portal/tenant' :
             user.role === 'OWNER' ? '/portal/owner' : '/'
           } replace /> : <Login />}
+        />
+        <Route
+          path="/change-password"
+          element={user ? <ChangePassword /> : <Navigate to="/login" replace />}
         />
 
         <Route path="/" element={
