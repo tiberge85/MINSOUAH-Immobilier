@@ -272,13 +272,14 @@ function QuittanceRow({ payment, onDownload }) {
 
 export default function TenantPortal() {
   const { state, dispatch } = useApp();
-  const { tenants, contracts, payments, tickets, orgSettings } = state;
+  const { tenants, contracts, payments, tickets, orgSettings, conversations } = state;
   const navigate = useNavigate();
   const toast = useToast();
   const [selectedId, setSelectedId] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const [showPayModal, setShowPayModal] = useState(false);
   const [showTicketModal, setShowTicketModal] = useState(false);
+  const [msgText, setMsgText] = useState('');
 
   const tenant = tenants.find(t => t.id === selectedId);
   const tenantName = tenant ? (tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim()) : '';
@@ -335,6 +336,46 @@ export default function TenantPortal() {
   const handleTicketSave = (ticket) => {
     dispatch({ type: 'ADD_TICKET', payload: ticket });
     toast('Ticket de maintenance créé !', 'success');
+  };
+
+  const tenantConversation = useMemo(() =>
+    conversations.find(c =>
+      c.contact?.personId === tenant?.id ||
+      c.contact?.name === tenantName
+    ) || null,
+    [conversations, tenant, tenantName]
+  );
+
+  const handleSendMessage = () => {
+    if (!msgText.trim() || !tenant) return;
+    const msg = {
+      from: 'me',
+      text: msgText.trim(),
+      time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+    };
+    if (tenantConversation) {
+      dispatch({ type: 'SEND_MESSAGE', payload: { id: tenantConversation.id, message: msg } });
+    } else {
+      dispatch({
+        type: 'ADD_CONVERSATION',
+        payload: {
+          id: 'conv-' + Date.now(),
+          contact: {
+            name: tenantName,
+            role: 'Locataire',
+            personId: tenant.id,
+            initials: tenant.initials || tenantName[0]?.toUpperCase() || '?',
+            color: tenant.color || 'bg-primary-container text-on-primary-container',
+            online: false,
+          },
+          messages: [msg],
+          unread: 0,
+          lastMessage: msg.text,
+          lastTime: msg.time,
+        },
+      });
+    }
+    setMsgText('');
   };
 
   const handleDownloadQuittance = (payment) => {
@@ -430,6 +471,7 @@ export default function TenantPortal() {
     { id: 'payments', label: 'Paiements', icon: 'payments' },
     { id: 'tickets', label: 'Maintenance', icon: 'engineering' },
     { id: 'docs', label: 'Documents', icon: 'folder' },
+    { id: 'messages', label: 'Messages', icon: 'chat' },
   ];
 
   return (
@@ -698,6 +740,46 @@ export default function TenantPortal() {
         )}
 
         {/* ── DOCS ── */}
+        {activeTab === 'messages' && (
+          <>
+            <h3 className="font-bold text-on-surface">Messages</h3>
+            <p className="text-body-sm text-on-surface-variant -mt-2">Échangez directement avec la gestion</p>
+            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 min-h-[220px] max-h-[400px] overflow-y-auto p-4 flex flex-col gap-3">
+              {(tenantConversation?.messages || []).length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-40 text-on-surface-variant">
+                  <Icon name="chat_bubble_outline" size={40} className="opacity-30 mb-2" />
+                  <p className="text-sm">Aucun message. Commencez la discussion.</p>
+                </div>
+              ) : (
+                tenantConversation.messages.map((m, i) => (
+                  <div key={i} className={`flex ${m.from === 'me' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[75%] rounded-2xl px-3 py-2 ${m.from === 'me' ? 'bg-primary text-on-primary' : 'bg-surface-container-high text-on-surface'}`}>
+                      <p className="text-sm">{m.text}</p>
+                      <p className="text-[10px] opacity-60 mt-0.5 text-right">{m.time}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={msgText}
+                onChange={e => setMsgText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
+                placeholder="Votre message..."
+                className="flex-1 border border-outline-variant/40 bg-surface-container rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface"
+              />
+              <button
+                onClick={handleSendMessage}
+                disabled={!msgText.trim()}
+                className="bg-primary text-on-primary rounded-xl px-4 py-2.5 disabled:opacity-40 hover:bg-primary/90 transition-colors"
+              >
+                <Icon name="send" size={18} />
+              </button>
+            </div>
+          </>
+        )}
+
         {activeTab === 'docs' && (
           <>
             <h3 className="font-bold text-on-surface">Documents et quittances</h3>

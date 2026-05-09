@@ -1067,6 +1067,19 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
     showToast('Sauvegarde complète exportée');
   };
 
+  const handleCopySyncCode = () => {
+    try {
+      const exportData = { ...state, currentUser: null };
+      const json = JSON.stringify(exportData);
+      const code = btoa(unescape(encodeURIComponent(json)));
+      navigator.clipboard.writeText(code)
+        .then(() => showToast('Code copié — collez-le sur l\'autre appareil via la page de connexion'))
+        .catch(() => showToast('Impossible de copier automatiquement', 'error'));
+    } catch {
+      showToast('Erreur lors de la génération du code', 'error');
+    }
+  };
+
   /* Import full state */
   const handleImportState = (e) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -1192,6 +1205,10 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
               <button onClick={handleExportUsers}
                 className="px-4 py-2 bg-surface-container border border-outline-variant/30 text-on-surface rounded-xl text-sm font-semibold hover:bg-surface-container-high flex items-center gap-2 transition-colors w-fit">
                 <Icon name="group" size={15} />Exporter comptes seulement
+              </button>
+              <button onClick={handleCopySyncCode}
+                className="px-4 py-2 bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-sm font-semibold hover:bg-amber-200 flex items-center gap-2 transition-colors w-fit">
+                <Icon name="content_copy" size={15} />Copier le code de sync
               </button>
             </div>
             <div className="p-5 border border-outline-variant/30 rounded-2xl flex flex-col gap-3">

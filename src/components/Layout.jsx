@@ -32,7 +32,10 @@ const pageTitles = {
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
+  const [showIdleWarning, setShowIdleWarning] = useState(false);
   const notifRef = useRef(null);
+  const idleTimerRef = useRef(null);
+  const warningTimerRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { state, dispatch } = useApp();
@@ -67,6 +70,34 @@ export default function Layout() {
     ];
   }, [state.payments, state.contracts, state.tickets, state.conversations]);
 
+  // Idle session timeout
+  const IDLE_MS = ((state.systemSettings?.sessionTimeout) || 30) * 60 * 1000;
+  const WARN_MS = 2 * 60 * 1000;
+  useEffect(() => {
+    if (!currentUser) return;
+    const reset = () => {
+      setShowIdleWarning(false);
+      clearTimeout(idleTimerRef.current);
+      clearTimeout(warningTimerRef.current);
+      if (IDLE_MS > WARN_MS) {
+        warningTimerRef.current = setTimeout(() => setShowIdleWarning(true), IDLE_MS - WARN_MS);
+      }
+      idleTimerRef.current = setTimeout(() => {
+        dispatch({ type: 'LOGOUT' });
+        navigate('/login');
+      }, IDLE_MS);
+    };
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach(e => window.addEventListener(e, reset, { passive: true }));
+    reset();
+    return () => {
+      clearTimeout(idleTimerRef.current);
+      clearTimeout(warningTimerRef.current);
+      events.forEach(e => window.removeEventListener(e, reset));
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id, IDLE_MS]);
+
   // Close notif panel when clicking outside
   useEffect(() => {
     if (!showNotif) return;
@@ -79,6 +110,24 @@ export default function Layout() {
     dispatch({ type: 'LOGOUT' });
     navigate('/login');
   };
+
+  const idleModal = showIdleWarning ? (
+    <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4">
+      <div className="bg-surface rounded-2xl shadow-2xl p-6 max-w-sm w-full text-center">
+        <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Icon name="timer" size={32} className="text-amber-600" />
+        </div>
+        <h3 className="font-bold text-lg text-on-surface mb-2">Session inactive</h3>
+        <p className="text-sm text-on-surface-variant mb-5">
+          Vous allez être déconnecté dans 2 minutes par mesure de sécurité.
+        </p>
+        <button onClick={() => setShowIdleWarning(false)}
+          className="w-full py-3 bg-primary text-on-primary rounded-xl font-bold hover:bg-primary/90">
+          Je suis là — Continuer
+        </button>
+      </div>
+    </div>
+  ) : null;
 
   /* ── Minimal layout for TENANT / OWNER accounts ────────────── */
   const isPortalOnly = currentUser?.role === 'TENANT' || currentUser?.role === 'OWNER';
@@ -122,12 +171,14 @@ export default function Layout() {
         <main className="pb-8">
           <Outlet />
         </main>
+        {idleModal}
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-background">
+      {idleModal}
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div

@@ -29,8 +29,25 @@ export default function Login() {
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showSync, setShowSync] = useState(false);
+  const [syncCode, setSyncCode] = useState('');
+  const [syncError, setSyncError] = useState('');
 
   const users = state.users || [];
+
+  const handleImportSync = () => {
+    setSyncError('');
+    try {
+      const json = decodeURIComponent(escape(atob(syncCode.trim())));
+      const parsed = JSON.parse(json);
+      if (!parsed.users) { setSyncError('Code invalide — aucun compte trouvé.'); return; }
+      dispatch({ type: 'IMPORT_STATE', payload: parsed });
+      setShowSync(false);
+      setSyncCode('');
+    } catch {
+      setSyncError("Code invalide. Vérifiez qu'il est complet.");
+    }
+  };
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -184,6 +201,44 @@ export default function Login() {
             </form>
           </div>
 
+          <div className="border-t border-outline-variant/10">
+            <button
+              type="button"
+              onClick={() => setShowSync(v => !v)}
+              className="w-full py-3 text-sm text-on-surface-variant hover:text-primary flex items-center justify-center gap-2 transition-colors"
+            >
+              <Icon name="sync" size={15} />
+              Synchroniser depuis un autre appareil
+              <Icon name={showSync ? 'expand_less' : 'expand_more'} size={15} />
+            </button>
+            {showSync && (
+              <div className="px-6 pb-5 flex flex-col gap-3">
+                <p className="text-xs text-on-surface-variant text-center">
+                  Collez le code généré depuis <strong>Paramètres → Utilisateurs → Sync</strong>
+                </p>
+                <textarea
+                  value={syncCode}
+                  onChange={e => setSyncCode(e.target.value)}
+                  placeholder="Collez votre code de synchronisation ici..."
+                  rows={3}
+                  className="w-full border border-outline-variant/40 bg-surface-container rounded-xl px-3 py-2 text-xs font-mono resize-none focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface"
+                />
+                {syncError && (
+                  <div className="flex items-center gap-2 text-xs text-error">
+                    <Icon name="error" size={13} /> {syncError}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleImportSync}
+                  disabled={!syncCode.trim()}
+                  className="py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Icon name="download" size={16} /> Importer les données
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <p className="text-center text-xs text-on-surface-variant mt-6">

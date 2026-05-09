@@ -55,6 +55,7 @@ export const DEFAULT_SYSTEM = {
     moov: { apiKey: '', enabled: false },
   },
   platform: { timezone: 'Africa/Abidjan', dateFormat: 'dd/MM/yyyy' },
+  sessionTimeout: 30,
 };
 
 // ─── EMPTY state — used by full reset (no demo data) ──────────────────────────
