@@ -1,0 +1,66 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isOrgMember(orgId) {
+      return isAuth() &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.organizationId == orgId;
+    }
+
+    function isStaff(orgId) {
+      return isOrgMember(orgId) &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in
+          ['SUPER_ADMIN','ADMIN','MANAGER','ACCOUNTANT','TECHNICIAN'];
+    }
+
+    function isImageFile() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function isPdfOrImage() {
+      return request.resource.contentType.matches('image/.*') ||
+             request.resource.contentType == 'application/pdf';
+    }
+
+    function isUnderMaxSize(maxMb) {
+      return request.resource.size <= maxMb * 1024 * 1024;
+    }
+
+    // Profile pictures — any authenticated user can upload their own
+    match /orgs/{orgId}/profiles/{fileName} {
+      allow read: if isOrgMember(orgId);
+      allow write: if isAuth() && isImageFile() && isUnderMaxSize(5);
+    }
+
+    // Property photos — only staff can upload
+    match /orgs/{orgId}/properties/{fileName} {
+      allow read: if isOrgMember(orgId);
+      allow write: if isStaff(orgId) && isImageFile() && isUnderMaxSize(10);
+    }
+
+    // Contracts and documents — staff can write, all members read
+    match /orgs/{orgId}/contracts/{fileName} {
+      allow read: if isOrgMember(orgId);
+      allow write: if isStaff(orgId) && isPdfOrImage() && isUnderMaxSize(20);
+    }
+
+    match /orgs/{orgId}/receipts/{fileName} {
+      allow read: if isOrgMember(orgId);
+      allow write: if isStaff(orgId) && isPdfOrImage() && isUnderMaxSize(10);
+    }
+
+    match /orgs/{orgId}/maintenance/{fileName} {
+      allow read: if isOrgMember(orgId);
+      allow write: if isAuth() && isPdfOrImage() && isUnderMaxSize(20);
+    }
+
+    match /orgs/{orgId}/documents/{fileName} {
+      allow read: if isOrgMember(orgId);
+      allow write: if isStaff(orgId) && isUnderMaxSize(20);
+    }
+  }
+}
