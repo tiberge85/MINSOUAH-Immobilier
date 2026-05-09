@@ -44,21 +44,36 @@ const DEFAULT_ORG = {
   },
 };
 
+export const DEFAULT_SYSTEM = {
+  smtp: { host: '', port: 587, user: '', password: '', from: '', encryption: 'TLS', enabled: false },
+  whatsapp: { apiKey: '', phoneNumber: '', businessName: '', enabled: false },
+  mobileMoney: {
+    cinetpay: { apiKey: '', siteId: '', enabled: false },
+    orange: { merchantKey: '', enabled: false },
+    mtn: { apiKey: '', enabled: false },
+    wave: { apiKey: '', enabled: false },
+    moov: { apiKey: '', enabled: false },
+  },
+  platform: { timezone: 'Africa/Abidjan', dateFormat: 'dd/MM/yyyy' },
+};
+
 // ─── EMPTY state — used by full reset (no demo data) ──────────────────────────
 const EMPTY_STATE = {
-  properties:    [],
-  contracts:     [],
-  tenants:       [],
-  owners:        [],
-  transactions:  [],
-  tickets:       [],
-  conversations: [],
-  revenueData:   mockRevenueData,
-  alerts:        [],
-  payments:      [],
-  currentUser:   null,
-  users:         [DEFAULT_ADMIN],
-  orgSettings:   DEFAULT_ORG,
+  properties:     [],
+  contracts:      [],
+  tenants:        [],
+  owners:         [],
+  transactions:   [],
+  tickets:        [],
+  conversations:  [],
+  revenueData:    mockRevenueData,
+  alerts:         [],
+  payments:       [],
+  currentUser:    null,
+  users:          [DEFAULT_ADMIN],
+  orgSettings:    DEFAULT_ORG,
+  systemSettings: DEFAULT_SYSTEM,
+  activityLog:    [],
 };
 
 // ─── DEMO state — used by demo reload ─────────────────────────────────────────
@@ -168,14 +183,23 @@ function reducer(state, action) {
     case 'ADD_USER': {
       const users = state.users || [DEFAULT_ADMIN];
       if (users.some(u => u.email === payload.email)) return state;
-      return { ...state, users: [...users, { ...payload, id: Date.now(), failedAttempts: 0, lockedUntil: null, suspended: false, createdAt: new Date().toISOString(), lastLogin: null }] };
+      const newUser = { ...payload, id: Date.now(), failedAttempts: 0, lockedUntil: null, suspended: false, createdAt: new Date().toISOString(), lastLogin: null };
+      const logEntry = { id: Date.now() + 1, action: 'ADD_USER', details: `Compte créé : ${payload.name} (${payload.role})`, timestamp: new Date().toISOString() };
+      return { ...state, users: [...users, newUser], activityLog: [logEntry, ...(state.activityLog || [])].slice(0, 500) };
     }
     case 'UPDATE_USER':
       return { ...state, users: (state.users || [DEFAULT_ADMIN]).map(u => u.id === payload.id ? { ...u, ...payload } : u) };
-    case 'DELETE_USER':
-      return { ...state, users: (state.users || [DEFAULT_ADMIN]).filter(u => u.id !== payload && u.id !== 1) };
-    case 'SUSPEND_USER':
-      return { ...state, users: (state.users || [DEFAULT_ADMIN]).map(u => u.id === payload ? { ...u, suspended: !u.suspended } : u) };
+    case 'DELETE_USER': {
+      const target = (state.users || []).find(u => u.id === payload);
+      const logEntry = { id: Date.now(), action: 'DELETE_USER', details: `Compte supprimé : ${target?.name || payload}`, timestamp: new Date().toISOString() };
+      return { ...state, users: (state.users || [DEFAULT_ADMIN]).filter(u => u.id !== payload && u.id !== 1), activityLog: [logEntry, ...(state.activityLog || [])].slice(0, 500) };
+    }
+    case 'SUSPEND_USER': {
+      const target = (state.users || []).find(u => u.id === payload);
+      const willSuspend = !target?.suspended;
+      const logEntry = { id: Date.now(), action: 'SUSPEND_USER', details: `${target?.name || payload} ${willSuspend ? 'suspendu' : 'réactivé'}`, timestamp: new Date().toISOString() };
+      return { ...state, users: (state.users || [DEFAULT_ADMIN]).map(u => u.id === payload ? { ...u, suspended: !u.suspended } : u), activityLog: [logEntry, ...(state.activityLog || [])].slice(0, 500) };
+    }
     case 'CHANGE_PASSWORD':
       return {
         ...state,
@@ -190,26 +214,28 @@ function reducer(state, action) {
       };
     case 'LOGIN_ATTEMPT': {
       const { email, success } = payload;
+      const now = new Date().toISOString();
       if (success) {
+        const u = (state.users || [DEFAULT_ADMIN]).find(u => u.email === email);
+        const logEntry = { id: Date.now(), userId: u?.id, userEmail: email, userName: u?.name, action: 'LOGIN', details: 'Connexion réussie', timestamp: now };
         return {
           ...state,
           users: (state.users || [DEFAULT_ADMIN]).map(u =>
-            u.email === email
-              ? { ...u, failedAttempts: 0, lockedUntil: null, lastLogin: new Date().toISOString() }
-              : u
+            u.email === email ? { ...u, failedAttempts: 0, lockedUntil: null, lastLogin: now } : u
           ),
+          activityLog: [logEntry, ...(state.activityLog || [])].slice(0, 500),
         };
       }
+      const logEntry = { id: Date.now(), userEmail: email, action: 'LOGIN_FAIL', details: 'Tentative de connexion échouée', timestamp: now };
       return {
         ...state,
         users: (state.users || [DEFAULT_ADMIN]).map(u => {
           if (u.email !== email) return u;
           const attempts = (u.failedAttempts || 0) + 1;
-          const lockedUntil = attempts >= 5
-            ? new Date(Date.now() + 15 * 60 * 1000).toISOString()
-            : null;
+          const lockedUntil = attempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : null;
           return { ...u, failedAttempts: attempts, lockedUntil };
         }),
+        activityLog: [logEntry, ...(state.activityLog || [])].slice(0, 500),
       };
     }
 
@@ -237,11 +263,46 @@ function reducer(state, action) {
       return { ...state, orgSettings: { ...state.orgSettings, ...data } };
     }
 
+    // ── System settings ──────────────────────────────────────────────────────
+    case 'UPDATE_SYSTEM_SETTINGS':
+      return { ...state, systemSettings: { ...(state.systemSettings || DEFAULT_SYSTEM), ...payload } };
+
+    // ── Activity log ─────────────────────────────────────────────────────────
+    case 'LOG_ACTIVITY': {
+      const entry = { id: Date.now(), ...payload, timestamp: new Date().toISOString() };
+      const log = [entry, ...(state.activityLog || [])].slice(0, 500);
+      return { ...state, activityLog: log };
+    }
+
     // ── Reset ────────────────────────────────────────────────────────────────
     case 'RESET':
-      return { ...EMPTY_STATE, users: (state.users || [DEFAULT_ADMIN]).filter(u => u.id === 1) };
+      return {
+        ...EMPTY_STATE,
+        users:          (state.users || [DEFAULT_ADMIN]).filter(u => u.id === 1),
+        systemSettings: state.systemSettings || DEFAULT_SYSTEM,
+        activityLog:    state.activityLog || [],
+      };
     case 'RESET_DEMO':
-      return { ...DEMO_STATE, users: state.users || [DEFAULT_ADMIN] };
+      return {
+        ...DEMO_STATE,
+        users:          state.users || [DEFAULT_ADMIN],
+        systemSettings: state.systemSettings || DEFAULT_SYSTEM,
+        activityLog:    state.activityLog || [],
+      };
+
+    // ── Import full state (multi-browser sync) ───────────────────────────────
+    case 'IMPORT_STATE': {
+      const imported = payload;
+      if (!imported || !imported.users) return state;
+      return {
+        ...imported,
+        currentUser: null,
+        activityLog: [
+          { id: Date.now(), action: 'IMPORT', details: 'État importé depuis un autre appareil', timestamp: new Date().toISOString() },
+          ...(imported.activityLog || []),
+        ],
+      };
+    }
 
     default:
       return state;
@@ -261,11 +322,14 @@ export function AppProvider({ children }) {
         if (saved) {
           const parsed = JSON.parse(saved);
           if (!parsed.users) parsed.users = [DEFAULT_ADMIN];
+          if (!parsed.systemSettings) parsed.systemSettings = DEFAULT_SYSTEM;
+          if (!parsed.activityLog) parsed.activityLog = [];
           return parsed;
         }
-        return { ...DEMO_STATE };
+        // Fresh browser — start empty (no demo data), only admin account
+        return { ...EMPTY_STATE };
       } catch {
-        return { ...DEMO_STATE };
+        return { ...EMPTY_STATE };
       }
     }
   );

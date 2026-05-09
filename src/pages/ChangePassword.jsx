@@ -4,6 +4,105 @@ import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 import Icon from '../components/Icon';
 
+const WELCOME_GUIDES = {
+  ADMIN: {
+    title: 'Bienvenue, Administrateur !',
+    color: 'bg-primary',
+    icon: 'admin_panel_settings',
+    steps: [
+      { icon: 'group', label: 'Gérer les utilisateurs', desc: 'Créez des comptes pour vos équipes, locataires et propriétaires dans Paramètres → Utilisateurs.' },
+      { icon: 'apartment', label: 'Ajouter vos biens', desc: 'Enregistrez votre patrimoine immobilier dans la section Patrimoine.' },
+      { icon: 'contract', label: 'Créer des contrats', desc: 'Associez locataires et biens via des contrats dans Gestion Locative.' },
+      { icon: 'payments', label: 'Suivre les paiements', desc: 'Enregistrez les loyers et suivez les impayés dans Paiements.' },
+    ],
+  },
+  MANAGER: {
+    title: 'Bienvenue, Manager !',
+    color: 'bg-secondary',
+    icon: 'manage_history',
+    steps: [
+      { icon: 'apartment', label: 'Consulter le patrimoine', desc: 'Accédez à la liste des biens gérés dans Patrimoine.' },
+      { icon: 'contract', label: 'Suivi des contrats', desc: 'Gérez les baux et les renouvellements dans Gestion Locative.' },
+      { icon: 'payments', label: 'Paiements', desc: 'Suivez les encaissements et les retards dans Paiements.' },
+      { icon: 'engineering', label: 'Maintenance', desc: 'Traitez les tickets de maintenance dans la section dédiée.' },
+    ],
+  },
+  ACCOUNTANT: {
+    title: 'Bienvenue, Comptable !',
+    color: 'bg-tertiary',
+    icon: 'calculate',
+    steps: [
+      { icon: 'account_balance_wallet', label: 'Rapports financiers', desc: 'Consultez les rapports dans la section Finances.' },
+      { icon: 'payments', label: 'Paiements', desc: 'Enregistrez et vérifiez les paiements de loyers.' },
+      { icon: 'receipt', label: 'Transactions', desc: 'Suivez toutes les opérations comptables.' },
+    ],
+  },
+  TECHNICIAN: {
+    title: 'Bienvenue, Technicien !',
+    color: 'bg-secondary',
+    icon: 'engineering',
+    steps: [
+      { icon: 'engineering', label: 'Vos tickets', desc: 'Consultez et mettez à jour les tickets de maintenance qui vous sont assignés.' },
+      { icon: 'check_circle', label: 'Clôturer les interventions', desc: 'Marquez les interventions terminées pour informer les locataires.' },
+    ],
+  },
+  TENANT: {
+    title: 'Bienvenue sur votre Espace Locataire !',
+    color: 'bg-secondary',
+    icon: 'person',
+    steps: [
+      { icon: 'home', label: 'Votre logement', desc: 'Consultez les informations de votre bien et votre contrat de bail.' },
+      { icon: 'payments', label: 'Payer votre loyer', desc: 'Effectuez vos paiements en ligne via Mobile Money (Orange, MTN, Wave, Moov).' },
+      { icon: 'receipt_long', label: 'Vos quittances', desc: 'Téléchargez vos quittances de loyer depuis l\'onglet Paiements.' },
+      { icon: 'engineering', label: 'Signaler un problème', desc: 'Créez un ticket de maintenance depuis l\'onglet Maintenance.' },
+    ],
+  },
+  OWNER: {
+    title: 'Bienvenue sur votre Espace Propriétaire !',
+    color: 'bg-tertiary',
+    icon: 'manage_accounts',
+    steps: [
+      { icon: 'apartment', label: 'Vos biens', desc: 'Consultez l\'état de vos propriétés et leur taux d\'occupation.' },
+      { icon: 'account_balance_wallet', label: 'Vos revenus', desc: 'Suivez vos revenus locatifs mensuels et annuels.' },
+      { icon: 'trending_up', label: 'Tableaux de bord', desc: 'Analysez les performances de votre patrimoine avec des graphiques.' },
+    ],
+  },
+};
+
+function WelcomeGuide({ user, onClose }) {
+  const guide = WELCOME_GUIDES[user?.role] || WELCOME_GUIDES.TENANT;
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="bg-surface rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className={`${guide.color} p-6 text-white`}>
+          <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center mb-3">
+            <Icon name={guide.icon} size={30} className="text-white" />
+          </div>
+          <h2 className="font-black text-2xl leading-tight">{guide.title}</h2>
+          <p className="text-white/80 text-sm mt-1">Voici ce que vous pouvez faire sur la plateforme.</p>
+        </div>
+        <div className="p-6 flex flex-col gap-3">
+          {guide.steps.map((s, i) => (
+            <div key={i} className="flex items-start gap-3 p-3 bg-surface-container rounded-xl">
+              <div className="w-9 h-9 bg-primary-container rounded-xl flex items-center justify-center flex-shrink-0">
+                <Icon name={s.icon} size={18} className="text-on-primary-container" />
+              </div>
+              <div>
+                <p className="font-semibold text-on-surface text-sm">{s.label}</p>
+                <p className="text-xs text-on-surface-variant mt-0.5">{s.desc}</p>
+              </div>
+            </div>
+          ))}
+          <button onClick={onClose}
+            className="mt-2 w-full py-3 bg-primary text-on-primary font-bold rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+            <Icon name="rocket_launch" size={18} />Commencer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StrengthBar({ password }) {
   const checks = [
     password.length >= 8,
@@ -43,6 +142,8 @@ export default function ChangePassword() {
 
   const user = state.currentUser;
   const isFirstLogin = user?.firstLogin;
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [pendingDest, setPendingDest] = useState(null);
 
   if (!user) {
     navigate('/login');
@@ -81,12 +182,19 @@ export default function ChangePassword() {
       const dest =
         user.role === 'TENANT' ? '/portal/tenant' :
         user.role === 'OWNER'  ? '/portal/owner' : '/';
-      navigate(dest);
+      if (isFirstLogin) {
+        setPendingDest(dest);
+        setShowWelcome(true);
+      } else {
+        navigate(dest);
+      }
       setLoading(false);
     }, 500);
   };
 
   return (
+    <>
+    {showWelcome && <WelcomeGuide user={user} onClose={() => { setShowWelcome(false); navigate(pendingDest || '/'); }} />}
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
@@ -221,5 +329,6 @@ export default function ChangePassword() {
         </div>
       </div>
     </div>
+    </>
   );
 }

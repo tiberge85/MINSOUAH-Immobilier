@@ -4,13 +4,14 @@ import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import * as XLSX from 'xlsx';
 
-const TABS = [
-  { key: 'profile',  label: 'Mon Profil',      icon: 'account_circle' },
-  { key: 'org',      label: 'Organisation',     icon: 'business' },
-  { key: 'users',    label: 'Utilisateurs',     icon: 'group' },
-  { key: 'notif',    label: 'Notifications',    icon: 'notifications' },
-  { key: 'data',     label: 'Données',          icon: 'database' },
-  { key: 'security', label: 'Sécurité',         icon: 'lock' },
+const ALL_TABS = [
+  { key: 'profile',  label: 'Mon Profil',      icon: 'account_circle', roles: null },
+  { key: 'org',      label: 'Organisation',     icon: 'business',       roles: ['ADMIN', 'MANAGER'] },
+  { key: 'users',    label: 'Utilisateurs',     icon: 'group',          roles: ['ADMIN'] },
+  { key: 'notif',    label: 'Notifications',    icon: 'notifications',  roles: null },
+  { key: 'data',     label: 'Données',          icon: 'database',       roles: ['ADMIN', 'MANAGER'] },
+  { key: 'system',   label: 'Système',          icon: 'settings_suggest', roles: ['ADMIN'] },
+  { key: 'security', label: 'Sécurité',         icon: 'lock',           roles: null },
 ];
 
 const ROLE_LABELS = {
@@ -54,6 +55,7 @@ export default function Settings() {
   const navigate = useNavigate();
   const { currentUser, orgSettings } = state;
   const [tab, setTab] = useState('profile');
+  const TABS = ALL_TABS.filter(t => !t.roles || t.roles.includes(currentUser?.role));
   const [toast, setToast] = useState('');
   const avatarRef = useRef();
   const importRef = useRef();
@@ -131,12 +133,13 @@ export default function Settings() {
   /* ── Password ── */
   const handlePwChange = (e) => {
     e.preventDefault();
-    const storedPw = currentUser?.password || 'admin123';
+    const dbUser = (state.users || []).find(u => u.email === currentUser?.email);
+    const storedPw = dbUser?.password || 'admin123';
     if (pwForm.current !== storedPw) { setPwError('Mot de passe actuel incorrect.'); return; }
     if (pwForm.next.length < 8) { setPwError('Au moins 8 caractères requis.'); return; }
     if (pwForm.next !== pwForm.confirm) { setPwError('Les mots de passe ne correspondent pas.'); return; }
     setPwError('');
-    dispatch({ type: 'UPDATE_SETTINGS', payload: { type: 'profile', data: { password: pwForm.next } } });
+    dispatch({ type: 'CHANGE_PASSWORD', payload: { email: currentUser.email, newPassword: pwForm.next } });
     setPwForm({ current: '', next: '', confirm: '' });
     showToast('Mot de passe mis à jour');
   };
@@ -603,6 +606,11 @@ export default function Settings() {
             </div>
           )}
 
+          {/* ══════════ SYSTÈME ══════════ */}
+          {tab === 'system' && (
+            <SystemTab state={state} dispatch={dispatch} showToast={showToast} />
+          )}
+
           {/* ══════════ SÉCURITÉ ══════════ */}
           {tab === 'security' && (
             <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-6">
@@ -631,33 +639,35 @@ export default function Settings() {
                 </button>
               </form>
 
-              {/* Reset section */}
-              <div className="border-t border-outline-variant/20 pt-6 flex flex-col gap-4">
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                  <p className="font-semibold text-amber-800 text-sm flex items-center gap-2 mb-1">
-                    <Icon name="restart_alt" size={16} /> Réinitialisation partielle
-                  </p>
-                  <p className="text-xs text-amber-700 mb-3">Recharge les données de démonstration sans toucher au compte.</p>
-                  <button onClick={handleDemoReload}
-                    className="px-4 py-2 bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-sm font-semibold hover:bg-amber-200 transition-colors">
-                    Recharger les données démo
-                  </button>
-                </div>
+              {/* Reset section — ADMIN only */}
+              {currentUser?.role === 'ADMIN' && (
+                <div className="border-t border-outline-variant/20 pt-6 flex flex-col gap-4">
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                    <p className="font-semibold text-amber-800 text-sm flex items-center gap-2 mb-1">
+                      <Icon name="restart_alt" size={16} /> Réinitialisation partielle
+                    </p>
+                    <p className="text-xs text-amber-700 mb-3">Recharge les données de démonstration sans toucher au compte.</p>
+                    <button onClick={handleDemoReload}
+                      className="px-4 py-2 bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-sm font-semibold hover:bg-amber-200 transition-colors">
+                      Recharger les données démo
+                    </button>
+                  </div>
 
-                <div className="p-4 bg-error-container/30 border border-error/20 rounded-xl">
-                  <p className="font-semibold text-error text-sm flex items-center gap-2 mb-1">
-                    <Icon name="warning" size={16} /> Zone dangereuse — Réinitialisation complète
-                  </p>
-                  <p className="text-xs text-on-surface-variant mb-3">
-                    Efface toutes les données (locataires, propriétés, paiements, contrats) et retourne à la page de connexion.
-                    <strong className="text-error"> Action irréversible.</strong>
-                  </p>
-                  <button onClick={handleFullReset}
-                    className="px-4 py-2 bg-error text-on-error rounded-lg text-sm font-semibold hover:bg-error/90 transition-colors flex items-center gap-2">
-                    <Icon name="delete_forever" size={16} /> Tout effacer et réinitialiser
-                  </button>
+                  <div className="p-4 bg-error-container/30 border border-error/20 rounded-xl">
+                    <p className="font-semibold text-error text-sm flex items-center gap-2 mb-1">
+                      <Icon name="warning" size={16} /> Zone dangereuse — Réinitialisation complète
+                    </p>
+                    <p className="text-xs text-on-surface-variant mb-3">
+                      Efface toutes les données (locataires, propriétés, paiements, contrats) et retourne à la page de connexion.
+                      <strong className="text-error"> Action irréversible.</strong>
+                    </p>
+                    <button onClick={handleFullReset}
+                      className="px-4 py-2 bg-error text-on-error rounded-lg text-sm font-semibold hover:bg-error/90 transition-colors flex items-center gap-2">
+                      <Icon name="delete_forever" size={16} /> Tout effacer et réinitialiser
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -673,6 +683,261 @@ function Toggle({ checked, onChange }) {
       className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${checked ? 'bg-primary' : 'bg-outline-variant'}`}>
       <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${checked ? 'translate-x-7' : 'translate-x-1'}`} />
     </button>
+  );
+}
+
+/* ── SystemTab ──────────────────────────────────────────────────────────────── */
+function SystemTab({ state, dispatch, showToast }) {
+  const sys = state.systemSettings || {};
+  const [smtp, setSmtp] = useState({
+    host: sys.smtp?.host || '', port: sys.smtp?.port || 587,
+    user: sys.smtp?.user || '', password: sys.smtp?.password || '',
+    from: sys.smtp?.from || '', encryption: sys.smtp?.encryption || 'TLS',
+    enabled: sys.smtp?.enabled || false,
+  });
+  const [wa, setWa] = useState({
+    apiKey: sys.whatsapp?.apiKey || '', phoneNumber: sys.whatsapp?.phoneNumber || '',
+    businessName: sys.whatsapp?.businessName || '', enabled: sys.whatsapp?.enabled || false,
+  });
+  const mm = sys.mobileMoney || {};
+  const [cinetpay, setCinetpay] = useState({ apiKey: mm.cinetpay?.apiKey || '', siteId: mm.cinetpay?.siteId || '', enabled: mm.cinetpay?.enabled || false });
+  const [orange, setOrange] = useState({ merchantKey: mm.orange?.merchantKey || '', enabled: mm.orange?.enabled || false });
+  const [mtn, setMtn] = useState({ apiKey: mm.mtn?.apiKey || '', enabled: mm.mtn?.enabled || false });
+  const [wave, setWave] = useState({ apiKey: mm.wave?.apiKey || '', enabled: mm.wave?.enabled || false });
+  const [moov, setMoov] = useState({ apiKey: mm.moov?.apiKey || '', enabled: mm.moov?.enabled || false });
+  const [section, setSection] = useState('smtp');
+
+  const saveSmtp = () => {
+    dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: { smtp } });
+    showToast('Configuration SMTP enregistrée');
+  };
+  const saveWa = () => {
+    dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: { whatsapp: wa } });
+    showToast('Configuration WhatsApp enregistrée');
+  };
+  const saveMM = () => {
+    dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: { mobileMoney: { cinetpay, orange, mtn, wave, moov } } });
+    showToast('Configuration Mobile Money enregistrée');
+  };
+
+  const testSmtp = () => {
+    if (!smtp.host || !smtp.user) { showToast('Remplissez au moins le serveur et l\'email'); return; }
+    showToast('Test SMTP envoyé (simulation)');
+  };
+
+  const SECTIONS = [
+    { key: 'smtp', label: 'SMTP / Email', icon: 'email' },
+    { key: 'whatsapp', label: 'WhatsApp Business', icon: 'chat' },
+    { key: 'mobilemoney', label: 'Mobile Money', icon: 'payments' },
+    { key: 'monitoring', label: 'Monitoring', icon: 'monitor_heart' },
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Sub-nav */}
+      <div className="flex gap-2 flex-wrap">
+        {SECTIONS.map(s => (
+          <button key={s.key} onClick={() => setSection(s.key)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${section === s.key ? 'bg-primary text-on-primary' : 'bg-surface border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high'}`}>
+            <Icon name={s.icon} size={15} />{s.label}
+          </button>
+        ))}
+      </div>
+
+      {/* SMTP */}
+      {section === 'smtp' && (
+        <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-on-surface flex items-center gap-2"><Icon name="email" filled />Configuration SMTP</h3>
+            <Toggle checked={smtp.enabled} onChange={() => setSmtp(s => ({ ...s, enabled: !s.enabled }))} />
+          </div>
+          <p className="text-xs text-on-surface-variant -mt-2">Permet l'envoi d'emails de notification (quittances, rappels, alertes).</p>
+          <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${!smtp.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            <Field label="Serveur SMTP" icon="dns">
+              <input value={smtp.host} onChange={e => setSmtp(s => ({ ...s, host: e.target.value }))} className={inputCls} placeholder="smtp.gmail.com" />
+            </Field>
+            <Field label="Port">
+              <select value={smtp.port} onChange={e => setSmtp(s => ({ ...s, port: Number(e.target.value) }))} className={inputCls}>
+                <option value={587}>587 (TLS)</option><option value={465}>465 (SSL)</option><option value={25}>25</option>
+              </select>
+            </Field>
+            <Field label="Email expéditeur" icon="alternate_email">
+              <input type="email" value={smtp.from} onChange={e => setSmtp(s => ({ ...s, from: e.target.value }))} className={inputCls} placeholder="noreply@minsouah.ci" />
+            </Field>
+            <Field label="Chiffrement">
+              <select value={smtp.encryption} onChange={e => setSmtp(s => ({ ...s, encryption: e.target.value }))} className={inputCls}>
+                <option value="TLS">TLS (STARTTLS)</option><option value="SSL">SSL</option><option value="NONE">Aucun</option>
+              </select>
+            </Field>
+            <Field label="Nom d'utilisateur SMTP" icon="person">
+              <input value={smtp.user} onChange={e => setSmtp(s => ({ ...s, user: e.target.value }))} className={inputCls} placeholder="votre@email.com" />
+            </Field>
+            <Field label="Mot de passe SMTP" icon="lock">
+              <input type="password" value={smtp.password} onChange={e => setSmtp(s => ({ ...s, password: e.target.value }))} className={inputCls} placeholder="••••••••" />
+            </Field>
+          </div>
+          <div className="flex gap-3 flex-wrap">
+            <button onClick={saveSmtp} className="px-5 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 flex items-center gap-2 transition-colors">
+              <Icon name="save" size={16} />Enregistrer
+            </button>
+            <button onClick={testSmtp} className="px-5 py-2.5 bg-surface-container border border-outline-variant/30 text-on-surface rounded-xl text-sm font-semibold hover:bg-surface-container-high flex items-center gap-2 transition-colors">
+              <Icon name="send" size={16} />Tester la connexion
+            </button>
+          </div>
+          <div className="p-3 bg-surface-container-low rounded-xl text-xs text-on-surface-variant">
+            <strong className="text-on-surface">Gmail :</strong> Activez «&nbsp;Accès moins sécurisé&nbsp;» ou utilisez un mot de passe d'application.<br />
+            <strong className="text-on-surface">Recommandé :</strong> SendGrid, Mailgun ou Brevo pour un usage professionnel.
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp */}
+      {section === 'whatsapp' && (
+        <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-on-surface flex items-center gap-2"><Icon name="chat" filled />WhatsApp Business API</h3>
+            <Toggle checked={wa.enabled} onChange={() => setWa(w => ({ ...w, enabled: !w.enabled }))} />
+          </div>
+          <p className="text-xs text-on-surface-variant -mt-2">Envoi de rappels de loyer, confirmations de paiement et alertes via WhatsApp.</p>
+          <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${!wa.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            <Field label="Nom de l'entreprise" icon="business">
+              <input value={wa.businessName} onChange={e => setWa(w => ({ ...w, businessName: e.target.value }))} className={inputCls} placeholder="Minsouah Immobilier" />
+            </Field>
+            <Field label="Numéro WhatsApp Business" icon="phone">
+              <input value={wa.phoneNumber} onChange={e => setWa(w => ({ ...w, phoneNumber: e.target.value }))} className={inputCls} placeholder="+225 07 00 00 00 00" />
+            </Field>
+            <Field label="Clé API / Token d'accès" icon="key" span>
+              <input type="password" value={wa.apiKey} onChange={e => setWa(w => ({ ...w, apiKey: e.target.value }))} className={inputCls} placeholder="EAAxxxxxxx..." />
+            </Field>
+          </div>
+          <button onClick={saveWa} className="px-5 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 flex items-center gap-2 transition-colors w-fit">
+            <Icon name="save" size={16} />Enregistrer
+          </button>
+          <div className="p-3 bg-surface-container-low rounded-xl text-xs text-on-surface-variant">
+            Fournisseurs compatibles : <strong className="text-on-surface">Meta (WhatsApp Cloud API)</strong>, Twilio, 360dialog, Vonage.<br />
+            Obtenez votre token sur <strong className="text-on-surface">developers.facebook.com</strong>.
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Money */}
+      {section === 'mobilemoney' && (
+        <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-6">
+          <h3 className="font-bold text-on-surface flex items-center gap-2"><Icon name="payments" filled />Mobile Money</h3>
+          <p className="text-xs text-on-surface-variant -mt-4">Configurez les opérateurs acceptés pour le paiement en ligne des loyers.</p>
+
+          {/* CinetPay */}
+          <div className="border border-outline-variant/30 rounded-xl p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-on-surface text-sm flex items-center gap-2">
+                <span className="w-6 h-6 bg-primary-container rounded text-on-primary-container text-xs font-bold flex items-center justify-center">C</span>
+                CinetPay (agrégateur)
+              </p>
+              <Toggle checked={cinetpay.enabled} onChange={() => setCinetpay(c => ({ ...c, enabled: !c.enabled }))} />
+            </div>
+            <div className={`grid grid-cols-1 md:grid-cols-2 gap-3 ${!cinetpay.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+              <input value={cinetpay.apiKey} onChange={e => setCinetpay(c => ({ ...c, apiKey: e.target.value }))} className={inputCls} placeholder="API Key CinetPay" />
+              <input value={cinetpay.siteId} onChange={e => setCinetpay(c => ({ ...c, siteId: e.target.value }))} className={inputCls} placeholder="Site ID" />
+            </div>
+          </div>
+
+          {/* Orange Money */}
+          <div className="border border-outline-variant/30 rounded-xl p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-on-surface text-sm flex items-center gap-2">
+                <span className="w-6 h-6 bg-orange-100 rounded text-orange-700 text-xs font-bold flex items-center justify-center">O</span>
+                Orange Money
+              </p>
+              <Toggle checked={orange.enabled} onChange={() => setOrange(o => ({ ...o, enabled: !o.enabled }))} />
+            </div>
+            <input value={orange.merchantKey} onChange={e => setOrange(o => ({ ...o, merchantKey: e.target.value }))} className={`${inputCls} ${!orange.enabled ? 'opacity-50 pointer-events-none' : ''}`} placeholder="Merchant Key Orange Money" />
+          </div>
+
+          {/* MTN MoMo */}
+          <div className="border border-outline-variant/30 rounded-xl p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-on-surface text-sm flex items-center gap-2">
+                <span className="w-6 h-6 bg-yellow-100 rounded text-yellow-700 text-xs font-bold flex items-center justify-center">M</span>
+                MTN Mobile Money
+              </p>
+              <Toggle checked={mtn.enabled} onChange={() => setMtn(m => ({ ...m, enabled: !m.enabled }))} />
+            </div>
+            <input value={mtn.apiKey} onChange={e => setMtn(m => ({ ...m, apiKey: e.target.value }))} className={`${inputCls} ${!mtn.enabled ? 'opacity-50 pointer-events-none' : ''}`} placeholder="API Key MTN MoMo" />
+          </div>
+
+          {/* Wave */}
+          <div className="border border-outline-variant/30 rounded-xl p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-on-surface text-sm flex items-center gap-2">
+                <span className="w-6 h-6 bg-blue-100 rounded text-blue-700 text-xs font-bold flex items-center justify-center">W</span>
+                Wave
+              </p>
+              <Toggle checked={wave.enabled} onChange={() => setWave(w => ({ ...w, enabled: !w.enabled }))} />
+            </div>
+            <input value={wave.apiKey} onChange={e => setWave(w => ({ ...w, apiKey: e.target.value }))} className={`${inputCls} ${!wave.enabled ? 'opacity-50 pointer-events-none' : ''}`} placeholder="API Key Wave" />
+          </div>
+
+          {/* Moov */}
+          <div className="border border-outline-variant/30 rounded-xl p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-on-surface text-sm flex items-center gap-2">
+                <span className="w-6 h-6 bg-green-100 rounded text-green-700 text-xs font-bold flex items-center justify-center">M</span>
+                Moov Money
+              </p>
+              <Toggle checked={moov.enabled} onChange={() => setMoov(m => ({ ...m, enabled: !m.enabled }))} />
+            </div>
+            <input value={moov.apiKey} onChange={e => setMoov(m => ({ ...m, apiKey: e.target.value }))} className={`${inputCls} ${!moov.enabled ? 'opacity-50 pointer-events-none' : ''}`} placeholder="API Key Moov Money" />
+          </div>
+
+          <button onClick={saveMM} className="px-5 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 flex items-center gap-2 transition-colors w-fit">
+            <Icon name="save" size={16} />Enregistrer tous les opérateurs
+          </button>
+        </div>
+      )}
+
+      {/* Monitoring */}
+      {section === 'monitoring' && (
+        <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-4">
+          <h3 className="font-bold text-on-surface flex items-center gap-2"><Icon name="monitor_heart" filled />Monitoring Système</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              { label: 'Statut application', value: 'Opérationnel', icon: 'check_circle', color: 'text-green-600 bg-green-50' },
+              { label: 'Données locales', value: `${(JSON.stringify(state).length / 1024).toFixed(1)} Ko`, icon: 'database', color: 'text-primary bg-primary/10' },
+              { label: 'Utilisateurs actifs', value: (state.users || []).filter(u => !u.suspended).length, icon: 'group', color: 'text-secondary bg-secondary/10' },
+              { label: 'Biens enregistrés', value: (state.properties || []).length, icon: 'apartment', color: 'text-tertiary bg-tertiary/10' },
+              { label: 'Contrats actifs', value: (state.contracts || []).filter(c => c.status === 'Actif').length, icon: 'contract', color: 'text-primary bg-primary/10' },
+              { label: 'Paiements en attente', value: (state.payments || []).filter(p => p.status !== 'Payé').length, icon: 'pending', color: 'text-amber-600 bg-amber-50' },
+            ].map(s => (
+              <div key={s.label} className={`p-4 rounded-xl ${s.color.split(' ')[1]} flex items-center gap-3`}>
+                <Icon name={s.icon} size={22} className={s.color.split(' ')[0]} />
+                <div>
+                  <p className={`font-black text-lg ${s.color.split(' ')[0]}`}>{s.value}</p>
+                  <p className="text-xs text-on-surface-variant">{s.label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 p-4 bg-surface-container-low rounded-xl">
+            <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-3">Dernières activités</p>
+            {(state.activityLog || []).slice(0, 8).length === 0
+              ? <p className="text-xs text-on-surface-variant">Aucune activité enregistrée.</p>
+              : (state.activityLog || []).slice(0, 8).map((e, i) => (
+                <div key={i} className="flex items-center gap-3 py-2 border-b border-outline-variant/10 last:border-0">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${e.action === 'LOGIN' ? 'bg-green-100 text-green-600' : e.action === 'LOGIN_FAIL' ? 'bg-error/10 text-error' : e.action === 'ADD_USER' ? 'bg-primary/10 text-primary' : 'bg-surface-container-high text-on-surface-variant'}`}>
+                    <Icon name={e.action === 'LOGIN' ? 'login' : e.action === 'LOGIN_FAIL' ? 'block' : e.action === 'ADD_USER' ? 'person_add' : 'history'} size={14} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-on-surface truncate">{e.details}</p>
+                    <p className="text-xs text-on-surface-variant">{e.userEmail || ''}</p>
+                  </div>
+                  <p className="text-xs text-on-surface-variant flex-shrink-0">{e.timestamp ? new Date(e.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</p>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -692,11 +957,14 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
   const users = state.users || [];
   const [showCreate, setShowCreate] = useState(false);
   const [editUser, setEditUser] = useState(null);
+  const [editForm, setEditForm] = useState(null);
   const [filter, setFilter] = useState('');
+  const [subTab, setSubTab] = useState('users'); // 'users' | 'log' | 'sync'
   const [newUser, setNewUser] = useState({
     name: '', email: '', password: '', role: 'TENANT',
     personId: null, firstLogin: true,
   });
+  const importRef2 = useRef();
 
   const filtered = users.filter(u =>
     u.name?.toLowerCase().includes(filter.toLowerCase()) ||
@@ -747,26 +1015,194 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
     const tmpPw = 'Tmp' + Math.random().toString(36).slice(2, 8);
     dispatch({ type: 'CHANGE_PASSWORD', payload: { email: u.email, newPassword: tmpPw } });
     dispatch({ type: 'UPDATE_USER', payload: { ...u, firstLogin: true, password: tmpPw } });
-    showToast(`Nouveau mot de passe temporaire pour ${u.name} : ${tmpPw}`);
+    showToast(`Nouveau mot de passe pour ${u.name} : ${tmpPw}`);
     alert(`Mot de passe temporaire de ${u.name} :\n\n${tmpPw}\n\nCommuniquez-le à l'utilisateur. Il devra le changer à sa prochaine connexion.`);
+  };
+
+  const openEdit = (u) => { setEditUser(u); setEditForm({ name: u.name, email: u.email, role: u.role, phone: u.phone || '', personId: u.personId || null }); };
+
+  const handleSaveEdit = () => {
+    if (!editForm.name.trim() || !editForm.email.trim()) { showToast('Nom et email requis'); return; }
+    const emailConflict = users.some(u => u.email.toLowerCase() === editForm.email.trim().toLowerCase() && u.id !== editUser.id);
+    if (emailConflict) { showToast('Cet email est déjà utilisé'); return; }
+    const initials = editForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    const roleInfo = ROLE_MAP[editForm.role] || ROLE_MAP.TENANT;
+    dispatch({ type: 'UPDATE_USER', payload: { ...editUser, ...editForm, email: editForm.email.trim().toLowerCase(), initials, color: roleInfo.color } });
+    showToast(`Compte de ${editForm.name} mis à jour`);
+    setEditUser(null); setEditForm(null);
+  };
+
+  /* Export users JSON */
+  const handleExportUsers = () => {
+    const data = JSON.stringify(users, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'minsouah_comptes.json';
+    a.click(); URL.revokeObjectURL(url);
+    showToast('Comptes exportés en JSON');
+  };
+
+  /* Export full state */
+  const handleExportState = () => {
+    const exportData = { ...state, currentUser: null };
+    const data = JSON.stringify(exportData);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `minsouah_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click(); URL.revokeObjectURL(url);
+    showToast('Sauvegarde complète exportée');
+  };
+
+  /* Import full state */
+  const handleImportState = (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        if (!parsed.users) { showToast('Fichier invalide — pas de comptes trouvés'); return; }
+        if (!window.confirm(`Importer ${parsed.users.length} compte(s) et toutes les données depuis ce fichier ?\n\nAttention : vos données actuelles seront remplacées.`)) return;
+        dispatch({ type: 'IMPORT_STATE', payload: parsed });
+        showToast('Données importées avec succès — reconnectez-vous');
+        if (importRef2.current) importRef2.current.value = '';
+      } catch { showToast('Fichier JSON invalide'); }
+    };
+    reader.readAsText(file);
   };
 
   return (
     <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6">
-      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <h2 className="font-bold text-lg text-on-surface flex items-center gap-2">
-          <Icon name="group" filled /> Gestion des Comptes
+          <Icon name="group" filled /> Gestion des Utilisateurs
         </h2>
-        {currentUser?.role === 'ADMIN' && (
-          <button
-            onClick={() => setShowCreate(v => !v)}
-            className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors"
-          >
+        {currentUser?.role === 'ADMIN' && subTab === 'users' && (
+          <button onClick={() => setShowCreate(v => !v)}
+            className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors">
             <Icon name={showCreate ? 'close' : 'person_add'} size={16} />
             {showCreate ? 'Annuler' : 'Créer un compte'}
           </button>
         )}
       </div>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-2 mb-5 flex-wrap">
+        {[
+          { key: 'users', label: 'Comptes', icon: 'group' },
+          { key: 'log', label: 'Historique', icon: 'history' },
+          { key: 'sync', label: 'Sync multi-appareil', icon: 'sync' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setSubTab(t.key)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${subTab === t.key ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}>
+            <Icon name={t.icon} size={14} />{t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Edit modal */}
+      {editUser && editForm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <h3 className="font-bold text-on-surface mb-4 flex items-center gap-2">
+              <Icon name="edit" size={18} className="text-primary" />Modifier le compte
+            </h3>
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Nom complet</label>
+                <input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} className={inputCls} placeholder="Prénom Nom" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Email</label>
+                <input type="email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} className={inputCls} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Rôle</label>
+                <select value={editForm.role} onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))} className={inputCls}>
+                  {ALL_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Téléphone</label>
+                <input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} className={inputCls} placeholder="+225 07 00 00 00 00" />
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end mt-5">
+              <button onClick={() => { setEditUser(null); setEditForm(null); }} className="px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-high rounded-xl transition-colors">Annuler</button>
+              <button onClick={handleSaveEdit} className="px-5 py-2 bg-primary text-on-primary text-sm font-bold rounded-xl hover:bg-primary/90 transition-colors flex items-center gap-2">
+                <Icon name="save" size={15} />Enregistrer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Log sub-tab ── */}
+      {subTab === 'log' && (
+        <div className="flex flex-col gap-2">
+          {(state.activityLog || []).length === 0
+            ? <div className="text-center py-10 text-on-surface-variant"><Icon name="history" size={40} className="opacity-30 mb-2" /><p>Aucune activité enregistrée</p></div>
+            : (state.activityLog || []).map((e, i) => (
+              <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-surface-container hover:bg-surface-container-high transition-colors">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${e.action === 'LOGIN' ? 'bg-green-100 text-green-600' : e.action === 'LOGIN_FAIL' ? 'bg-error/10 text-error' : e.action === 'ADD_USER' ? 'bg-primary/10 text-primary' : e.action === 'DELETE_USER' ? 'bg-error/10 text-error' : 'bg-surface-container-high text-on-surface-variant'}`}>
+                  <Icon name={e.action === 'LOGIN' ? 'login' : e.action === 'LOGIN_FAIL' ? 'block' : e.action === 'ADD_USER' ? 'person_add' : e.action === 'DELETE_USER' ? 'person_remove' : 'history'} size={15} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-on-surface truncate">{e.details}</p>
+                  <p className="text-xs text-on-surface-variant">{e.userEmail || e.userName || ''}</p>
+                </div>
+                <p className="text-xs text-on-surface-variant flex-shrink-0">{e.timestamp ? new Date(e.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</p>
+              </div>
+            ))
+          }
+        </div>
+      )}
+
+      {/* ── Sync sub-tab ── */}
+      {subTab === 'sync' && (
+        <div className="flex flex-col gap-4">
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+            <Icon name="info" size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-amber-800 text-sm mb-1">Pourquoi les comptes ne sont pas visibles sur un autre navigateur ?</p>
+              <p className="text-xs text-amber-700">L'application stocke toutes les données en local (localStorage du navigateur). Chaque navigateur/appareil a sa propre copie. Pour partager les données, exportez depuis l'appareil principal et importez sur les autres.</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-5 border border-outline-variant/30 rounded-2xl flex flex-col gap-3">
+              <p className="font-semibold text-on-surface flex items-center gap-2"><Icon name="upload" size={18} className="text-primary" />Exporter</p>
+              <p className="text-xs text-on-surface-variant">Téléchargez une sauvegarde complète (comptes, biens, contrats, paiements…)</p>
+              <button onClick={handleExportState}
+                className="px-4 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 flex items-center gap-2 transition-colors w-fit">
+                <Icon name="download" size={16} />Exporter la sauvegarde
+              </button>
+              <button onClick={handleExportUsers}
+                className="px-4 py-2 bg-surface-container border border-outline-variant/30 text-on-surface rounded-xl text-sm font-semibold hover:bg-surface-container-high flex items-center gap-2 transition-colors w-fit">
+                <Icon name="group" size={15} />Exporter comptes seulement
+              </button>
+            </div>
+            <div className="p-5 border border-outline-variant/30 rounded-2xl flex flex-col gap-3">
+              <p className="font-semibold text-on-surface flex items-center gap-2"><Icon name="download" size={18} className="text-primary" />Importer</p>
+              <p className="text-xs text-on-surface-variant">Chargez une sauvegarde sur ce navigateur/appareil. <strong className="text-error">Remplace toutes les données actuelles.</strong></p>
+              <label className="px-4 py-2.5 bg-surface-container border border-outline-variant/30 text-on-surface rounded-xl text-sm font-semibold hover:bg-surface-container-high flex items-center gap-2 transition-colors w-fit cursor-pointer">
+                <Icon name="upload_file" size={16} />Importer un fichier JSON
+                <input ref={importRef2} type="file" accept=".json" className="hidden" onChange={handleImportState} />
+              </label>
+            </div>
+          </div>
+          <div className="p-4 bg-surface-container-low rounded-xl">
+            <p className="font-semibold text-on-surface text-sm mb-2 flex items-center gap-1"><Icon name="tips_and_updates" size={15} className="text-primary" />Procédure recommandée</p>
+            <ol className="list-decimal list-inside space-y-1 text-xs text-on-surface-variant">
+              <li>Sur l'<strong className="text-on-surface">appareil principal</strong> (là où vous avez créé les comptes), cliquez sur "Exporter la sauvegarde"</li>
+              <li>Envoyez le fichier .json à l'utilisateur par email ou WhatsApp</li>
+              <li>Sur le <strong className="text-on-surface">nouvel appareil</strong>, allez dans Paramètres → Utilisateurs → Sync et cliquez "Importer"</li>
+              <li>L'utilisateur peut ensuite se connecter avec son email et mot de passe temporaire</li>
+            </ol>
+          </div>
+        </div>
+      )}
+
+      {/* ── Users sub-tab ── */}
+      {subTab === 'users' && <>
 
       {/* Create form */}
       {showCreate && (
@@ -938,35 +1374,24 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
                   )}
                 </div>
               </div>
-              {currentUser?.role === 'ADMIN' && !isMe && (
+              {currentUser?.role === 'ADMIN' && (
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <button
-                    onClick={() => handleResetPassword(u)}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low hover:text-primary transition-colors"
-                    title="Réinitialiser le mot de passe"
-                  >
-                    <Icon name="lock_reset" size={16} />
+                  <button onClick={() => openEdit(u)} className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low hover:text-primary transition-colors" title="Modifier">
+                    <Icon name="edit" size={15} />
                   </button>
-                  <button
-                    onClick={() => handleSuspend(u)}
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
-                      u.suspended
-                        ? 'text-green-600 hover:bg-green-50'
-                        : 'text-amber-600 hover:bg-amber-50'
-                    }`}
-                    title={u.suspended ? 'Réactiver' : 'Suspendre'}
-                  >
-                    <Icon name={u.suspended ? 'play_circle' : 'pause_circle'} size={16} />
-                  </button>
-                  {u.id !== 1 && (
-                    <button
-                      onClick={() => handleDelete(u)}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-error/10 hover:text-error transition-colors"
-                      title="Supprimer"
-                    >
-                      <Icon name="delete" size={16} />
+                  {!isMe && (<>
+                    <button onClick={() => handleResetPassword(u)} className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low hover:text-primary transition-colors" title="Réinitialiser le mot de passe">
+                      <Icon name="lock_reset" size={16} />
                     </button>
-                  )}
+                    <button onClick={() => handleSuspend(u)} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${u.suspended ? 'text-green-600 hover:bg-green-50' : 'text-amber-600 hover:bg-amber-50'}`} title={u.suspended ? 'Réactiver' : 'Suspendre'}>
+                      <Icon name={u.suspended ? 'play_circle' : 'pause_circle'} size={16} />
+                    </button>
+                    {u.id !== 1 && (
+                      <button onClick={() => handleDelete(u)} className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-error/10 hover:text-error transition-colors" title="Supprimer">
+                        <Icon name="delete" size={16} />
+                      </button>
+                    )}
+                  </>)}
                 </div>
               )}
             </div>
@@ -986,8 +1411,11 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
           <li>Pour les locataires/propriétaires, liez le compte à leur profil</li>
           <li>Un compte suspendu ne peut plus se connecter</li>
           <li>5 tentatives échouées → blocage de 15 minutes</li>
+          <li>Pour partager les comptes sur un autre navigateur, utilisez l'onglet <strong className="text-on-surface">Sync multi-appareil</strong></li>
         </ul>
       </div>
+
+      </> /* end subTab === 'users' */}
     </div>
   );
 }

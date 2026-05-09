@@ -32,6 +32,7 @@ export default function Rental() {
   const [cForm, setCForm] = useState({});
   const [tForm, setTForm] = useState({});
   const [oForm, setOForm] = useState({});
+  const [createAccountPrompt, setCreateAccountPrompt] = useState(null); // { name, email, role, tmpPw }
 
   // Sélection du bien + unité dans le formulaire locataire
   const [selectedPropId, setSelectedPropId] = useState('');
@@ -96,21 +97,42 @@ export default function Rental() {
     setModal(null);
   };
 
+  const offerCreateAccount = (name, email, role) => {
+    if (!email || !email.trim()) return;
+    const emailLow = email.trim().toLowerCase();
+    const alreadyExists = (state.users || []).some(u => u.email.toLowerCase() === emailLow);
+    if (alreadyExists) return;
+    const tmpPw = 'Bienv' + Math.random().toString(36).slice(2, 7);
+    setCreateAccountPrompt({ name, email: emailLow, role, tmpPw });
+  };
+
+  const confirmCreateAccount = () => {
+    if (!createAccountPrompt) return;
+    const { name, email, role, tmpPw } = createAccountPrompt;
+    const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    const colorMap = { TENANT: 'bg-secondary-container text-on-secondary-container', OWNER: 'bg-tertiary-container text-on-tertiary-container' };
+    dispatch({ type: 'ADD_USER', payload: { name, email, password: tmpPw, role, initials, color: colorMap[role] || 'bg-primary-container text-on-primary-container', firstLogin: true } });
+    alert(`Compte créé pour ${name}\n\nEmail : ${email}\nMot de passe temporaire : ${tmpPw}\n\nCommuniquez ces identifiants à l'utilisateur.`);
+    setCreateAccountPrompt(null);
+  };
+
   const saveTenant = () => {
     const initials = tForm.initials || tForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-    // Résoudre le bien sélectionné
     const opt = allPropertyOptions.find(o => o.value === selectedPropId);
     const propertyLabel = opt ? opt.label : (tForm.property || '');
     const payload = { ...tForm, initials, property: propertyLabel, color: tForm.color || COLORS[0] };
     if (target) dispatch({ type: 'UPDATE_TENANT', payload: { ...payload, id: target.id } });
-    else dispatch({ type: 'ADD_TENANT', payload });
+    else {
+      dispatch({ type: 'ADD_TENANT', payload });
+      // Offer to create access account if email provided and no account yet
+      if (tForm.email) offerCreateAccount(tForm.name, tForm.email, 'TENANT');
+    }
     setModal(null);
   };
 
   const saveOwner = () => {
     const initials = oForm.initials || oForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     const ids = oForm.propertyIds || [];
-    // Compute revenue from owned properties
     const revenue = properties
       .filter(p => ids.includes(p.id))
       .reduce((s, p) => {
@@ -120,17 +142,11 @@ export default function Rental() {
     const payload = { ...oForm, initials, propertyIds: ids, properties: ids.length, revenue };
     if (target) {
       dispatch({ type: 'UPDATE_OWNER', payload: { ...payload, id: target.id } });
-      // Update the owner field on each assigned property
-      ids.forEach(pid => {
-        const prop = properties.find(p => p.id === pid);
-        if (prop) dispatch({ type: 'UPDATE_PROPERTY', payload: { ...prop, owner: oForm.name, ownerInitials: initials } });
-      });
+      ids.forEach(pid => { const prop = properties.find(p => p.id === pid); if (prop) dispatch({ type: 'UPDATE_PROPERTY', payload: { ...prop, owner: oForm.name, ownerInitials: initials } }); });
     } else {
       dispatch({ type: 'ADD_OWNER', payload });
-      ids.forEach(pid => {
-        const prop = properties.find(p => p.id === pid);
-        if (prop) dispatch({ type: 'UPDATE_PROPERTY', payload: { ...prop, owner: oForm.name, ownerInitials: initials } });
-      });
+      ids.forEach(pid => { const prop = properties.find(p => p.id === pid); if (prop) dispatch({ type: 'UPDATE_PROPERTY', payload: { ...prop, owner: oForm.name, ownerInitials: initials } }); });
+      if (oForm.email) offerCreateAccount(oForm.name, oForm.email, 'OWNER');
     }
     setModal(null);
   };
@@ -156,6 +172,32 @@ export default function Rental() {
   // ── Rendu ──────────────────────────────────────────────────────────────────
   return (
     <div className="px-4 md:px-6 pt-6 pb-20 max-w-7xl mx-auto">
+
+      {/* Create account prompt */}
+      {createAccountPrompt && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="w-12 h-12 bg-primary-container rounded-xl flex items-center justify-center mb-4">
+              <Icon name="person_add" size={24} className="text-on-primary-container" />
+            </div>
+            <h3 className="font-bold text-on-surface text-lg mb-2">Créer un accès ?</h3>
+            <p className="text-sm text-on-surface-variant mb-4">
+              Voulez-vous créer un compte d'accès pour <strong className="text-on-surface">{createAccountPrompt.name}</strong> ?
+              <br /><span className="text-xs mt-1 block">Email : {createAccountPrompt.email}</span>
+            </p>
+            <div className="p-3 bg-surface-container rounded-xl mb-4 text-xs text-on-surface-variant">
+              <p>Mot de passe temporaire : <span className="font-mono font-bold text-on-surface">{createAccountPrompt.tmpPw}</span></p>
+              <p className="mt-1">L'utilisateur devra le changer à sa première connexion.</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setCreateAccountPrompt(null)} className="flex-1 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors">Non merci</button>
+              <button onClick={confirmCreateAccount} className="flex-1 py-2.5 text-sm font-bold text-on-primary bg-primary rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+                <Icon name="person_add" size={16} />Créer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Onglets */}
       <div className="flex items-center gap-1 border-b border-outline-variant/30 mb-6 overflow-x-auto no-scrollbar">
