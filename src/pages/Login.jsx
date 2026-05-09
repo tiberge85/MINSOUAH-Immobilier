@@ -184,36 +184,6 @@ export default function Login() {
             </form>
           </div>
 
-          {/* Accounts hint */}
-          <div className="px-6 pb-6">
-            <div className="bg-surface-container rounded-2xl p-4">
-              <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-3">
-                Comptes disponibles
-              </p>
-              <div className="flex flex-col gap-2">
-                {users.filter(u => !u.suspended).map(u => (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() => setEmail(u.email)}
-                    className="flex items-center gap-3 p-2 rounded-xl hover:bg-surface-container-high transition-colors text-left group"
-                  >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${u.color || 'bg-primary-container text-on-primary-container'}`}>
-                      {u.initials || u.name?.[0] || '?'}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-on-surface truncate">{u.name}</p>
-                      <p className="text-xs text-on-surface-variant truncate">{u.email}</p>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <Icon name={ROLE_ICON[u.role] || 'person'} size={14} className="text-on-surface-variant" />
-                      <span className="text-xs text-on-surface-variant">{ROLE_LABELS[u.role] || u.role}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
         </div>
 
         <p className="text-center text-xs text-on-surface-variant mt-6">

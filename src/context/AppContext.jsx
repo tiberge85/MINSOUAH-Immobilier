@@ -178,6 +178,8 @@ function reducer(state, action) {
     }
     case 'MARK_READ':
       return { ...state, conversations: state.conversations.map(c => c.id === payload ? { ...c, unread: 0 } : c) };
+    case 'ADD_CONVERSATION':
+      return { ...state, conversations: [payload, ...(state.conversations || [])] };
 
     // ── User accounts ─────────────────────────────────────────────────────────
     case 'ADD_USER': {
@@ -303,10 +305,36 @@ function reducer(state, action) {
         ],
       };
     }
+    // ── Cloud sync (Firebase REST) ────────────────────────────────────────────
+    case 'CLOUD_SYNC': {
+      const incoming = payload;
+      if (!incoming || !incoming.users) return state;
+      return {
+        ...incoming,
+        currentUser: state.currentUser,
+        systemSettings: state.systemSettings,
+      };
+    }
 
     default:
       return state;
   }
+}
+
+// ─── Firebase REST helpers ─────────────────────────────────────────────────────
+async function fbSave(databaseURL, workspaceId, data) {
+  const url = `${databaseURL.replace(/\/$/, '')}/minsouah/${workspaceId}.json`;
+  await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...data, _savedAt: Date.now() }),
+  });
+}
+async function fbFetch(databaseURL, workspaceId) {
+  const url = `${databaseURL.replace(/\/$/, '')}/minsouah/${workspaceId}.json`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  return res.json();
 }
 
 // ─── Context ───────────────────────────────────────────────────────────────────
@@ -316,7 +344,7 @@ export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(
     reducer,
     EMPTY_STATE,
-    (init) => {
+    () => {
       try {
         const saved = localStorage.getItem('minsouah_v1');
         if (saved) {
@@ -326,7 +354,6 @@ export function AppProvider({ children }) {
           if (!parsed.activityLog) parsed.activityLog = [];
           return parsed;
         }
-        // Fresh browser — start empty (no demo data), only admin account
         return { ...EMPTY_STATE };
       } catch {
         return { ...EMPTY_STATE };
@@ -334,9 +361,53 @@ export function AppProvider({ children }) {
     }
   );
 
+  const fbSyncRef = useRef({ isSyncing: false, saveTimer: null, pollInterval: null, configKey: '' });
+
+  // ── Persist to localStorage + push to Firebase ──────────────────────────────
   useEffect(() => {
+    const refs = fbSyncRef.current;
+    if (refs.isSyncing) { refs.isSyncing = false; return; }
+
     localStorage.setItem('minsouah_v1', JSON.stringify(state));
+
+    const fb = state.systemSettings?.firebase;
+    if (fb?.enabled && fb?.databaseURL && fb?.workspaceId) {
+      clearTimeout(refs.saveTimer);
+      refs.saveTimer = setTimeout(() => {
+        const { currentUser, ...toSync } = state;
+        fbSave(fb.databaseURL, fb.workspaceId, toSync).catch(() => {});
+      }, 3000);
+    }
   }, [state]);
+
+  // ── Poll Firebase for remote changes ────────────────────────────────────────
+  useEffect(() => {
+    const refs = fbSyncRef.current;
+    const fb = state.systemSettings?.firebase;
+    const newKey = `${fb?.enabled}-${fb?.databaseURL}-${fb?.workspaceId}`;
+    if (refs.configKey === newKey) return;
+    refs.configKey = newKey;
+
+    clearInterval(refs.pollInterval);
+    if (!fb?.enabled || !fb?.databaseURL || !fb?.workspaceId) return;
+
+    const poll = async () => {
+      try {
+        const data = await fbFetch(fb.databaseURL, fb.workspaceId);
+        if (!data || !data.users) return;
+        const localSaved = state._savedAt || 0;
+        if ((data._savedAt || 0) > localSaved) {
+          refs.isSyncing = true;
+          dispatch({ type: 'CLOUD_SYNC', payload: data });
+        }
+      } catch { /* network error — ignore */ }
+    };
+
+    poll();
+    refs.pollInterval = setInterval(poll, 30000);
+    return () => clearInterval(refs.pollInterval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [`${state.systemSettings?.firebase?.enabled}-${state.systemSettings?.firebase?.databaseURL}-${state.systemSettings?.firebase?.workspaceId}`]);
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>

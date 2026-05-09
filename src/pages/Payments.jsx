@@ -392,11 +392,17 @@ export default function Payments() {
     const tenant = (tenants || []).find(t => String(t.id) === String(payForm.tenantId));
     const today = new Date().toLocaleDateString('fr-CI');
     const tenantFullName = tenant ? (tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim()) : '';
+    const matchingContract = (contracts || []).find(c =>
+      String(c.tenantId) === String(payForm.tenantId) ||
+      c.tenant === tenantFullName
+    );
     const newPayment = {
       propertyName: opt?.propertyName || payForm.propertyKey,
       tenantName: tenantFullName,
       tenantEmail: tenant?.email || '',
       tenantPhone: tenant?.phone || '',
+      tenantId: tenant?.id || null,
+      contractId: matchingContract?.id || null,
       amount: parseFloat(payForm.amount) || 0,
       month: payForm.month,
       dueDate: payForm.dueDate,

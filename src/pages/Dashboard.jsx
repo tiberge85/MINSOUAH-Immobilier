@@ -49,7 +49,48 @@ function KpiCard({ label, value, sub, subIcon, subColor, icon, iconBg }) {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { state } = useApp();
-  const { revenueData, alerts, contracts, tickets, properties, tenants, owners, payments } = state;
+  const { revenueData, contracts, tickets, properties, tenants, owners, payments } = state;
+
+  // Auto-generate alerts from live data (replaces static state.alerts)
+  const alerts = [
+    ...payments
+      .filter(p => p.status === 'Impayé' || p.status === 'En retard')
+      .slice(0, 4)
+      .map(p => ({
+        id: `pay-${p.id}`,
+        message: `Loyer impayé — ${p.tenantName || p.tenant} (${p.month})`,
+        time: p.month || '',
+        icon: 'payments',
+        color: 'bg-error/10 text-error',
+      })),
+    ...contracts
+      .filter(c => {
+        if (c.status !== 'Actif' || !c.endDate || c.endDate === '—') return false;
+        try {
+          const [d, m, y] = c.endDate.split('/');
+          const diff = (new Date(y, m - 1, d) - Date.now()) / 86400000;
+          return diff >= 0 && diff <= 30;
+        } catch { return false; }
+      })
+      .slice(0, 3)
+      .map(c => ({
+        id: `cont-${c.id}`,
+        message: `Contrat expirant bientôt — ${c.tenant}`,
+        time: `Expire le ${c.endDate}`,
+        icon: 'contract',
+        color: 'bg-amber-100 text-amber-700',
+      })),
+    ...tickets
+      .filter(t => t.priority === 'Urgent' && t.status !== 'Fermé' && t.status !== 'Résolu')
+      .slice(0, 3)
+      .map(t => ({
+        id: `tick-${t.id}`,
+        message: `Ticket urgent — ${t.title}`,
+        time: t.reportedAt || '',
+        icon: 'engineering',
+        color: 'bg-error/10 text-error',
+      })),
+  ];
   const [chartPeriod, setChartPeriod] = useState('Mensuel');
 
   const activeContracts = contracts.filter((c) => c.status === 'Actif').length;

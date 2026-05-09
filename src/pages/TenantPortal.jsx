@@ -239,7 +239,7 @@ function NewTicketModal({ tenant, contract, onClose, onSave }) {
   );
 }
 
-function QuittanceRow({ payment, orgSettings, onDownload }) {
+function QuittanceRow({ payment, onDownload }) {
   const isPaid = payment.status === 'Payé';
   return (
     <div className="flex items-center justify-between py-3 px-md border-b border-outline-variant/10 last:border-0">
@@ -272,7 +272,7 @@ function QuittanceRow({ payment, orgSettings, onDownload }) {
 
 export default function TenantPortal() {
   const { state, dispatch } = useApp();
-  const { tenants, contracts, payments, tickets } = state;
+  const { tenants, contracts, payments, tickets, orgSettings } = state;
   const navigate = useNavigate();
   const toast = useToast();
   const [selectedId, setSelectedId] = useState(null);
@@ -295,12 +295,12 @@ export default function TenantPortal() {
   }, [tenant, contracts, tenantName]);
 
   const tenantPayments = useMemo(() =>
-    contract
-      ? payments.filter(p => p.contractId === contract.id).sort((a, b) => b.id - a.id)
-      : payments.filter(p =>
-          p.tenantName === tenantName ||
-          p.tenantName === tenant?.name
-        ).sort((a, b) => b.id - a.id),
+    payments.filter(p =>
+      (contract && p.contractId === contract.id) ||
+      (tenant && p.tenantId === tenant.id) ||
+      (p.tenantName && tenantName && p.tenantName.toLowerCase().trim() === tenantName.toLowerCase().trim()) ||
+      (p.tenantName && tenant?.name && p.tenantName.toLowerCase().trim() === tenant.name.toLowerCase().trim())
+    ).sort((a, b) => b.id - a.id),
     [contract, payments, tenantName, tenant]
   );
 
@@ -645,7 +645,6 @@ export default function TenantPortal() {
                   <QuittanceRow
                     key={p.id}
                     payment={p}
-                    orgSettings={orgSettings}
                     onDownload={handleDownloadQuittance}
                   />
                 ))
@@ -723,13 +722,28 @@ export default function TenantPortal() {
                         <p className="text-body-sm text-on-surface-variant">{fmt(p.amount)} — Payé le {p.paidDate}</p>
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleDownloadQuittance(p)}
-                      className="flex items-center gap-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-label-sm font-bold px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      <Icon name="download" size={16} />
-                      PDF
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleDownloadQuittance(p)}
+                        className="flex items-center gap-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-label-sm font-bold px-3 py-1.5 rounded-lg transition-colors"
+                        title="Télécharger PDF"
+                      >
+                        <Icon name="download" size={16} />
+                        PDF
+                      </button>
+                      <button
+                        onClick={() => {
+                          const phone = (tenant?.phone || '').replace(/\D/g, '');
+                          const msg = encodeURIComponent(`Bonjour ${tenantName},\n\nVotre quittance de loyer pour ${p.month} d'un montant de ${fmt(p.amount)} est disponible.\nPropriété : ${contract?.propertyName || tenant?.property || '—'}\nDate de paiement : ${p.paidDate || '—'}\n\nMerci pour votre règlement.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`);
+                          window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
+                        }}
+                        className="flex items-center gap-1.5 bg-green-100 hover:bg-green-200 text-green-700 text-label-sm font-bold px-3 py-1.5 rounded-lg transition-colors"
+                        title="Envoyer via WhatsApp"
+                      >
+                        <Icon name="chat" size={16} />
+                        WhatsApp
+                      </button>
+                    </div>
                   </div>
                 ))
               )}

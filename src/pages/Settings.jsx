@@ -298,6 +298,14 @@ export default function Settings() {
         {/* Sidebar */}
         <div className="md:w-52 flex-shrink-0">
           <div className="bg-surface rounded-2xl border border-outline-variant/20 overflow-hidden">
+            {/* Back to portal for TENANT/OWNER */}
+            {(currentUser?.role === 'TENANT' || currentUser?.role === 'OWNER') && (
+              <button onClick={() => navigate(currentUser.role === 'TENANT' ? '/portal/tenant' : '/portal/owner')}
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-primary hover:bg-primary/10 transition-all text-left border-b border-outline-variant/20">
+                <Icon name="arrow_back" size={18} />
+                Mon portail
+              </button>
+            )}
             {TABS.map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
                 className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition-all text-left ${
@@ -729,6 +737,7 @@ function SystemTab({ state, dispatch, showToast }) {
     { key: 'smtp', label: 'SMTP / Email', icon: 'email' },
     { key: 'whatsapp', label: 'WhatsApp Business', icon: 'chat' },
     { key: 'mobilemoney', label: 'Mobile Money', icon: 'payments' },
+    { key: 'sync', label: 'Sync Cloud', icon: 'cloud_sync' },
     { key: 'monitoring', label: 'Monitoring', icon: 'monitor_heart' },
   ];
 
@@ -893,6 +902,11 @@ function SystemTab({ state, dispatch, showToast }) {
             <Icon name="save" size={16} />Enregistrer tous les opérateurs
           </button>
         </div>
+      )}
+
+      {/* Cloud Sync */}
+      {section === 'sync' && (
+        <CloudSyncTab state={state} dispatch={dispatch} showToast={showToast} />
       )}
 
       {/* Monitoring */}
@@ -1416,6 +1430,83 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
       </div>
 
       </> /* end subTab === 'users' */}
+    </div>
+  );
+}
+
+/* ── Cloud Sync Tab (Firebase REST) ────────────────────────────────────────── */
+function CloudSyncTab({ state, dispatch, showToast }) {
+  const fb = state.systemSettings?.firebase || {};
+  const [cfg, setCfg] = useState({
+    enabled: fb.enabled || false,
+    databaseURL: fb.databaseURL || '',
+    workspaceId: fb.workspaceId || '',
+  });
+  const [testing, setTesting] = useState(false);
+  const [syncStatus, setSyncStatus] = useState(null);
+
+  const save = () => {
+    dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: { firebase: cfg } });
+    showToast('Configuration Cloud enregistrée');
+  };
+
+  const testConnection = async () => {
+    if (!cfg.databaseURL || !cfg.workspaceId) { showToast('Remplissez l\'URL et l\'identifiant'); return; }
+    setTesting(true);
+    try {
+      const url = `${cfg.databaseURL.replace(/\/$/, '')}/minsouah/${cfg.workspaceId}/ping.json`;
+      await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ts: Date.now() }) });
+      setSyncStatus('ok');
+      showToast('Connexion Firebase réussie !');
+    } catch {
+      setSyncStatus('error');
+      showToast('Erreur de connexion Firebase — vérifiez l\'URL et les règles');
+    }
+    setTesting(false);
+  };
+
+  return (
+    <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold text-on-surface flex items-center gap-2"><Icon name="cloud_sync" filled />Synchronisation Cloud</h3>
+        <Toggle checked={cfg.enabled} onChange={() => setCfg(c => ({ ...c, enabled: !c.enabled }))} />
+      </div>
+
+      <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl">
+        <p className="font-semibold text-on-surface mb-2 flex items-center gap-1.5 text-sm"><Icon name="tips_and_updates" size={16} className="text-primary" />Configuration Firebase (gratuit)</p>
+        <ol className="list-decimal list-inside space-y-1 text-xs text-on-surface-variant">
+          <li>Créez un projet sur <strong className="text-on-surface">console.firebase.google.com</strong></li>
+          <li>Activez <strong className="text-on-surface">Realtime Database</strong> → mode test</li>
+          <li>Copiez l'URL de la base (ex: <code className="bg-surface-container px-1 rounded">https://mon-projet.firebaseio.com</code>)</li>
+          <li>Entrez l'URL + un identifiant d'espace unique ci-dessous et enregistrez</li>
+          <li>Faites pareil sur tous les appareils — les données se synchroniseront</li>
+        </ol>
+      </div>
+
+      <div className={`flex flex-col gap-4 ${!cfg.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+        <Field label="URL Firebase Realtime Database" icon="link">
+          <input value={cfg.databaseURL} onChange={e => setCfg(c => ({ ...c, databaseURL: e.target.value }))} className={inputCls} placeholder="https://mon-projet.firebaseio.com" />
+        </Field>
+        <Field label="Identifiant d'espace (Workspace ID)" icon="key">
+          <input value={cfg.workspaceId} onChange={e => setCfg(c => ({ ...c, workspaceId: e.target.value.replace(/\s/g, '-') }))} className={inputCls} placeholder="minsouah-principal-2024" />
+          <p className="text-xs text-on-surface-variant mt-1">Utilisez le même identifiant sur tous les appareils.</p>
+        </Field>
+      </div>
+
+      <div className="flex gap-3 flex-wrap">
+        <button onClick={save} className="px-5 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 flex items-center gap-2 transition-colors">
+          <Icon name="save" size={16} />Enregistrer
+        </button>
+        <button onClick={testConnection} disabled={testing || !cfg.databaseURL || !cfg.workspaceId}
+          className="px-5 py-2.5 bg-surface-container border border-outline-variant/30 text-on-surface rounded-xl text-sm font-semibold hover:bg-surface-container-high flex items-center gap-2 transition-colors disabled:opacity-50">
+          {testing ? <Icon name="progress_activity" size={16} className="animate-spin" /> : <Icon name="wifi_tethering" size={16} />}
+          Tester
+        </button>
+      </div>
+
+      {syncStatus === 'ok' && <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm"><Icon name="check_circle" size={16} />Connexion réussie — sync automatique activée.</div>}
+      {syncStatus === 'error' && <div className="flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-xl text-error text-sm"><Icon name="error" size={16} />Erreur — vérifiez l'URL et les règles Firebase (mode test).</div>}
+      {cfg.enabled && state.systemSettings?.firebase?.enabled && <div className="flex items-center gap-2 p-3 bg-primary/10 border border-primary/20 rounded-xl text-primary text-sm"><Icon name="cloud_done" size={16} />Sync activée — sauvegarde Firebase toutes les 3 secondes.</div>}
     </div>
   );
 }

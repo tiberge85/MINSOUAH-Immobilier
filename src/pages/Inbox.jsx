@@ -228,12 +228,9 @@ export default function Inbox() {
   };
 
   const handleCreateConversation = (conv) => {
-    const updated = [conv, ...conversations];
-    setConversations(updated);
+    dispatch({ type: 'ADD_CONVERSATION', payload: conv });
     setActiveId(conv.id);
     setShowMobileChat(true);
-    // Persist new conversation to state via a dispatch (using SEND_MESSAGE hack-free)
-    // We'll use a simple approach: store in local state only (conversations are ephemeral)
   };
 
   const totalUnread = conversations.reduce((s, c) => s + (c.unread || 0), 0);

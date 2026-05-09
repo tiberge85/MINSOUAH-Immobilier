@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
@@ -31,6 +31,8 @@ const pageTitles = {
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showNotif, setShowNotif] = useState(false);
+  const notifRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { state, dispatch } = useApp();
@@ -38,6 +40,40 @@ export default function Layout() {
   const { currentUser } = state;
   const unpaidCount = state.payments.filter(p => p.status !== 'Payé').length;
   const title = pageTitles[location.pathname] || 'Minsouah';
+
+  // Auto-generated notifications
+  const notifications = useMemo(() => {
+    const now = Date.now();
+    return [
+      ...state.payments
+        .filter(p => p.status === 'Impayé' || p.status === 'En retard')
+        .slice(0, 4)
+        .map(p => ({ id: `pay-${p.id}`, icon: 'payments', color: 'text-error', bg: 'bg-error/10', label: `Loyer impayé`, sub: `${p.tenantName || ''} — ${p.month || ''}`, path: '/payments' })),
+      ...state.contracts
+        .filter(c => {
+          if (c.status !== 'Actif' || !c.endDate || c.endDate === '—') return false;
+          try { const [d, m, y] = c.endDate.split('/'); return ((new Date(y, m-1, d) - now) / 86400000) <= 30; } catch { return false; }
+        })
+        .slice(0, 3)
+        .map(c => ({ id: `cont-${c.id}`, icon: 'contract', color: 'text-amber-600', bg: 'bg-amber-100', label: 'Contrat expirant', sub: `${c.tenant} — ${c.endDate}`, path: '/rental' })),
+      ...state.tickets
+        .filter(t => t.priority === 'Urgent' && t.status !== 'Fermé' && t.status !== 'Résolu')
+        .slice(0, 3)
+        .map(t => ({ id: `tick-${t.id}`, icon: 'engineering', color: 'text-error', bg: 'bg-error/10', label: 'Ticket urgent', sub: t.title, path: '/maintenance' })),
+      ...state.conversations
+        .filter(c => (c.unread || 0) > 0)
+        .slice(0, 3)
+        .map(c => ({ id: `msg-${c.id}`, icon: 'mail', color: 'text-primary', bg: 'bg-primary/10', label: 'Nouveau message', sub: c.contact?.name || 'Messagerie', path: '/inbox' })),
+    ];
+  }, [state.payments, state.contracts, state.tickets, state.conversations]);
+
+  // Close notif panel when clicking outside
+  useEffect(() => {
+    if (!showNotif) return;
+    const handler = (e) => { if (notifRef.current && !notifRef.current.contains(e.target)) setShowNotif(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showNotif]);
 
   const handleLogout = () => {
     dispatch({ type: 'LOGOUT' });
@@ -223,10 +259,46 @@ export default function Layout() {
               <Icon name={dark ? 'light_mode' : 'dark_mode'} size={20} />
             </button>
 
-            <button className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-high transition-colors text-on-surface-variant relative">
-              <Icon name="notifications" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-error rounded-full" />
-            </button>
+            <div className="relative" ref={notifRef}>
+              <button onClick={() => setShowNotif(v => !v)}
+                className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-high transition-colors text-on-surface-variant relative">
+                <Icon name="notifications" />
+                {notifications.length > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-error text-on-error text-[9px] font-bold rounded-full flex items-center justify-center">
+                    {notifications.length > 9 ? '9+' : notifications.length}
+                  </span>
+                )}
+              </button>
+              {showNotif && (
+                <div className="absolute right-0 top-12 w-80 bg-surface rounded-2xl shadow-xl border border-outline-variant/20 z-50 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-outline-variant/10">
+                    <p className="font-bold text-on-surface text-sm">Notifications</p>
+                    {notifications.length > 0 && (
+                      <span className="text-xs bg-error text-on-error px-2 py-0.5 rounded-full font-bold">{notifications.length}</span>
+                    )}
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="text-center py-8 text-on-surface-variant">
+                        <Icon name="check_circle" size={32} className="opacity-30 mb-2 text-green-600" />
+                        <p className="text-xs">Aucune notification</p>
+                      </div>
+                    ) : notifications.map(n => (
+                      <button key={n.id} onClick={() => { navigate(n.path); setShowNotif(false); }}
+                        className="w-full flex items-start gap-3 px-4 py-3 hover:bg-surface-container transition-colors border-b border-outline-variant/10 last:border-0 text-left">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${n.bg}`}>
+                          <Icon name={n.icon} size={16} className={n.color} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-on-surface">{n.label}</p>
+                          <p className="text-xs text-on-surface-variant truncate">{n.sub}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <button onClick={() => navigate('/settings')}
               className="w-10 h-10 rounded-full overflow-hidden bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-sm cursor-pointer hover:ring-2 hover:ring-primary transition-all"
