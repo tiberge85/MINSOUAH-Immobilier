@@ -56,6 +56,11 @@ export const DEFAULT_SYSTEM = {
   },
   platform: { timezone: 'Africa/Abidjan', dateFormat: 'dd/MM/yyyy' },
   sessionTimeout: 30,
+  firebase: {
+    databaseURL: import.meta.env.VITE_FIREBASE_URL || '',
+    workspaceId: import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah',
+    enabled: !!(import.meta.env.VITE_FIREBASE_URL),
+  },
 };
 
 // ─── EMPTY state — used by full reset (no demo data) ──────────────────────────
@@ -351,8 +356,17 @@ export function AppProvider({ children }) {
         if (saved) {
           const parsed = JSON.parse(saved);
           if (!parsed.users) parsed.users = [DEFAULT_ADMIN];
-          if (!parsed.systemSettings) parsed.systemSettings = DEFAULT_SYSTEM;
           if (!parsed.activityLog) parsed.activityLog = [];
+          if (!parsed.systemSettings) {
+            parsed.systemSettings = DEFAULT_SYSTEM;
+          } else {
+            // Merge new DEFAULT_SYSTEM keys (e.g. firebase, sessionTimeout) into old saves
+            parsed.systemSettings = { ...DEFAULT_SYSTEM, ...parsed.systemSettings };
+            // If firebase wasn't manually configured but env vars are set, use env config
+            if (!parsed.systemSettings.firebase?.databaseURL && DEFAULT_SYSTEM.firebase.enabled) {
+              parsed.systemSettings.firebase = DEFAULT_SYSTEM.firebase;
+            }
+          }
           return parsed;
         }
         return { ...EMPTY_STATE };

@@ -6,6 +6,7 @@ import SignaturePad from '../components/SignaturePad';
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
 const fmt = n => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
+const phoneForWA = raw => { const d = (raw || '').replace(/\D/g, ''); if (!d) return ''; return d.startsWith('225') ? d : '225' + (d.startsWith('0') ? d.slice(1) : d); };
 
 const statusColor = {
   'Payé':      'text-green-700 bg-green-100',
@@ -451,11 +452,12 @@ export default function Payments() {
   }, [quittancePayment, orgSettings, signatures]);
 
   const whatsappReceipt = useCallback(() => {
-    const phone = (quittancePayment?.tenantPhone || '').replace(/\D/g, '');
+    const phone = phoneForWA(quittancePayment?.tenantPhone);
+    if (!phone) { alert('Numéro de téléphone manquant pour ce locataire.'); return; }
     const msg = encodeURIComponent(
       `Bonjour ${quittancePayment?.tenantName},\n\nVotre quittance de loyer pour ${quittancePayment?.month} d'un montant de ${fmt(quittancePayment?.amount)} a bien été enregistrée.${signatures.bailleur ? '\n✅ Quittance signée numériquement.' : ''}\nMerci pour votre paiement.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
     );
-    window.open(`https://wa.me/${phone || ''}?text=${msg}`, '_blank');
+    window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
   }, [quittancePayment, orgSettings, signatures]);
 
   const emailReceipt = useCallback(() => {
@@ -474,11 +476,12 @@ export default function Payments() {
   };
 
   const sendWhatsAppReminder = (p) => {
-    const phone = (p.tenantPhone || '').replace(/\D/g, '');
+    const phone = phoneForWA(p.tenantPhone);
+    if (!phone) { alert('Numéro de téléphone manquant pour ce locataire.'); return; }
     const msg = encodeURIComponent(
       `Bonjour ${p.tenantName},\n\nNous vous rappelons que votre loyer de ${fmt(p.amount)} pour ${p.month} est en attente de règlement.\nPropriété : ${p.propertyName}\n\nMerci de procéder au paiement dès que possible.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
     );
-    window.open(`https://wa.me/${phone || ''}?text=${msg}`, '_blank');
+    window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
     dispatch({ type: 'SEND_REMINDER', payload: p.id });
   };
 

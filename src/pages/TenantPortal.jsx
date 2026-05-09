@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
@@ -6,6 +6,13 @@ import Badge from '../components/ui/Badge';
 import Icon from '../components/Icon';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
+
+function phoneForWA(raw) {
+  const d = (raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('225')) return d;
+  return '225' + (d.startsWith('0') ? d.slice(1) : d);
+}
 
 const MOBILE_MONEY = [
   { id: 'orange', name: 'Orange Money', color: 'bg-orange-500', textColor: 'text-white', icon: 'smartphone' },
@@ -272,7 +279,7 @@ function QuittanceRow({ payment, onDownload }) {
 
 export default function TenantPortal() {
   const { state, dispatch } = useApp();
-  const { tenants, contracts, payments, tickets, orgSettings, conversations } = state;
+  const { tenants, contracts, payments, tickets, orgSettings, conversations, currentUser } = state;
   const navigate = useNavigate();
   const toast = useToast();
   const [selectedId, setSelectedId] = useState(null);
@@ -280,6 +287,13 @@ export default function TenantPortal() {
   const [showPayModal, setShowPayModal] = useState(false);
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [msgText, setMsgText] = useState('');
+
+  // Auto-select when a TENANT user opens their own portal
+  useEffect(() => {
+    if (currentUser?.role === 'TENANT' && currentUser?.personId) {
+      setSelectedId(currentUser.personId);
+    }
+  }, [currentUser?.role, currentUser?.personId]);
 
   const tenant = tenants.find(t => t.id === selectedId);
   const tenantName = tenant ? (tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim()) : '';
@@ -354,7 +368,7 @@ export default function TenantPortal() {
       time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
     };
     if (tenantConversation) {
-      dispatch({ type: 'SEND_MESSAGE', payload: { id: tenantConversation.id, message: msg } });
+      dispatch({ type: 'SEND_MESSAGE', payload: { convId: tenantConversation.id, message: msg } });
     } else {
       dispatch({
         type: 'ADD_CONVERSATION',
@@ -815,7 +829,8 @@ export default function TenantPortal() {
                       </button>
                       <button
                         onClick={() => {
-                          const phone = (tenant?.phone || '').replace(/\D/g, '');
+                          const phone = phoneForWA(tenant?.phone);
+                          if (!phone) { alert('Numéro de téléphone manquant pour ce locataire.'); return; }
                           const msg = encodeURIComponent(`Bonjour ${tenantName},\n\nVotre quittance de loyer pour ${p.month} d'un montant de ${fmt(p.amount)} est disponible.\nPropriété : ${contract?.propertyName || tenant?.property || '—'}\nDate de paiement : ${p.paidDate || '—'}\n\nMerci pour votre règlement.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`);
                           window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
                         }}
