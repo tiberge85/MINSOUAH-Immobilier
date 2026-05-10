@@ -15,6 +15,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module';
+import { InspectionsModule } from './modules/inspections/inspections.module';
 
 @Module({
   controllers: [HealthController],
@@ -46,6 +47,7 @@ import { MaintenanceModule } from './modules/maintenance/maintenance.module';
     NotificationsModule,
     AnalyticsModule,
     MaintenanceModule,
+    InspectionsModule,
   ],
 })
 export class AppModule {}

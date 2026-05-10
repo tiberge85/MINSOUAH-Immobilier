@@ -279,7 +279,7 @@ function QuittanceRow({ payment, onDownload }) {
 
 export default function TenantPortal() {
   const { state, dispatch } = useApp();
-  const { tenants, contracts, payments, tickets, orgSettings, conversations, currentUser } = state;
+  const { tenants, contracts, payments, tickets, orgSettings, conversations, currentUser, inspections } = state;
   const navigate = useNavigate();
   const toast = useToast();
   const [selectedId, setSelectedId] = useState(null);
@@ -484,6 +484,7 @@ export default function TenantPortal() {
     { id: 'home', label: 'Accueil', icon: 'home' },
     { id: 'payments', label: 'Paiements', icon: 'payments' },
     { id: 'tickets', label: 'Maintenance', icon: 'engineering' },
+    { id: 'edl', label: 'État lieux', icon: 'home_work' },
     { id: 'docs', label: 'Documents', icon: 'folder' },
     { id: 'messages', label: 'Messages', icon: 'chat' },
   ];
@@ -791,6 +792,59 @@ export default function TenantPortal() {
                 <Icon name="send" size={18} />
               </button>
             </div>
+          </>
+        )}
+
+        {activeTab === 'edl' && (
+          <>
+            <h3 className="font-bold text-on-surface">États des lieux</h3>
+            <p className="text-body-sm text-on-surface-variant -mt-2">
+              Consultez vos états des lieux et signez électroniquement
+            </p>
+            {(() => {
+              const STATUS_LABELS = { DRAFT: 'Brouillon', IN_PROGRESS: 'En cours', PENDING_SIGNATURE: 'À signer', COMPLETED: 'Complété' };
+              const STATUS_CLS = { DRAFT: 'bg-slate-100 text-slate-700', IN_PROGRESS: 'bg-blue-100 text-blue-800', PENDING_SIGNATURE: 'bg-amber-100 text-amber-800', COMPLETED: 'bg-green-100 text-green-800' };
+              const tenantInspections = (inspections || []).filter(i => i.tenantId === tenant?.id);
+              if (tenantInspections.length === 0) return (
+                <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-8 text-center text-on-surface-variant">
+                  <Icon name="home_work" size={40} className="opacity-30 mb-2" />
+                  <p>Aucun état des lieux disponible</p>
+                </div>
+              );
+              return (
+                <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 overflow-hidden">
+                  {tenantInspections.map(insp => (
+                    <div key={insp.id} className="flex items-center justify-between px-md py-3 border-b border-outline-variant/10 last:border-0">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${insp.type === 'ENTRY' ? 'bg-tertiary/10' : 'bg-error/10'}`}>
+                          <Icon name={insp.type === 'ENTRY' ? 'login' : 'logout'} size={20} className={insp.type === 'ENTRY' ? 'text-tertiary' : 'text-error'} />
+                        </div>
+                        <div>
+                          <p className="font-bold text-on-surface text-label-md">{insp.ref} — {insp.type === 'ENTRY' ? 'Entrée' : 'Sortie'}</p>
+                          <p className="text-body-sm text-on-surface-variant">
+                            {insp.propertyName} {insp.unitRef ? `• ${insp.unitRef}` : ''} — {insp.scheduledDate ? new Date(insp.scheduledDate).toLocaleDateString('fr-FR') : '—'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-label-sm font-bold px-2.5 py-0.5 rounded-full ${STATUS_CLS[insp.status] || 'bg-gray-100 text-gray-700'}`}>
+                          {STATUS_LABELS[insp.status] || insp.status}
+                        </span>
+                        {insp.status === 'PENDING_SIGNATURE' && !insp.tenantSignature && (
+                          <span className="flex items-center gap-1 text-amber-700 text-label-sm font-bold">
+                            <Icon name="draw" size={14} />
+                            Action requise
+                          </span>
+                        )}
+                        {insp.tenantSignature && (
+                          <Icon name="verified" size={18} className="text-green-600" title="Signé" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </>
         )}
 

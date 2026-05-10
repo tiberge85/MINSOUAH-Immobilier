@@ -173,6 +173,7 @@ model Organization {
   tickets         MaintenanceTicket[]
   notifications   NotificationLog[]
   auditLogs       AuditLog[]
+  inspections     Inspection[]
 
   @@map("organizations")
 }
@@ -204,6 +205,7 @@ model User {
   assignedTickets MaintenanceTicket[] @relation("TicketAssignee")
   payments       Payment[]       @relation("PaymentRecorder")
   auditLogs      AuditLog[]
+  createdInspections Inspection[] @relation("InspectionCreator")
 
   @@index([orgId])
   @@map("users")
@@ -280,6 +282,7 @@ model Unit {
   photos    UnitPhoto[]
   contracts Contract[]
   tickets   MaintenanceTicket[]
+  inspections Inspection[]
 
   @@unique([buildingId, unitNumber])
   @@index([orgId, status])
@@ -331,6 +334,7 @@ model Tenant {
   contracts Contract[]
   payments  Payment[]
   tickets   MaintenanceTicket[]
+  inspections Inspection[]
 
   @@index([orgId])
   @@index([orgId, phone])
@@ -371,6 +375,7 @@ model Contract {
   createdBy   User?        @relation("ContractCreator", fields: [createdById], references: [id])
   rentPeriods RentPeriod[]
   payments    Payment[]
+  inspections Inspection[]
 
   @@index([orgId, status])
   @@index([unitId])
@@ -512,4 +517,161 @@ model NotificationLog {
   @@index([orgId])
   @@index([status])
   @@map("notification_logs")
+}
+
+// ─── Inspections Enums ────────────────────────────────────────────────────────
+
+enum InspectionType {
+  ENTRY
+  EXIT
+}
+
+enum InspectionStatus {
+  DRAFT
+  IN_PROGRESS
+  PENDING_MANAGER_VALIDATION
+  PENDING_TENANT_SIGNATURE
+  COMPLETED
+  CANCELLED
+}
+
+enum EquipmentCategory {
+  ELECTROMENAGER
+  MOBILIER
+  CLIMATISATION
+  PLOMBERIE
+  ELECTRICITE
+  DECORATION
+  ELECTRONIQUE
+  SECURITE
+  AUTRE
+}
+
+enum ItemCondition {
+  NEUF
+  TRES_BON
+  BON
+  MOYEN
+  ABIME
+  HORS_SERVICE
+}
+
+enum DamageSeverity {
+  MINOR
+  MODERATE
+  MAJOR
+}
+
+// ─── Inspections ──────────────────────────────────────────────────────────────
+
+model Inspection {
+  id                  String           @id @default(uuid())
+  orgId               String
+  contractId          String
+  unitId              String
+  tenantId            String
+  createdById         String
+  type                InspectionType
+  status              InspectionStatus @default(DRAFT)
+  scheduledDate       DateTime
+  conductedDate       DateTime?
+  notes               String?
+  generalCondition    String?
+  entryInspectionId   String?
+  managerSignatureData Json?
+  managerSignedAt     DateTime?
+  managerSignedIp     String?
+  tenantSignatureData  Json?
+  tenantSignedAt      DateTime?
+  tenantSignedIp      String?
+  tenantConsentText   String?
+  pdfUrl              String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  org             Organization     @relation(fields: [orgId], references: [id])
+  contract        Contract         @relation(fields: [contractId], references: [id])
+  unit            Unit             @relation(fields: [unitId], references: [id])
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  createdBy       User             @relation("InspectionCreator", fields: [createdById], references: [id])
+  entryInspection Inspection?      @relation("InspectionPair", fields: [entryInspectionId], references: [id])
+  exitInspections Inspection[]     @relation("InspectionPair")
+  items           InspectionItem[]
+  damages         Damage[]
+  report          InspectionReport?
+
+  @@index([orgId])
+  @@index([contractId])
+  @@index([unitId])
+  @@index([tenantId])
+  @@map("inspections")
+}
+
+model InspectionItem {
+  id             String            @id @default(uuid())
+  inspectionId   String
+  name           String
+  category       EquipmentCategory
+  brand          String?
+  model          String?
+  serialNumber   String?
+  quantity       Int               @default(1)
+  estimatedValue Decimal?          @db.Decimal(10, 2)
+  condition      ItemCondition     @default(BON)
+  notes          String?
+  sortOrder      Int               @default(0)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  inspection Inspection       @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  photos     InspectionPhoto[]
+
+  @@index([inspectionId])
+  @@map("inspection_items")
+}
+
+model InspectionPhoto {
+  id          String   @id @default(uuid())
+  itemId      String
+  url         String
+  storagePath String?
+  caption     String?
+  createdAt   DateTime @default(now())
+
+  item InspectionItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@map("inspection_photos")
+}
+
+model Damage {
+  id                   String         @id @default(uuid())
+  inspectionId         String
+  description          String
+  severity             DamageSeverity @default(MINOR)
+  repairCost           Decimal?       @db.Decimal(10, 2)
+  replacementCost      Decimal?       @db.Decimal(10, 2)
+  tenantResponsibility Boolean        @default(true)
+  depositDeduction     Decimal?       @db.Decimal(10, 2)
+  photoUrls            String[]
+  resolved             Boolean        @default(false)
+  resolvedAt           DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@index([inspectionId])
+  @@map("damages")
+}
+
+model InspectionReport {
+  id           String   @id @default(uuid())
+  inspectionId String   @unique
+  pdfUrl       String?
+  storagePath  String?
+  generatedAt  DateTime @default(now())
+
+  inspection Inspection @relation(fields: [inspectionId], references: [id])
+
+  @@map("inspection_reports")
 }

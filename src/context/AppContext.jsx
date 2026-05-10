@@ -75,6 +75,7 @@ const EMPTY_STATE = {
   revenueData:    mockRevenueData,
   alerts:         [],
   payments:       [],
+  inspections:    [],
   currentUser:    null,
   users:          [DEFAULT_ADMIN],
   orgSettings:    DEFAULT_ORG,
@@ -170,6 +171,14 @@ function reducer(state, action) {
       return { ...state, tickets: state.tickets.map(t => t.id === payload.id ? payload : t) };
     case 'DELETE_TICKET':
       return { ...state, tickets: state.tickets.filter(t => t.id !== payload) };
+
+    // ── Inspections ──────────────────────────────────────────────────────────
+    case 'ADD_INSPECTION':
+      return { ...state, inspections: [payload, ...(state.inspections || [])] };
+    case 'UPDATE_INSPECTION':
+      return { ...state, inspections: (state.inspections || []).map(i => i.id === payload.id ? payload : i) };
+    case 'DELETE_INSPECTION':
+      return { ...state, inspections: (state.inspections || []).filter(i => i.id !== payload) };
 
     // ── Conversations ─────────────────────────────────────────────────────────
     case 'SEND_MESSAGE': {
