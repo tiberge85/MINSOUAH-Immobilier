@@ -42,7 +42,7 @@ function KpiCard({ label, value, sub, icon, color }) {
 
 export default function OwnerPortal() {
   const { state } = useApp();
-  const { owners, properties, contracts, payments, tickets } = state;
+  const { owners, properties, contracts, payments, tickets, inspections } = state;
   const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
@@ -73,6 +73,13 @@ export default function OwnerPortal() {
       ? tickets.filter(t => ownerProperties.some(p => p.name === t.property))
       : [],
     [ownerProperties, tickets]
+  );
+
+  const ownerInspections = useMemo(() =>
+    ownerProperties.length
+      ? (inspections || []).filter(i => ownerProperties.some(p => p.id === i.propertyId || p.name === i.propertyName))
+      : [],
+    [ownerProperties, inspections]
   );
 
   /* ─── Analytics data ─────────────────────────────────────────── */
@@ -184,6 +191,7 @@ export default function OwnerPortal() {
     { id: 'properties', label: 'Biens', icon: 'apartment' },
     { id: 'finance', label: 'Finances', icon: 'trending_up' },
     { id: 'maintenance', label: 'Maintenance', icon: 'engineering' },
+    { id: 'edl', label: 'États des lieux', icon: 'home_work' },
   ];
 
   return (
@@ -538,6 +546,99 @@ export default function OwnerPortal() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ÉTATS DES LIEUX ──────────────────────────────────────── */}
+      {activeTab === 'edl' && (
+        <div className="flex flex-col gap-gutter">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-md">
+            {[
+              { label: 'Total', value: ownerInspections.length, color: 'bg-primary/10 text-primary' },
+              { label: 'Entrées', value: ownerInspections.filter(i => i.type === 'ENTRY').length, color: 'bg-tertiary/10 text-tertiary' },
+              { label: 'Sorties', value: ownerInspections.filter(i => i.type === 'EXIT').length, color: 'bg-error/10 text-error' },
+              { label: 'Complétés', value: ownerInspections.filter(i => i.status === 'COMPLETED').length, color: 'bg-green-100 text-green-700' },
+            ].map(s => (
+              <div key={s.label} className={`rounded-xl p-md text-center ${s.color.split(' ')[0]} border border-current/10`}>
+                <p className={`font-black text-h2 ${s.color.split(' ')[1]}`}>{s.value}</p>
+                <p className="text-label-sm text-on-surface-variant">{s.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {ownerInspections.length === 0 ? (
+            <div className="text-center py-16 text-on-surface-variant bg-surface-container-lowest rounded-2xl border border-outline-variant/20">
+              <Icon name="home_work" size={40} className="opacity-30 mb-2" />
+              <p className="font-bold">Aucun état des lieux pour vos biens</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {ownerInspections.map(insp => {
+                const STATUS_LABELS = { DRAFT: 'Brouillon', IN_PROGRESS: 'En cours', PENDING_SIGNATURE: 'Att. signature', COMPLETED: 'Complété' };
+                const STATUS_CLS = { DRAFT: 'bg-slate-100 text-slate-700', IN_PROGRESS: 'bg-blue-100 text-blue-800', PENDING_SIGNATURE: 'bg-amber-100 text-amber-800', COMPLETED: 'bg-green-100 text-green-800' };
+                const totalDmg = (insp.damages || []).reduce((s, d) => s + (d.cost || 0), 0);
+
+                const dlPDF = () => {
+                  const condLabel = { NEUF: 'Neuf', BON: 'Bon', USAGE: 'Usé', MAUVAIS: 'Mauvais', HS: 'Hors service' };
+                  const sevLabel = { MINOR: 'Mineur', MODERATE: 'Modéré', MAJOR: 'Majeur' };
+                  const catLabel = { ENTREE: 'Entrée / Hall', SALON: 'Salon / Séjour', CUISINE: 'Cuisine', CHAMBRE: 'Chambre(s)', BAIN: 'Salle de bain / WC', EXTERIEUR: 'Extérieur / Garage', AUTRE: 'Autre' };
+                  const grouped = (insp.items || []).reduce((acc, item) => { if (!acc[item.category]) acc[item.category] = []; acc[item.category].push(item); return acc; }, {});
+                  const totalCost = (insp.damages || []).reduce((s, d) => s + (d.cost || 0), 0);
+                  const inventaireHTML = Object.entries(grouped).map(([cat, items]) =>
+                    `<h3 style="color:#555;font-size:1em;margin:16px 0 4px">${catLabel[cat] || cat}</h3>
+                    <table><tr><th>Élément</th><th>État</th><th>Observations</th></tr>
+                    ${items.map(i => `<tr><td>${i.label}</td><td>${condLabel[i.condition] || i.condition}</td><td style="color:#666">${i.notes || '—'}</td></tr>`).join('')}</table>`
+                  ).join('');
+                  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>État des lieux ${insp.ref}</title>
+                    <style>body{font-family:Arial;padding:32px;max-width:800px;margin:auto;font-size:14px}h1{color:#785a00;border-bottom:3px solid #785a00;padding-bottom:8px}h2{color:#444;font-size:1em;text-transform:uppercase;margin:20px 0 6px;border-left:3px solid #785a00;padding-left:8px}table{width:100%;border-collapse:collapse;margin:6px 0}th{background:#f8f4ed;padding:6px 10px;text-align:left;border:1px solid #ddd;font-size:0.85em}td{padding:6px 10px;border:1px solid #ddd;vertical-align:top}.sig-box{display:inline-block;border:1px solid #ddd;border-radius:8px;padding:12px;width:46%;margin-right:2%}@media print{body{padding:16px}}</style></head>
+                    <body><h1>ÉTAT DES LIEUX ${insp.type === 'ENTRY' ? "D'ENTRÉE" : 'DE SORTIE'} — ${insp.ref}</h1>
+                    <h2>Informations générales</h2>
+                    <table><tr><th>Propriété</th><td>${insp.propertyName || '—'}${insp.unitRef ? ' — ' + insp.unitRef : ''}</td><th>Locataire</th><td>${insp.tenantName || '—'}</td></tr>
+                    <tr><th>Gestionnaire</th><td>${insp.managerName || '—'}</td><th>Date</th><td>${insp.scheduledDate ? new Date(insp.scheduledDate).toLocaleDateString('fr-FR') : '—'}</td></tr></table>
+                    <h2>Inventaire</h2>${(insp.items || []).length ? inventaireHTML : '<p style="color:#999">Aucun élément</p>'}
+                    ${(insp.damages || []).length ? `<h2>Dommages</h2><table><tr><th>Élément</th><th>Description</th><th>Gravité</th><th>Coût</th></tr>${(insp.damages || []).map(d => `<tr><td>${d.itemLabel || '—'}</td><td>${d.description}</td><td>${sevLabel[d.severity] || d.severity}</td><td>${d.cost > 0 ? d.cost.toLocaleString('fr-CI') + ' FCFA' : '—'}</td></tr>`).join('')}<tr style="font-weight:bold;background:#fef9ee"><td colspan="3">Total</td><td style="color:#dc2626">${totalCost > 0 ? totalCost.toLocaleString('fr-CI') + ' FCFA' : '—'}</td></tr></table>` : ''}
+                    <h2>Signatures</h2>
+                    <div class="sig-box"><p><strong>Gestionnaire</strong> — ${insp.managerName || '—'}</p>${insp.managerSignature ? `<img src="${insp.managerSignature.data}" style="max-height:60px"><p style="font-size:0.8em;color:#999">Signé le ${new Date(insp.managerSignature.signedAt).toLocaleDateString('fr-FR')}</p>` : '<p style="color:#bbb">Non signé</p>'}</div>
+                    <div class="sig-box"><p><strong>Locataire</strong> — ${insp.tenantName || '—'}</p>${insp.tenantSignature ? `<img src="${insp.tenantSignature.data}" style="max-height:60px"><p style="font-size:0.8em;color:#999">Signé le ${new Date(insp.tenantSignature.signedAt).toLocaleDateString('fr-FR')}</p>` : '<p style="color:#bbb">Non signé</p>'}</div>
+                    <p style="margin-top:40px;color:#999;font-size:0.8em;border-top:1px solid #eee;padding-top:10px">Document généré le ${new Date().toLocaleDateString('fr-FR')} — Minsouah Immobilier</p>
+                    </body></html>`;
+                  const blob = new Blob([html], { type: 'text/html' });
+                  const url = URL.createObjectURL(blob);
+                  const w = window.open(url, '_blank');
+                  if (w) { w.onload = () => { w.print(); URL.revokeObjectURL(url); }; }
+                };
+
+                return (
+                  <div key={insp.id} className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-md flex items-start gap-md">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${insp.type === 'ENTRY' ? 'bg-tertiary/10' : 'bg-error/10'}`}>
+                      <Icon name={insp.type === 'ENTRY' ? 'login' : 'logout'} size={22} className={insp.type === 'ENTRY' ? 'text-tertiary' : 'text-error'} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <span className="font-bold text-on-surface">{insp.ref}</span>
+                        <span className={`text-label-sm font-bold px-2.5 py-0.5 rounded-full ${STATUS_CLS[insp.status] || 'bg-gray-100 text-gray-700'}`}>{STATUS_LABELS[insp.status] || insp.status}</span>
+                        <span className={`text-label-sm font-bold px-2 py-0.5 rounded-full ${insp.type === 'ENTRY' ? 'bg-tertiary/10 text-tertiary' : 'bg-error/10 text-error'}`}>{insp.type === 'ENTRY' ? 'Entrée' : 'Sortie'}</span>
+                      </div>
+                      <p className="text-body-sm text-on-surface-variant truncate">{insp.propertyName} {insp.unitRef ? `• ${insp.unitRef}` : ''} — {insp.tenantName}</p>
+                      <div className="flex flex-wrap gap-3 mt-1 text-label-sm text-on-surface-variant">
+                        <span className="flex items-center gap-1"><Icon name="calendar_today" size={13} />{insp.scheduledDate ? new Date(insp.scheduledDate).toLocaleDateString('fr-FR') : '—'}</span>
+                        <span className="flex items-center gap-1"><Icon name="checklist" size={13} />{(insp.items || []).length} éléments</span>
+                        {totalDmg > 0 && <span className="flex items-center gap-1 text-error font-bold"><Icon name="warning" size={13} />{totalDmg.toLocaleString('fr-CI')} FCFA dommages</span>}
+                        {insp.managerSignature && insp.tenantSignature && <span className="flex items-center gap-1 text-green-700"><Icon name="verified" size={13} />Signé</span>}
+                      </div>
+                    </div>
+                    <button
+                      onClick={dlPDF}
+                      className="flex-shrink-0 flex items-center gap-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-label-sm font-bold px-3 py-2 rounded-xl transition-colors"
+                    >
+                      <Icon name="picture_as_pdf" size={16} />
+                      PDF
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

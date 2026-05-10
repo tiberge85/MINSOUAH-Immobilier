@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
@@ -151,6 +151,38 @@ export default function Inspections() {
   const [damageModal, setDamageModal] = useState(false);
   const [signModal, setSignModal] = useState(null); // 'manager' | 'tenant'
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [viewPhoto, setViewPhoto] = useState(null); // { data, name }
+
+  // ── Photo capture
+  const photoInputRef = useRef(null);
+  const photoTargetItem = useRef(null);
+
+  const triggerPhoto = (itemId) => {
+    photoTargetItem.current = itemId;
+    photoInputRef.current?.click();
+  };
+
+  const handlePhotoFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !photoTargetItem.current || !detail) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const photo = { id: Date.now(), data: ev.target.result, name: file.name, takenAt: new Date().toISOString() };
+      const items = detail.items.map(i =>
+        i.id === photoTargetItem.current ? { ...i, photos: [...(i.photos || []), photo] } : i
+      );
+      update({ ...detail, items });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleDeletePhoto = (itemId, photoId) => {
+    const items = detail.items.map(i =>
+      i.id === itemId ? { ...i, photos: (i.photos || []).filter(p => p.id !== photoId) } : i
+    );
+    update({ ...detail, items });
+  };
 
   // ── Forms
   const blankForm = { type: 'ENTRY', propertyId: '', unitRef: '', tenantId: '', scheduledDate: '', notes: '' };
@@ -281,6 +313,107 @@ export default function Inspections() {
     if (detail?.id === id) setDetail(null);
   };
 
+  const generatePDF = useCallback((insp) => {
+    const condLabel = { NEUF: 'Neuf', BON: 'Bon', USAGE: 'Usé', MAUVAIS: 'Mauvais', HS: 'Hors service' };
+    const condColor = { NEUF: '#d1fae5;color:#065f46', BON: '#dcfce7;color:#14532d', USAGE: '#fef3c7;color:#92400e', MAUVAIS: '#ffedd5;color:#9a3412', HS: '#fee2e2;color:#991b1b' };
+    const sevLabel = { MINOR: 'Mineur', MODERATE: 'Modéré', MAJOR: 'Majeur' };
+    const sevColor = { MINOR: '#fef3c7;color:#92400e', MODERATE: '#ffedd5;color:#9a3412', MAJOR: '#fee2e2;color:#991b1b' };
+    const totalCost = (insp.damages || []).reduce((s, d) => s + (d.cost || 0), 0);
+
+    const catLabel = { ENTREE: 'Entrée / Hall', SALON: 'Salon / Séjour', CUISINE: 'Cuisine', CHAMBRE: 'Chambre(s)', BAIN: 'Salle de bain / WC', EXTERIEUR: 'Extérieur / Garage', AUTRE: 'Autre' };
+    const grouped = (insp.items || []).reduce((acc, item) => { if (!acc[item.category]) acc[item.category] = []; acc[item.category].push(item); return acc; }, {});
+
+    const inventaireHTML = Object.entries(grouped).map(([cat, items]) => `
+      <h3 style="color:#555;font-size:1em;margin:20px 0 6px;border-bottom:1px solid #eee;padding-bottom:4px">${catLabel[cat] || cat}</h3>
+      <table>
+        <tr><th style="width:40%">Élément</th><th style="width:20%">État</th><th>Observations</th><th style="width:20%">Photos</th></tr>
+        ${items.map(item => `
+          <tr>
+            <td><strong>${item.label}</strong></td>
+            <td><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.8em;font-weight:bold;background:${condColor[item.condition] || '#f5f5f5;color:#333'}">${condLabel[item.condition] || item.condition}</span></td>
+            <td style="color:#666;font-size:0.9em">${item.notes || '—'}</td>
+            <td>${(item.photos || []).length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:4px">${(item.photos || []).map(p => `<img src="${p.data}" style="width:60px;height:48px;object-fit:cover;border-radius:4px;border:1px solid #ddd">`).join('')}</div>` : '<span style="color:#bbb;font-size:0.85em">—</span>'}</td>
+          </tr>`).join('')}
+      </table>`).join('');
+
+    const damagesHTML = (insp.damages || []).length > 0 ? `
+      <h2>Dommages constatés</h2>
+      <table>
+        <tr><th>Élément concerné</th><th>Description</th><th>Gravité</th><th>Coût estimé</th></tr>
+        ${(insp.damages || []).map(d => `
+          <tr>
+            <td>${d.itemLabel || '—'}</td>
+            <td>${d.description}</td>
+            <td><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.8em;font-weight:bold;background:${sevColor[d.severity] || '#f5f5f5;color:#333'}">${sevLabel[d.severity] || d.severity}</span></td>
+            <td style="font-weight:bold;color:${d.cost > 0 ? '#dc2626' : '#333'}">${d.cost > 0 ? Number(d.cost).toLocaleString('fr-CI') + ' FCFA' : '—'}</td>
+          </tr>`).join('')}
+        <tr style="background:#fef9ee;font-weight:bold"><td colspan="3">Total estimé des dommages</td><td style="color:#dc2626">${totalCost > 0 ? totalCost.toLocaleString('fr-CI') + ' FCFA' : '—'}</td></tr>
+      </table>` : '';
+
+    const sigHTML = (sig, label, name) => `
+      <div style="border:1px solid #ddd;border-radius:8px;padding:12px;flex:1">
+        <p style="margin:0 0 6px;font-weight:bold;color:#333">${label}</p>
+        <p style="margin:0 0 8px;color:#666;font-size:0.9em">${name || '—'}</p>
+        ${sig ? `<img src="${sig.data}" style="max-height:70px;border:1px solid #eee;border-radius:4px;display:block">
+        <p style="margin:6px 0 0;font-size:0.8em;color:#999">Signé le ${new Date(sig.signedAt).toLocaleDateString('fr-FR')}</p>` : '<p style="color:#bbb;font-style:italic">Non signé</p>'}
+      </div>`;
+
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+    <title>État des lieux ${insp.ref}</title>
+    <style>
+      body{font-family:Arial,sans-serif;padding:32px;max-width:820px;margin:auto;color:#222;font-size:14px}
+      h1{color:#785a00;border-bottom:3px solid #785a00;padding-bottom:10px;margin-bottom:4px}
+      h2{color:#444;font-size:1.05em;margin:24px 0 8px;text-transform:uppercase;letter-spacing:.05em;border-left:3px solid #785a00;padding-left:8px}
+      table{width:100%;border-collapse:collapse;margin:8px 0}
+      th{background:#f8f4ed;padding:7px 10px;text-align:left;font-size:0.85em;border:1px solid #ddd;color:#555}
+      td{padding:7px 10px;border:1px solid #ddd;vertical-align:top}
+      tr:nth-child(even){background:#fafafa}
+      .header-badges{display:flex;gap:8px;margin:8px 0 16px;flex-wrap:wrap}
+      .badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:0.8em;font-weight:bold}
+      .sig-row{display:flex;gap:16px;margin-top:8px}
+      .footer{margin-top:40px;padding-top:12px;border-top:1px solid #eee;color:#999;font-size:0.8em}
+      @media print{body{padding:16px}button{display:none}}
+    </style></head>
+    <body>
+      <h1>ÉTAT DES LIEUX ${insp.type === 'ENTRY' ? "D'ENTRÉE" : 'DE SORTIE'}</h1>
+      <div class="header-badges">
+        <span class="badge" style="background:${insp.type === 'ENTRY' ? '#f0fdf4;color:#15803d' : '#fef2f2;color:#dc2626'}">${insp.type === 'ENTRY' ? '→ Entrée' : '← Sortie'}</span>
+        <span class="badge" style="background:#f5f5f5;color:#333">Réf : ${insp.ref}</span>
+        <span class="badge" style="background:${insp.status === 'COMPLETED' ? '#dcfce7;color:#14532d' : '#fef3c7;color:#92400e'}">${STATUS_CFG[insp.status]?.label || insp.status}</span>
+      </div>
+
+      <h2>Informations générales</h2>
+      <table>
+        <tr><th style="width:30%">Propriété</th><td>${insp.propertyName || '—'}${insp.unitRef ? ' — ' + insp.unitRef : ''}</td><th style="width:20%">Locataire</th><td>${insp.tenantName || '—'}</td></tr>
+        <tr><th>Gestionnaire</th><td>${insp.managerName || '—'}</td><th>Date prévue</th><td>${insp.scheduledDate ? new Date(insp.scheduledDate).toLocaleDateString('fr-FR') : '—'}</td></tr>
+        ${insp.completedDate ? `<tr><th>Date de complétion</th><td>${insp.completedDate}</td><th>Éléments inspectés</th><td>${(insp.items || []).length}</td></tr>` : `<tr><th>Éléments inspectés</th><td>${(insp.items || []).length}</td><th>Dommages signalés</th><td>${(insp.damages || []).length}</td></tr>`}
+      </table>
+
+      <h2>Inventaire des éléments</h2>
+      ${(insp.items || []).length === 0 ? '<p style="color:#999;font-style:italic">Aucun élément inventorié</p>' : inventaireHTML}
+
+      ${damagesHTML}
+
+      <h2>Signatures</h2>
+      <div class="sig-row">
+        ${sigHTML(insp.managerSignature, 'Signature du gestionnaire', insp.managerName)}
+        ${sigHTML(insp.tenantSignature, 'Signature du locataire', insp.tenantName)}
+      </div>
+
+      ${insp.notes ? `<h2>Observations générales</h2><p style="background:#fafafa;border:1px solid #eee;padding:12px;border-radius:6px">${insp.notes}</p>` : ''}
+
+      <div class="footer">
+        Document généré le ${new Date().toLocaleDateString('fr-FR')} — Minsouah Immobilier<br>
+        Ce document est un état des lieux officiel. Toute modification doit être validée par les deux parties.
+      </div>
+    </body></html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    if (w) { w.onload = () => { w.print(); URL.revokeObjectURL(url); }; }
+  }, []);
+
   // ── Items grouped by category
   const itemsByCategory = useMemo(() => {
     if (!detail) return {};
@@ -386,12 +519,22 @@ export default function Inspections() {
                   </div>
                   <p className="font-bold text-on-surface text-label-md">{insp.ref}</p>
                 </div>
-                <button
-                  onClick={e => { e.stopPropagation(); setDeleteConfirm(insp.id); }}
-                  className="opacity-0 group-hover:opacity-100 w-8 h-8 rounded-full hover:bg-error/10 text-on-surface-variant hover:text-error flex items-center justify-center transition-all"
-                >
-                  <Icon name="delete" size={16} />
-                </button>
+                <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-all">
+                  <button
+                    onClick={e => { e.stopPropagation(); generatePDF(insp); }}
+                    className="w-8 h-8 rounded-full hover:bg-primary/10 text-on-surface-variant hover:text-primary flex items-center justify-center transition-all"
+                    title="Télécharger PDF"
+                  >
+                    <Icon name="picture_as_pdf" size={16} />
+                  </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); setDeleteConfirm(insp.id); }}
+                    className="w-8 h-8 rounded-full hover:bg-error/10 text-on-surface-variant hover:text-error flex items-center justify-center transition-all"
+                    title="Supprimer"
+                  >
+                    <Icon name="delete" size={16} />
+                  </button>
+                </div>
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2 text-body-sm text-on-surface-variant">
@@ -563,18 +706,23 @@ export default function Inspections() {
                   {detail.propertyName} {detail.unitRef ? `• ${detail.unitRef}` : ''} — {detail.tenantName}
                 </p>
               </div>
-              {isAdmin && detail.status !== 'COMPLETED' && (
-                <div className="flex gap-2 flex-wrap">
-                  {detail.status !== 'PENDING_SIGNATURE' && (
-                    <Button size="sm" variant="secondary" icon="arrow_forward" onClick={advanceStatus}>
-                      {detail.status === 'DRAFT' ? 'Démarrer' : 'Avancer'}
-                    </Button>
-                  )}
-                  {detail.status === 'IN_PROGRESS' && !detail.managerSignature && (
-                    <Button size="sm" icon="draw" onClick={() => setSignModal('manager')}>Ma signature</Button>
-                  )}
-                </div>
-              )}
+              <div className="flex gap-2 flex-wrap">
+                <Button size="sm" variant="secondary" icon="picture_as_pdf" onClick={() => generatePDF(detail)}>
+                  PDF
+                </Button>
+                {isAdmin && detail.status !== 'COMPLETED' && (
+                  <>
+                    {detail.status !== 'PENDING_SIGNATURE' && (
+                      <Button size="sm" variant="secondary" icon="arrow_forward" onClick={advanceStatus}>
+                        {detail.status === 'DRAFT' ? 'Démarrer' : 'Avancer'}
+                      </Button>
+                    )}
+                    {detail.status === 'IN_PROGRESS' && !detail.managerSignature && (
+                      <Button size="sm" icon="draw" onClick={() => setSignModal('manager')}>Ma signature</Button>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Tabs */}
@@ -633,32 +781,64 @@ export default function Inspections() {
                         </h3>
                         <div className="space-y-2">
                           {items.map(item => (
-                            <div key={item.id} className="bg-surface-container rounded-xl p-3 flex items-start gap-3">
-                              <div className="flex-1">
-                                <p className="font-bold text-on-surface text-label-md">{item.label}</p>
-                                {item.notes && <p className="text-body-sm text-on-surface-variant mt-0.5">{item.notes}</p>}
+                            <div key={item.id} className="bg-surface-container rounded-xl p-3">
+                              <div className="flex items-start gap-3">
+                                <div className="flex-1">
+                                  <p className="font-bold text-on-surface text-label-md">{item.label}</p>
+                                  {item.notes && <p className="text-body-sm text-on-surface-variant mt-0.5">{item.notes}</p>}
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  {isAdmin ? (
+                                    <select
+                                      value={item.condition}
+                                      onChange={e => handleConditionChange(item.id, e.target.value)}
+                                      className="border border-outline-variant rounded-lg px-2 py-1 text-label-sm bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary"
+                                    >
+                                      {CONDITIONS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                                    </select>
+                                  ) : (
+                                    <CondBadge cond={item.condition} />
+                                  )}
+                                  {isAdmin && (
+                                    <button
+                                      onClick={() => handleDeleteItem(item.id)}
+                                      className="w-7 h-7 rounded-full hover:bg-error/10 text-on-surface-variant hover:text-error flex items-center justify-center transition-colors"
+                                    >
+                                      <Icon name="close" size={14} />
+                                    </button>
+                                  )}
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2 flex-shrink-0">
-                                {isAdmin ? (
-                                  <select
-                                    value={item.condition}
-                                    onChange={e => handleConditionChange(item.id, e.target.value)}
-                                    className="border border-outline-variant rounded-lg px-2 py-1 text-label-sm bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary"
-                                  >
-                                    {CONDITIONS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-                                  </select>
-                                ) : (
-                                  <CondBadge cond={item.condition} />
-                                )}
-                                {isAdmin && (
-                                  <button
-                                    onClick={() => handleDeleteItem(item.id)}
-                                    className="w-7 h-7 rounded-full hover:bg-error/10 text-on-surface-variant hover:text-error flex items-center justify-center transition-colors"
-                                  >
-                                    <Icon name="close" size={14} />
-                                  </button>
-                                )}
-                              </div>
+                              {/* Photos */}
+                              {(item.photos || []).length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {(item.photos || []).map(photo => (
+                                    <div key={photo.id} className="relative group/photo">
+                                      <img
+                                        src={photo.data}
+                                        alt={photo.name}
+                                        onClick={() => setViewPhoto(photo)}
+                                        className="w-20 h-16 object-cover rounded-lg border border-outline-variant cursor-pointer hover:opacity-90 transition-opacity"
+                                      />
+                                      {isAdmin && (
+                                        <button
+                                          onClick={() => handleDeletePhoto(item.id, photo.id)}
+                                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-error text-on-error rounded-full text-[11px] font-bold flex items-center justify-center opacity-0 group-hover/photo:opacity-100 transition-opacity shadow-sm"
+                                        >×</button>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {isAdmin && (
+                                <button
+                                  onClick={() => triggerPhoto(item.id)}
+                                  className="mt-2 flex items-center gap-1.5 text-label-sm text-primary hover:text-primary/70 transition-colors"
+                                >
+                                  <Icon name="add_a_photo" size={15} />
+                                  Ajouter une photo
+                                </button>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -982,6 +1162,37 @@ export default function Inspections() {
           />
         )}
       </Modal>
+
+      {/* ── PHOTO VIEWER ── */}
+      {viewPhoto && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setViewPhoto(null)}
+        >
+          <button
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+            onClick={() => setViewPhoto(null)}
+          >
+            <Icon name="close" size={20} />
+          </button>
+          <img
+            src={viewPhoto.data}
+            alt={viewPhoto.name}
+            className="max-w-full max-h-[85vh] rounded-xl shadow-2xl object-contain"
+            onClick={e => e.stopPropagation()}
+          />
+        </div>
+      )}
+
+      {/* Hidden file input for photo capture */}
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handlePhotoFile}
+      />
     </div>
   );
 }
