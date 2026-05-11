@@ -206,7 +206,7 @@ export default function Dashboard() {
   const recentContracts = contracts.slice(0, 5);
 
   return (
-    <div className="px-margin pt-gutter pb-xl flex flex-col gap-gutter max-w-7xl mx-auto">
+    <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl flex flex-col gap-gutter max-w-7xl mx-auto">
 
       {/* Quick actions */}
       <div className="flex flex-wrap gap-sm">

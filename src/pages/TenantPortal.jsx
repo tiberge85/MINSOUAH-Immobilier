@@ -420,7 +420,7 @@ export default function TenantPortal() {
   /* ─── Tenant selector ─────────────────────────────────────────── */
   if (!selectedId) {
     return (
-      <div className="px-margin pt-gutter pb-xl max-w-5xl mx-auto">
+      <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl max-w-5xl mx-auto">
         <div className="flex items-center gap-md mb-lg">
           <button
             onClick={() => navigate(-1)}
@@ -511,7 +511,7 @@ export default function TenantPortal() {
       )}
 
       {/* Hero header */}
-      <div className="bg-gradient-to-br from-primary to-primary/80 text-on-primary px-margin pt-gutter pb-16 relative overflow-hidden">
+      <div className="bg-gradient-to-br from-primary to-primary/80 text-on-primary px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-16 relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-4 right-4 w-32 h-32 rounded-full border-4 border-on-primary" />
           <div className="absolute bottom-2 right-16 w-16 h-16 rounded-full border-2 border-on-primary" />

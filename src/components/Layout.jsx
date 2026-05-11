@@ -304,18 +304,18 @@ export default function Layout() {
       {/* ── Main area ─────────────────────────────────────────────────── */}
       <div className="md:ml-72 min-h-screen flex flex-col">
         {/* Top bar */}
-        <header className="sticky top-0 z-30 bg-surface shadow-topbar border-b border-outline-variant/10 h-20 flex items-center justify-between px-margin">
-          <div className="flex items-center gap-md">
+        <header className="sticky top-0 z-30 bg-surface shadow-topbar border-b border-outline-variant/10 h-16 sm:h-20 flex items-center justify-between px-3 sm:px-margin">
+          <div className="flex items-center gap-2 sm:gap-md min-w-0">
             <button
-              className="md:hidden text-primary p-1 rounded-lg hover:bg-surface-container-high transition-colors"
+              className="md:hidden text-primary p-1 rounded-lg hover:bg-surface-container-high transition-colors flex-shrink-0"
               onClick={() => setSidebarOpen(true)}
             >
               <Icon name="menu" />
             </button>
-            <h2 className="font-h2 text-h2 text-primary font-bold">{title}</h2>
+            <h2 className="text-base sm:font-h2 sm:text-h2 text-primary font-bold truncate">{title}</h2>
           </div>
 
-          <div className="flex items-center gap-sm">
+          <div className="flex items-center gap-1 sm:gap-sm flex-shrink-0">
             {/* Search (desktop) */}
             <div className="hidden lg:flex items-center bg-surface-container rounded-full px-4 py-2 border border-outline-variant/30 gap-2">
               <Icon name="search" className="text-outline" size={18} />

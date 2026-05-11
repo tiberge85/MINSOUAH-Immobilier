@@ -88,7 +88,7 @@ export default function Maintenance() {
   };
 
   return (
-    <div className="px-margin pt-gutter pb-xl max-w-7xl mx-auto flex flex-col gap-gutter">
+    <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl max-w-7xl mx-auto flex flex-col gap-gutter">
 
       {/* Stats */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-gutter">

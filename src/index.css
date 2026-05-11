@@ -8,11 +8,14 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  html { overflow-x: hidden; }
+
   body {
     background-color: #fff8f2;
     color: #1f1b12;
     font-family: 'Inter', sans-serif;
     transition: background-color 0.2s, color 0.2s;
+    overflow-x: hidden;
   }
 
   /* ── Dark mode overrides ─────────────────────────────── */

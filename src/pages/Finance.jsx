@@ -199,7 +199,7 @@ export default function Finance() {
   };
 
   return (
-    <div className="px-margin pt-gutter pb-xl max-w-7xl mx-auto flex flex-col gap-gutter">
+    <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl max-w-7xl mx-auto flex flex-col gap-gutter">
 
       {/* KPI cards */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-gutter">
