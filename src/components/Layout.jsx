@@ -43,29 +43,29 @@ export default function Layout() {
   const { state, dispatch } = useApp();
   const { dark, toggle: toggleDark } = useTheme();
   const { currentUser } = state;
-  const unpaidCount = state.payments.filter(p => p.status !== 'Payé').length;
+  const unpaidCount = (state.payments || []).filter(p => p.status !== 'Payé').length;
   const title = pageTitles[location.pathname] || 'Minsouah';
 
   // Auto-generated notifications
   const notifications = useMemo(() => {
     const now = Date.now();
     return [
-      ...state.payments
+      ...(state.payments || [])
         .filter(p => p.status === 'Impayé' || p.status === 'En retard')
         .slice(0, 4)
         .map(p => ({ id: `pay-${p.id}`, icon: 'payments', color: 'text-error', bg: 'bg-error/10', label: `Loyer impayé`, sub: `${p.tenantName || ''} — ${p.month || ''}`, path: '/payments' })),
-      ...state.contracts
+      ...(state.contracts || [])
         .filter(c => {
           if (c.status !== 'Actif' || !c.endDate || c.endDate === '—') return false;
           try { const [d, m, y] = c.endDate.split('/'); return ((new Date(y, m-1, d) - now) / 86400000) <= 30; } catch { return false; }
         })
         .slice(0, 3)
         .map(c => ({ id: `cont-${c.id}`, icon: 'contract', color: 'text-amber-600', bg: 'bg-amber-100', label: 'Contrat expirant', sub: `${c.tenant} — ${c.endDate}`, path: '/rental' })),
-      ...state.tickets
+      ...(state.tickets || [])
         .filter(t => t.priority === 'Urgent' && t.status !== 'Fermé' && t.status !== 'Résolu')
         .slice(0, 3)
         .map(t => ({ id: `tick-${t.id}`, icon: 'engineering', color: 'text-error', bg: 'bg-error/10', label: 'Ticket urgent', sub: t.title, path: '/maintenance' })),
-      ...state.conversations
+      ...(state.conversations || [])
         .filter(c => (c.unread || 0) > 0)
         .slice(0, 3)
         .map(c => ({ id: `msg-${c.id}`, icon: 'mail', color: 'text-primary', bg: 'bg-primary/10', label: 'Nouveau message', sub: c.contact?.name || 'Messagerie', path: '/inbox' })),
