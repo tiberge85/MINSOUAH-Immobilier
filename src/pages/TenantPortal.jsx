@@ -279,7 +279,16 @@ function QuittanceRow({ payment, onDownload }) {
 
 export default function TenantPortal() {
   const { state, dispatch } = useApp();
-  const { tenants, contracts, payments, tickets, orgSettings, conversations, currentUser, inspections } = state;
+  const {
+    tenants = [],
+    contracts = [],
+    payments = [],
+    tickets = [],
+    orgSettings,
+    conversations = [],
+    currentUser,
+    inspections = [],
+  } = state;
   const navigate = useNavigate();
   const toast = useToast();
   const [selectedId, setSelectedId] = useState(null);

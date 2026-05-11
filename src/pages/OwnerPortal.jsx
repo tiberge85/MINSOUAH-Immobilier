@@ -42,7 +42,14 @@ function KpiCard({ label, value, sub, icon, color }) {
 
 export default function OwnerPortal() {
   const { state } = useApp();
-  const { owners, properties, contracts, payments, tickets, inspections } = state;
+  const {
+    owners = [],
+    properties = [],
+    contracts = [],
+    payments = [],
+    tickets = [],
+    inspections = [],
+  } = state;
   const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
