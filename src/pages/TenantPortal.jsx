@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
 import Badge from '../components/ui/Badge';
 import Icon from '../components/Icon';
+import { openEDLReport } from '../lib/inspectionReport';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
 
@@ -911,6 +912,50 @@ export default function TenantPortal() {
                 ))
               )}
             </div>
+
+            {/* ── Rapports d'état des lieux ── */}
+            {(() => {
+              const tenantInspections = (inspections || []).filter(i =>
+                i.tenantId === tenant?.id ||
+                (tenant?.name && i.tenantName && i.tenantName.toLowerCase() === tenant.name.toLowerCase())
+              );
+              if (tenantInspections.length === 0) return null;
+              const TYPE_LABEL = { ENTRY: "Entrée", EXIT: "Sortie" };
+              const TYPE_COLOR = { ENTRY: 'bg-green-100 text-green-700', EXIT: 'bg-red-100 text-red-700' };
+              const TYPE_ICON  = { ENTRY: 'login', EXIT: 'logout' };
+              return (
+                <>
+                  <h3 className="font-bold text-on-surface mt-4">Rapports d'état des lieux</h3>
+                  <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 overflow-hidden">
+                    {tenantInspections.map(insp => (
+                      <div key={insp.id} className="flex items-center justify-between px-md py-3 border-b border-outline-variant/10 last:border-0">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${TYPE_COLOR[insp.type] || 'bg-surface-container'}`}>
+                            <Icon name={TYPE_ICON[insp.type] || 'home_work'} size={20} />
+                          </div>
+                          <div>
+                            <p className="font-bold text-on-surface text-label-md">
+                              État des lieux {TYPE_LABEL[insp.type] || insp.type} — {insp.ref}
+                            </p>
+                            <p className="text-body-sm text-on-surface-variant">
+                              {insp.propertyName || '—'}{insp.unitRef ? ` · ${insp.unitRef}` : ''} · {insp.scheduledDate ? new Date(insp.scheduledDate).toLocaleDateString('fr-FR') : '—'}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => openEDLReport(insp)}
+                          className="flex items-center gap-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-label-sm font-bold px-3 py-1.5 rounded-lg transition-colors"
+                          title="Imprimer / Télécharger"
+                        >
+                          <Icon name="download" size={16} />
+                          Rapport
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
           </>
         )}
       </div>

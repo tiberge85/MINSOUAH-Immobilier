@@ -243,6 +243,11 @@ export default function Layout() {
                       {unpaidCount}
                     </span>
                   )}
+                  {item.path === '/inbox' && (state.conversations || []).some(c => (c.unread || 0) > 0) && (
+                    <span className="bg-primary text-on-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center mr-3">
+                      {(state.conversations || []).reduce((s, c) => s + (c.unread || 0), 0)}
+                    </span>
+                  )}
                 </>
               )}
             </NavLink>
