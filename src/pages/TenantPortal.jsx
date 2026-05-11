@@ -813,7 +813,10 @@ export default function TenantPortal() {
             {(() => {
               const STATUS_LABELS = { DRAFT: 'Brouillon', IN_PROGRESS: 'En cours', PENDING_SIGNATURE: 'À signer', COMPLETED: 'Complété' };
               const STATUS_CLS = { DRAFT: 'bg-slate-100 text-slate-700', IN_PROGRESS: 'bg-blue-100 text-blue-800', PENDING_SIGNATURE: 'bg-amber-100 text-amber-800', COMPLETED: 'bg-green-100 text-green-800' };
-              const tenantInspections = (inspections || []).filter(i => i.tenantId === tenant?.id);
+              const tenantInspections = (inspections || []).filter(i =>
+                i.tenantId === tenant?.id ||
+                (tenant?.name && i.tenantName && i.tenantName.toLowerCase() === tenant.name.toLowerCase())
+              );
               if (tenantInspections.length === 0) return (
                 <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-8 text-center text-on-surface-variant">
                   <Icon name="home_work" size={40} className="opacity-30 mb-2" />

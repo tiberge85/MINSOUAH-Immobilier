@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import { hashPwd, verifyPwd } from '../lib/auth';
+import { auth } from '../lib/firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 
 const ROLE_LABELS = {
   ADMIN: 'Administrateur',
@@ -93,6 +95,9 @@ export default function Login() {
         const hashed = await hashPwd(password);
         dispatch({ type: 'UPGRADE_PASSWORD', payload: { email: user.email, hashedPassword: hashed } });
       }
+
+      // Non-blocking Firebase Auth session sync (for Console tracking)
+      signInWithEmailAndPassword(auth, user.email, password).catch(() => {});
 
       dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: user.email, success: true } });
       dispatch({

@@ -4,6 +4,8 @@ import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import * as XLSX from 'xlsx';
 import { hashPwd, verifyPwd } from '../lib/auth';
+import { auth } from '../lib/firebase';
+import { createUserWithEmailAndPassword, updatePassword, signInWithEmailAndPassword } from 'firebase/auth';
 
 const ALL_TABS = [
   { key: 'profile',  label: 'Mon Profil',      icon: 'account_circle', roles: null },
@@ -1001,6 +1003,14 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
     }
     const initials = getInitials(newUser.name);
     const roleInfo = ROLE_MAP[newUser.role] || ROLE_MAP.TENANT;
+    // Firebase Auth needs plain-text password — create account before hashing
+    try {
+      await createUserWithEmailAndPassword(auth, newUser.email.trim().toLowerCase(), newUser.password);
+    } catch (fbErr) {
+      if (fbErr?.code !== 'auth/email-already-in-use') {
+        console.warn('Firebase Auth createUser:', fbErr?.code, fbErr?.message);
+      }
+    }
     const hashedPw = await hashPwd(newUser.password);
     dispatch({
       type: 'ADD_USER',
