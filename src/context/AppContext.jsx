@@ -377,12 +377,14 @@ function reducer(state, action) {
 
 // ─── Firebase REST helpers ─────────────────────────────────────────────────────
 async function fbSave(databaseURL, workspaceId, data) {
+  const savedAt = Date.now();
   const url = `${databaseURL.replace(/\/$/, '')}/minsouah/${workspaceId}.json`;
   await fetch(url, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...data, _savedAt: Date.now() }),
+    body: JSON.stringify({ ...data, _savedAt: savedAt }),
   });
+  return savedAt;
 }
 async function fbFetch(databaseURL, workspaceId) {
   const url = `${databaseURL.replace(/\/$/, '')}/minsouah/${workspaceId}.json`;
@@ -429,7 +431,7 @@ export function AppProvider({ children }) {
     }
   );
 
-  const fbSyncRef = useRef({ isSyncing: false, saveTimer: null, pollInterval: null, configKey: '' });
+  const fbSyncRef = useRef({ isSyncing: false, saveTimer: null, pollInterval: null, configKey: '', lastSavedAt: 0 });
 
   // ── Persist to localStorage + push to Firebase ──────────────────────────────
   useEffect(() => {
@@ -456,7 +458,9 @@ export function AppProvider({ children }) {
       clearTimeout(refs.saveTimer);
       refs.saveTimer = setTimeout(() => {
         const { currentUser, ...toSync } = state;
-        fbSave(fb.databaseURL, fb.workspaceId, toSync).catch(() => {});
+        fbSave(fb.databaseURL, fb.workspaceId, toSync)
+          .then((savedAt) => { refs.lastSavedAt = savedAt; })
+          .catch(() => {});
       }, 3000);
     }
   }, [state]);
@@ -476,8 +480,9 @@ export function AppProvider({ children }) {
       try {
         const data = await fbFetch(fb.databaseURL, fb.workspaceId);
         if (!data || !data.users?.length) return;
-        const localSaved = state._savedAt || 0;
-        if ((data._savedAt || 0) > localSaved) {
+        // Use refs.lastSavedAt instead of stale state._savedAt (closure capture)
+        if ((data._savedAt || 0) > refs.lastSavedAt) {
+          refs.lastSavedAt = data._savedAt || Date.now();
           refs.isSyncing = true;
           dispatch({ type: 'CLOUD_SYNC', payload: data });
         }

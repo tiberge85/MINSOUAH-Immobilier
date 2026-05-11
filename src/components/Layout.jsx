@@ -392,6 +392,20 @@ export default function Layout() {
         </main>
       </div>
 
+      {/* ── Floating notification badge ────────────────────────────────── */}
+      {notifications.length > 0 && (
+        <button
+          onClick={() => setShowNotif(v => !v)}
+          className="fixed bottom-20 right-4 md:bottom-8 md:right-8 z-50 w-14 h-14 bg-primary text-on-primary rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-transform"
+          title="Voir les notifications"
+        >
+          <Icon name="notifications" size={26} />
+          <span className="absolute -top-1.5 -right-1.5 min-w-[22px] h-[22px] bg-error text-on-error text-[11px] font-black rounded-full flex items-center justify-center px-1 shadow animate-bounce">
+            {notifications.length > 9 ? '9+' : notifications.length}
+          </span>
+        </button>
+      )}
+
       {/* ── Mobile bottom nav ─────────────────────────────────────────── */}
       <nav className="md:hidden fixed bottom-0 w-full z-40 bg-surface border-t border-outline-variant shadow-[0px_-4px_20px_rgba(62,56,54,0.05)] flex justify-around items-center h-16">
         {navItems.map((item) => (
