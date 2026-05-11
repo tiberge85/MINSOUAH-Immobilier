@@ -30,6 +30,23 @@ export const DEFAULT_ADMIN = {
   lockedUntil: null,
 };
 
+export const DEFAULT_CONCIERGE = {
+  id: 2,
+  email: 'concierge@minsouah.ci',
+  password: 'concierge123',
+  role: 'CONCIERGE',
+  name: 'Concierge Demo',
+  initials: 'CD',
+  color: 'bg-secondary-container text-on-secondary-container',
+  personId: null,
+  firstLogin: false,
+  suspended: false,
+  createdAt: new Date().toISOString(),
+  lastLogin: null,
+  failedAttempts: 0,
+  lockedUntil: null,
+};
+
 const DEFAULT_ORG = {
   companyName: 'Minsouah Immobilier',
   address: "Abidjan, Côte d'Ivoire",
@@ -77,7 +94,7 @@ const EMPTY_STATE = {
   payments:       [],
   inspections:    [],
   currentUser:    null,
-  users:          [DEFAULT_ADMIN],
+  users:          [DEFAULT_ADMIN, DEFAULT_CONCIERGE],
   orgSettings:    DEFAULT_ORG,
   systemSettings: DEFAULT_SYSTEM,
   activityLog:    [],
@@ -347,9 +364,11 @@ function reducer(state, action) {
         }
         return merged;
       });
-      // Always guarantee DEFAULT_ADMIN exists so login never breaks
+      // Always guarantee default accounts exist so login never breaks
       const hasAdmin = mergedUsers.some(u => u.id === 1);
       if (!hasAdmin) mergedUsers.unshift({ ...DEFAULT_ADMIN });
+      const hasConcierge = mergedUsers.some(u => u.id === 2);
+      if (!hasConcierge) mergedUsers.push({ ...DEFAULT_CONCIERGE });
       return {
         ...incoming,
         // Guard every array field — if Firebase data is partial, fall back to local then empty
@@ -405,7 +424,10 @@ export function AppProvider({ children }) {
         const saved = localStorage.getItem('minsouah_v1');
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (!parsed.users?.length) parsed.users = [DEFAULT_ADMIN];
+          if (!parsed.users?.length) parsed.users = [DEFAULT_ADMIN, DEFAULT_CONCIERGE];
+          // Guarantee demo accounts always exist
+          if (!parsed.users.some(u => u.id === 1)) parsed.users.unshift({ ...DEFAULT_ADMIN });
+          if (!parsed.users.some(u => u.id === 2)) parsed.users.push({ ...DEFAULT_CONCIERGE });
           if (!parsed.activityLog) parsed.activityLog = [];
           if (!parsed.systemSettings) {
             parsed.systemSettings = DEFAULT_SYSTEM;

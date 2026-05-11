@@ -20,6 +20,7 @@ const navItems = [
   { path: '/payments',    label: 'Paiements',         icon: 'payments',               mobileIcon: 'payments' },
   { path: '/maintenance',  label: 'Maintenance',       icon: 'engineering',             mobileIcon: 'engineering' },
   { path: '/inspections', label: 'États des lieux',   icon: 'home_work',               mobileIcon: 'home_work' },
+  { path: '/concierge',   label: 'Portail Concierge', icon: 'supervised_user_circle',  mobileIcon: 'supervised_user_circle', roles: ['ADMIN','MANAGER','CONCIERGE'] },
   { path: '/inbox',       label: 'Messagerie',        icon: 'support_agent',           mobileIcon: 'mail' },
 ];
 
@@ -34,6 +35,7 @@ const pageTitles = {
   '/inbox':           'Messagerie',
   '/portal/tenant':   'Portail Locataires',
   '/portal/owner':    'Portail Propriétaires',
+  '/concierge':       'Portail Concierge',
   '/settings':        'Paramètres',
 };
 
@@ -52,7 +54,10 @@ export default function Layout() {
   const unpaidCount = (state.payments || []).filter(p => p.status !== 'Payé').length;
   const title = pageTitles[location.pathname] || 'Minsouah';
   const allowedPaths = ROLE_NAV[currentUser?.role];
-  const visibleNav = allowedPaths ? navItems.filter(i => allowedPaths.has(i.path)) : navItems;
+  const visibleNav = (allowedPaths
+    ? navItems.filter(i => allowedPaths.has(i.path))
+    : navItems
+  ).filter(i => !i.roles || i.roles.includes(currentUser?.role));
 
   // Parse contract endDate — handles both "12/12/2025" and "12 Déc 2025" formats
   const parseContractDate = (str) => {
