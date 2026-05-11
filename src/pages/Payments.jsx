@@ -267,7 +267,7 @@ const inputCls = 'w-full bg-surface-container-lowest border border-outline-varia
 /* ── Main component ─────────────────────────────────────────────────────── */
 export default function Payments() {
   const { state, dispatch } = useApp();
-  const { payments, properties, tenants, contracts, orgSettings } = state;
+  const { payments = [], properties = [], tenants = [], contracts = [], orgSettings } = state;
 
   const now = new Date();
   const currentMonthLabel = `${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`;

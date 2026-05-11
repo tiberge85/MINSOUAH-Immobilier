@@ -29,7 +29,7 @@ const newTicketForm0 = {
 
 export default function Maintenance() {
   const { state, dispatch } = useApp();
-  const tickets = state.tickets;
+  const tickets = state.tickets || [];
   const [priorityFilter, setPriorityFilter] = useState('Tous');
   const [typeFilter, setTypeFilter] = useState(null);
   const [search, setSearch] = useState('');

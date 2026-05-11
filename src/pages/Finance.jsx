@@ -26,7 +26,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 export default function Finance() {
   const { state } = useApp();
-  const { transactions, revenueData } = state;
+  const { transactions = [], revenueData = [] } = state;
   const [chartType, setChartType] = useState('area');
   const [chartPeriod, setChartPeriod] = useState('12 Mois');
   const [typeFilter, setTypeFilter] = useState('Tous');

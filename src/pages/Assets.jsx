@@ -116,7 +116,7 @@ function UnitForm({ unit, onChange, onSave, onCancel }) {
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function Assets() {
   const { state, dispatch } = useApp();
-  const properties = state.properties;
+  const properties = state.properties || [];
 
   const [filter, setFilter]         = useState('Tous');
   const [search, setSearch]         = useState('');

@@ -18,7 +18,7 @@ const STATUS_BADGE = {
 
 export default function Rental() {
   const { state, dispatch } = useApp();
-  const { contracts, tenants, owners, properties } = state;
+  const { contracts = [], tenants = [], owners = [], properties = [] } = state;
 
   const [tab, setTab] = useState('Contrats');
   const [cFilter, setCFilter] = useState('Tous');

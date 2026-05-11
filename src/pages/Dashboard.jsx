@@ -49,7 +49,15 @@ function KpiCard({ label, value, sub, subIcon, subColor, icon, iconBg }) {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { state } = useApp();
-  const { revenueData, contracts, tickets, properties, tenants, owners, payments } = state;
+  const {
+    revenueData = [],
+    contracts = [],
+    tickets = [],
+    properties = [],
+    tenants = [],
+    owners = [],
+    payments = [],
+  } = state;
 
   // Auto-generate alerts from live data (replaces static state.alerts)
   const alerts = [
