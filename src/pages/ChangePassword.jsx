@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 import Icon from '../components/Icon';
+import { hashPwd, verifyPwd } from '../lib/auth';
 
 const WELCOME_GUIDES = {
   ADMIN: {
@@ -150,13 +151,14 @@ export default function ChangePassword() {
     return null;
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
     if (!isFirstLogin) {
       const dbUser = (state.users || []).find(u => u.email === user.email);
-      if (!dbUser || dbUser.password !== current) {
+      const ok = await verifyPwd(current, dbUser?.password);
+      if (!ok) {
         setError('Mot de passe actuel incorrect.');
         return;
       }
@@ -176,20 +178,19 @@ export default function ChangePassword() {
     }
 
     setLoading(true);
-    setTimeout(() => {
-      dispatch({ type: 'CHANGE_PASSWORD', payload: { email: user.email, newPassword: next } });
-      toast('Mot de passe modifié avec succès !', 'success');
-      const dest =
-        user.role === 'TENANT' ? '/portal/tenant' :
-        user.role === 'OWNER'  ? '/portal/owner' : '/';
-      if (isFirstLogin) {
-        setPendingDest(dest);
-        setShowWelcome(true);
-      } else {
-        navigate(dest);
-      }
-      setLoading(false);
-    }, 500);
+    const hashedNext = await hashPwd(next);
+    dispatch({ type: 'CHANGE_PASSWORD', payload: { email: user.email, newPassword: hashedNext } });
+    toast('Mot de passe modifié avec succès !', 'success');
+    const dest =
+      user.role === 'TENANT' ? '/portal/tenant' :
+      user.role === 'OWNER'  ? '/portal/owner' : '/';
+    if (isFirstLogin) {
+      setPendingDest(dest);
+      setShowWelcome(true);
+    } else {
+      navigate(dest);
+    }
+    setLoading(false);
   };
 
   return (

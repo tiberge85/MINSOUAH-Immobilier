@@ -257,6 +257,15 @@ function reducer(state, action) {
     }
 
     // ── Auth ─────────────────────────────────────────────────────────────────
+    case 'UPGRADE_PASSWORD': {
+      const { email, hashedPassword } = payload;
+      return {
+        ...state,
+        users: (state.users || [DEFAULT_ADMIN]).map(u =>
+          u.email === email ? { ...u, password: hashedPassword } : u
+        ),
+      };
+    }
     case 'LOGIN':
       return { ...state, currentUser: payload };
     case 'LOGOUT':
@@ -324,8 +333,17 @@ function reducer(state, action) {
     case 'CLOUD_SYNC': {
       const incoming = payload;
       if (!incoming || !incoming.users) return state;
+      // Preserve locally hashed passwords — don't let Firebase plain-text override them
+      const mergedUsers = (incoming.users || []).map(incomingUser => {
+        const localUser = (state.users || []).find(u => u.email === incomingUser.email);
+        if (localUser?.password?.startsWith('sha256:') && !incomingUser.password?.startsWith('sha256:')) {
+          return { ...incomingUser, password: localUser.password };
+        }
+        return incomingUser;
+      });
       return {
         ...incoming,
+        users: mergedUsers,
         currentUser: state.currentUser,
         systemSettings: state.systemSettings,
       };

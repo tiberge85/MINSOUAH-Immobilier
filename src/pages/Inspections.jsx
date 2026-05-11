@@ -136,7 +136,7 @@ function CondBadge({ cond }) {
 export default function Inspections() {
   const { state, dispatch } = useApp();
   const inspections = state.inspections || [];
-  const { properties, tenants, contracts, currentUser } = state;
+  const { properties = [], tenants = [], contracts = [], currentUser } = state;
 
   // ── Filters
   const [search, setSearch] = useState('');

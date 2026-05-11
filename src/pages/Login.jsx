@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
+import { hashPwd, verifyPwd } from '../lib/auth';
 
 const ROLE_LABELS = {
   ADMIN: 'Administrateur',
@@ -49,38 +50,33 @@ export default function Login() {
     }
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    setTimeout(() => {
+    try {
       const emailLow = email.trim().toLowerCase();
       const user = users.find(u => u.email.toLowerCase() === emailLow);
 
       if (!user) {
         setError('Aucun compte trouvé avec cet email.');
-        setLoading(false);
         return;
       }
 
-      // Check if account is locked
       if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
         const remaining = Math.ceil((new Date(user.lockedUntil) - Date.now()) / 60000);
         setError(`Compte temporairement bloqué. Réessayez dans ${remaining} min.`);
-        setLoading(false);
         return;
       }
 
-      // Check if suspended
       if (user.suspended) {
         setError('Ce compte a été suspendu. Contactez l\'administrateur.');
-        setLoading(false);
         return;
       }
 
-      // Check password
-      if (user.password !== password) {
+      const passwordOk = await verifyPwd(password, user.password);
+      if (!passwordOk) {
         dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: user.email, success: false } });
         const attempts = (user.failedAttempts || 0) + 1;
         const remaining = 5 - attempts;
@@ -89,11 +85,15 @@ export default function Login() {
         } else {
           setError('Compte bloqué pour 15 minutes après 5 tentatives échouées.');
         }
-        setLoading(false);
         return;
       }
 
-      // Login success
+      // Upgrade plain-text password to SHA-256 hash on successful login
+      if (!user.password.startsWith('sha256:')) {
+        const hashed = await hashPwd(password);
+        dispatch({ type: 'UPGRADE_PASSWORD', payload: { email: user.email, hashedPassword: hashed } });
+      }
+
       dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: user.email, success: true } });
       dispatch({
         type: 'LOGIN',
@@ -118,8 +118,9 @@ export default function Login() {
           user.role === 'OWNER'  ? '/portal/owner' : '/';
         navigate(dest);
       }
+    } finally {
       setLoading(false);
-    }, 600);
+    }
   };
 
   return (

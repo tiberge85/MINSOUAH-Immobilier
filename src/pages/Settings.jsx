@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import * as XLSX from 'xlsx';
+import { hashPwd, verifyPwd } from '../lib/auth';
 
 const ALL_TABS = [
   { key: 'profile',  label: 'Mon Profil',      icon: 'account_circle', roles: null },
@@ -131,15 +132,16 @@ export default function Settings() {
   };
 
   /* ── Password ── */
-  const handlePwChange = (e) => {
+  const handlePwChange = async (e) => {
     e.preventDefault();
     const dbUser = (state.users || []).find(u => u.email === currentUser?.email);
-    const storedPw = dbUser?.password || 'admin123';
-    if (pwForm.current !== storedPw) { setPwError('Mot de passe actuel incorrect.'); return; }
+    const ok = await verifyPwd(pwForm.current, dbUser?.password);
+    if (!ok) { setPwError('Mot de passe actuel incorrect.'); return; }
     if (pwForm.next.length < 8) { setPwError('Au moins 8 caractères requis.'); return; }
     if (pwForm.next !== pwForm.confirm) { setPwError('Les mots de passe ne correspondent pas.'); return; }
     setPwError('');
-    dispatch({ type: 'CHANGE_PASSWORD', payload: { email: currentUser.email, newPassword: pwForm.next } });
+    const hashed = await hashPwd(pwForm.next);
+    dispatch({ type: 'CHANGE_PASSWORD', payload: { email: currentUser.email, newPassword: hashed } });
     setPwForm({ current: '', next: '', confirm: '' });
     showToast('Mot de passe mis à jour');
   };
@@ -988,7 +990,7 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
   const getInitials = (name) =>
     name ? name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : '??';
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) {
       showToast('Remplissez tous les champs obligatoires');
       return;
@@ -999,10 +1001,12 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
     }
     const initials = getInitials(newUser.name);
     const roleInfo = ROLE_MAP[newUser.role] || ROLE_MAP.TENANT;
+    const hashedPw = await hashPwd(newUser.password);
     dispatch({
       type: 'ADD_USER',
       payload: {
         ...newUser,
+        password: hashedPw,
         email: newUser.email.trim().toLowerCase(),
         initials,
         color: roleInfo.color,
@@ -1025,10 +1029,11 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
     showToast(`Compte de ${u.name} supprimé`);
   };
 
-  const handleResetPassword = (u) => {
+  const handleResetPassword = async (u) => {
     const tmpPw = 'Tmp' + Math.random().toString(36).slice(2, 8);
-    dispatch({ type: 'CHANGE_PASSWORD', payload: { email: u.email, newPassword: tmpPw } });
-    dispatch({ type: 'UPDATE_USER', payload: { ...u, firstLogin: true, password: tmpPw } });
+    const hashedTmp = await hashPwd(tmpPw);
+    dispatch({ type: 'CHANGE_PASSWORD', payload: { email: u.email, newPassword: hashedTmp } });
+    dispatch({ type: 'UPDATE_USER', payload: { ...u, firstLogin: true, password: hashedTmp } });
     showToast(`Nouveau mot de passe pour ${u.name} : ${tmpPw}`);
     alert(`Mot de passe temporaire de ${u.name} :\n\n${tmpPw}\n\nCommuniquez-le à l'utilisateur. Il devra le changer à sa prochaine connexion.`);
   };
