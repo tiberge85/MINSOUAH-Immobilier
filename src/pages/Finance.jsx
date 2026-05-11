@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Legend,
@@ -24,31 +24,80 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
+const MONTHS_SHORT = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+
+function parsePaidDate(str) {
+  if (!str) return null;
+  const parts = str.split('/');
+  if (parts.length === 3) {
+    const d = parseInt(parts[0]), m = parseInt(parts[1]) - 1, y = parseInt(parts[2]);
+    if (!isNaN(d) && !isNaN(m) && !isNaN(y)) return { month: m, year: y };
+  }
+  return null;
+}
+
 export default function Finance() {
   const { state } = useApp();
-  const { transactions = [], revenueData = [] } = state;
+  const { transactions = [], payments = [] } = state;
   const [chartType, setChartType] = useState('area');
   const [chartPeriod, setChartPeriod] = useState('12 Mois');
   const [typeFilter, setTypeFilter] = useState('Tous');
   const [searchTx, setSearchTx] = useState('');
 
-  const filteredTx = transactions.filter((t) => {
+  const currentYear = new Date().getFullYear();
+
+  // Generate real revenue data from paid payments grouped by month
+  const revenueData = useMemo(() => {
+    return MONTHS_SHORT.map((mois, idx) => {
+      const revenus = payments
+        .filter(p => {
+          if (p.status !== 'Payé') return false;
+          const parsed = parsePaidDate(p.paidDate);
+          return parsed && parsed.month === idx && parsed.year === currentYear;
+        })
+        .reduce((s, p) => s + (p.amount || 0), 0);
+      return { mois, revenus, depenses: 0 };
+    });
+  }, [payments, currentYear]);
+
+  // Use manual transactions if any, else derive from paid payments
+  const effectiveTx = useMemo(() => {
+    if (transactions.length > 0) return transactions;
+    return payments
+      .filter(p => p.status === 'Payé')
+      .map(p => ({
+        id: p.id,
+        date: p.paidDate || '—',
+        entity: p.tenantName || '—',
+        description: `Loyer ${p.month}${p.propertyName ? ' — ' + p.propertyName : ''}`,
+        amount: p.amount || 0,
+        positive: true,
+        type: 'Loyer',
+        status: 'Confirmé',
+      }))
+      .sort((a, b) => {
+        const da = parsePaidDate(a.date), db = parsePaidDate(b.date);
+        if (!da || !db) return 0;
+        return (db.year * 12 + db.month) - (da.year * 12 + da.month);
+      });
+  }, [transactions, payments]);
+
+  const filteredTx = effectiveTx.filter((t) => {
     const matchType = typeFilter === 'Tous' || t.type === typeFilter;
-    const matchSearch =
-      t.entity.toLowerCase().includes(searchTx.toLowerCase()) ||
-      t.description.toLowerCase().includes(searchTx.toLowerCase());
+    const q = searchTx.toLowerCase();
+    const matchSearch = (t.entity || '').toLowerCase().includes(q) || (t.description || '').toLowerCase().includes(q);
     return matchType && matchSearch;
   });
 
-  const totalRevenues = transactions.filter((t) => t.positive).reduce((s, t) => s + t.amount, 0);
-  const totalDepenses = transactions.filter((t) => !t.positive).reduce((s, t) => s + Math.abs(t.amount), 0);
+  const totalRevenues = payments.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+  const totalDepenses = transactions.filter(t => !t.positive).reduce((s, t) => s + Math.abs(t.amount || 0), 0);
   const cashFlow = totalRevenues - totalDepenses;
 
   const kpis = [
     {
       label: 'Revenus Totaux',
       value: `${totalRevenues.toLocaleString('fr-FR')} FCFA`,
-      sub: `${transactions.filter((t) => t.positive).length} transaction(s) créditrice(s)`,
+      sub: `${payments.filter(p => p.status === 'Payé').length} paiement(s) encaissé(s)`,
       subColor: 'text-green-600',
       icon: 'trending_up',
       iconBg: 'bg-primary/10 text-primary',
@@ -56,7 +105,7 @@ export default function Finance() {
     {
       label: 'Dépenses',
       value: `${totalDepenses.toLocaleString('fr-FR')} FCFA`,
-      sub: `${transactions.filter((t) => !t.positive).length} transaction(s) débitrice(s)`,
+      sub: `${payments.filter(p => p.status !== 'Payé').length} paiement(s) en attente`,
       subColor: 'text-error',
       icon: 'payments',
       iconBg: 'bg-error/10 text-error',
@@ -108,7 +157,7 @@ export default function Finance() {
         <div className="flex flex-wrap justify-between items-start gap-md mb-lg">
           <div>
             <h3 className="font-h3 text-h3 text-on-surface">Tendances des Revenus Mensuels</h3>
-            <p className="text-body-sm text-on-surface-variant mt-1">Performance — Exercice Fiscal 2024</p>
+            <p className="text-body-sm text-on-surface-variant mt-1">Performance — Exercice Fiscal {currentYear}</p>
           </div>
           <div className="flex flex-wrap gap-sm">
             {/* Chart type toggles */}
@@ -275,7 +324,7 @@ export default function Finance() {
         {/* Pagination */}
         <div className="px-md py-4 flex items-center justify-between bg-surface-container-low border-t border-outline-variant/20">
           <span className="text-body-sm text-on-surface-variant">
-            {filteredTx.length} transaction(s) affichée(s) sur {transactions.length}
+            {filteredTx.length} transaction(s) affichée(s) sur {effectiveTx.length}
           </span>
           <div className="flex gap-2">
             <button disabled className="w-8 h-8 flex items-center justify-center border border-outline-variant rounded-lg opacity-40">

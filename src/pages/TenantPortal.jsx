@@ -5,6 +5,7 @@ import { useToast } from '../context/ToastContext';
 import Badge from '../components/ui/Badge';
 import Icon from '../components/Icon';
 import { openEDLReport } from '../lib/inspectionReport';
+import { buildReceiptHTML } from '../lib/quittanceReport';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
 
@@ -403,24 +404,16 @@ export default function TenantPortal() {
   };
 
   const handleDownloadQuittance = (payment) => {
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Quittance</title>
-    <style>body{font-family:Arial,sans-serif;padding:40px;max-width:700px;margin:auto}
-    h1{color:#785a00}table{width:100%;border-collapse:collapse}td{padding:8px;border:1px solid #ddd}
-    .amount{font-size:1.5em;font-weight:bold;color:#785a00}</style></head>
-    <body><h1>QUITTANCE DE LOYER</h1>
-    <p><strong>Bailleur:</strong> ${orgSettings?.companyName || 'Minsouah Immobilier'}</p>
-    <p><strong>Locataire:</strong> ${tenantName}</p>
-    <p><strong>Bien:</strong> ${contract?.propertyName || tenant?.property || '—'}</p>
-    <table><tr><td>Mois</td><td>${payment.month}</td></tr>
-    <tr><td>Montant</td><td class="amount">${fmt(payment.amount)}</td></tr>
-    <tr><td>Date de paiement</td><td>${payment.paidDate || '—'}</td></tr>
-    <tr><td>Statut</td><td>✅ Payé</td></tr></table>
-    <p style="margin-top:40px;color:#666;font-size:0.85em">Document généré le ${new Date().toLocaleDateString('fr-FR')} — ${orgSettings?.companyName || 'Minsouah Immobilier'}</p>
-    </body></html>`;
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const w = window.open(url, '_blank');
-    if (w) { w.onload = () => { w.print(); URL.revokeObjectURL(url); }; }
+    const enriched = {
+      ...payment,
+      tenantName: payment.tenantName || tenantName,
+      tenantEmail: payment.tenantEmail || tenant?.email || '',
+      tenantPhone: payment.tenantPhone || tenant?.phone || '',
+      propertyName: payment.propertyName || contract?.propertyName || tenant?.property || '—',
+    };
+    const html = buildReceiptHTML(enriched, orgSettings, payment.signatures || {});
+    const win = window.open('', '_blank', 'width=820,height=700');
+    if (win) { win.document.write(html); win.document.close(); }
     toast('Quittance générée !', 'success');
   };
 

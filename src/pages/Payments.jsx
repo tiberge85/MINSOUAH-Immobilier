@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import SignaturePad from '../components/SignaturePad';
+import { buildReceiptHTML as buildReceiptHTMLShared } from '../lib/quittanceReport';
 
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
@@ -446,10 +447,14 @@ export default function Payments() {
   }, []);
 
   const printReceipt = useCallback(() => {
-    const html = buildReceiptHTML(quittancePayment, orgSettings, signatures);
+    // Save signatures to payment state so tenant portal can show the signed quittance
+    if (signatures.bailleur || signatures.locataire) {
+      dispatch({ type: 'UPDATE_PAYMENT', payload: { ...quittancePayment, signatures } });
+    }
+    const html = buildReceiptHTMLShared(quittancePayment, orgSettings, signatures);
     const win = window.open('', '_blank', 'width=820,height=700');
     if (win) { win.document.write(html); win.document.close(); }
-  }, [quittancePayment, orgSettings, signatures]);
+  }, [quittancePayment, orgSettings, signatures, dispatch]);
 
   const whatsappReceipt = useCallback(() => {
     const phone = phoneForWA(quittancePayment?.tenantPhone);
