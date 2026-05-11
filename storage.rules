@@ -2,65 +2,66 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    function isAuth() {
-      return request.auth != null;
+    function isAuth()  { return request.auth != null; }
+    function uid()     { return request.auth.uid; }
+
+    function userRole() {
+      return firestore.get(/databases/(default)/documents/users/$(uid())).data.role;
     }
 
-    function isOrgMember(orgId) {
-      return isAuth() &&
-        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.organizationId == orgId;
-    }
+    function isManager()   { return isAuth() && userRole() in ['ADMIN','MANAGER']; }
+    function isStaff()     { return isAuth() && userRole() in ['ADMIN','MANAGER','ACCOUNTANT','TECHNICIAN','CONCIERGE']; }
 
-    function isStaff(orgId) {
-      return isOrgMember(orgId) &&
-        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in
-          ['SUPER_ADMIN','ADMIN','MANAGER','ACCOUNTANT','TECHNICIAN'];
-    }
+    function isImage()       { return request.resource.contentType.matches('image/.*'); }
+    function isDocument()    { return request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf'; }
+    function maxSize(mb)     { return request.resource.size <= mb * 1024 * 1024; }
 
-    function isImageFile() {
-      return request.resource.contentType.matches('image/.*');
-    }
-
-    function isPdfOrImage() {
-      return request.resource.contentType.matches('image/.*') ||
-             request.resource.contentType == 'application/pdf';
-    }
-
-    function isUnderMaxSize(maxMb) {
-      return request.resource.size <= maxMb * 1024 * 1024;
-    }
-
-    // Profile pictures — any authenticated user can upload their own
+    // ── Avatars utilisateurs ──────────────────────────────────────────────────
     match /orgs/{orgId}/profiles/{fileName} {
-      allow read: if isOrgMember(orgId);
-      allow write: if isAuth() && isImageFile() && isUnderMaxSize(5);
+      allow read:  if isAuth();
+      allow write: if isAuth() && isImage() && maxSize(5);
     }
 
-    // Property photos — only staff can upload
-    match /orgs/{orgId}/properties/{fileName} {
-      allow read: if isOrgMember(orgId);
-      allow write: if isStaff(orgId) && isImageFile() && isUnderMaxSize(10);
+    // ── Photos de biens immobiliers ───────────────────────────────────────────
+    match /orgs/{orgId}/properties/{propId}/{fileName} {
+      allow read:  if isAuth();
+      allow write: if isManager() && isImage() && maxSize(10);
     }
 
-    // Contracts and documents — staff can write, all members read
-    match /orgs/{orgId}/contracts/{fileName} {
-      allow read: if isOrgMember(orgId);
-      allow write: if isStaff(orgId) && isPdfOrImage() && isUnderMaxSize(20);
+    // ── Documents de contrats (PDF, scans) ────────────────────────────────────
+    match /orgs/{orgId}/contracts/{contractId}/{fileName} {
+      allow read:  if isAuth();
+      allow write: if isManager() && isDocument() && maxSize(20);
     }
 
+    // ── Quittances et reçus générés ───────────────────────────────────────────
     match /orgs/{orgId}/receipts/{fileName} {
-      allow read: if isOrgMember(orgId);
-      allow write: if isStaff(orgId) && isPdfOrImage() && isUnderMaxSize(10);
+      allow read:  if isAuth();
+      allow write: if isStaff() && isDocument() && maxSize(10);
     }
 
-    match /orgs/{orgId}/maintenance/{fileName} {
-      allow read: if isOrgMember(orgId);
-      allow write: if isAuth() && isPdfOrImage() && isUnderMaxSize(20);
+    // ── Photos et rapports de maintenance ─────────────────────────────────────
+    match /orgs/{orgId}/maintenance/{ticketId}/{fileName} {
+      allow read:  if isAuth();
+      allow write: if isStaff() && isDocument() && maxSize(20);
     }
 
+    // ── États des lieux (photos, PDF) ─────────────────────────────────────────
+    match /orgs/{orgId}/inspections/{inspId}/{fileName} {
+      allow read:  if isAuth();
+      allow write: if isStaff() && isDocument() && maxSize(20);
+    }
+
+    // ── Documents locataires (CNI, justificatifs) ─────────────────────────────
+    match /orgs/{orgId}/tenants/{tenantId}/{fileName} {
+      allow read:  if isManager();
+      allow write: if isManager() && isDocument() && maxSize(10);
+    }
+
+    // ── Documents généraux ────────────────────────────────────────────────────
     match /orgs/{orgId}/documents/{fileName} {
-      allow read: if isOrgMember(orgId);
-      allow write: if isStaff(orgId) && isUnderMaxSize(20);
+      allow read:  if isStaff();
+      allow write: if isManager() && maxSize(25);
     }
   }
 }

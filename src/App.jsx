@@ -18,7 +18,8 @@ import Inbox          from './pages/Inbox';
 import TenantPortal   from './pages/TenantPortal';
 import OwnerPortal    from './pages/OwnerPortal';
 import Settings       from './pages/Settings';
-import Inspections   from './pages/Inspections';
+import Inspections      from './pages/Inspections';
+import ConciergePortal  from './pages/ConciergePortal';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,7 +30,7 @@ const queryClient = new QueryClient({
 const ROLE_HOME = {
   TENANT:     '/portal/tenant',
   OWNER:      '/portal/owner',
-  CONCIERGE:  '/maintenance',
+  CONCIERGE:  '/concierge',
   TECHNICIAN: '/maintenance',
   ACCOUNTANT: '/finance',
 };
@@ -71,6 +72,7 @@ function AppRoutes() {
         <Route path="maintenance"  element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'TECHNICIAN', 'CONCIERGE']}><Maintenance /></ProtectedRoute>} />
         <Route path="inspections" element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'CONCIERGE']}><Inspections /></ProtectedRoute>} />
         <Route path="inbox"       element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'CONCIERGE', 'TECHNICIAN', 'ACCOUNTANT']}><Inbox /></ProtectedRoute>} />
+        <Route path="concierge"   element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'CONCIERGE']}><ConciergePortal /></ProtectedRoute>} />
         <Route path="portal/tenant" element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'TENANT']}><TenantPortal /></ProtectedRoute>} />
         <Route path="portal/owner"  element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'OWNER']}><OwnerPortal /></ProtectedRoute>} />
         <Route path="settings"    element={<ProtectedRoute><Settings /></ProtectedRoute>} />

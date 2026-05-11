@@ -2,64 +2,113 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
-    function isAuth() {
-      return request.auth != null;
-    }
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function isAuth()    { return request.auth != null; }
+    function uid()       { return request.auth.uid; }
+    function userDoc()   { return get(/databases/$(database)/documents/users/$(uid())).data; }
+    function role()      { return userDoc().role; }
+    function isAdmin()      { return isAuth() && role() == 'ADMIN'; }
+    function isManager()    { return isAuth() && role() in ['ADMIN','MANAGER']; }
+    function isStaff()      { return isAuth() && role() in ['ADMIN','MANAGER','ACCOUNTANT','TECHNICIAN','CONCIERGE']; }
+    function isConcierge()  { return isAuth() && role() in ['ADMIN','MANAGER','CONCIERGE']; }
+    function isAccountant() { return isAuth() && role() in ['ADMIN','MANAGER','ACCOUNTANT']; }
+    function isTechOrMore() { return isAuth() && role() in ['ADMIN','MANAGER','TECHNICIAN','CONCIERGE']; }
 
-    function isOwner(userId) {
-      return isAuth() && request.auth.uid == userId;
-    }
-
-    function hasRole(role) {
-      return isAuth() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
-    }
-
-    function isStaff() {
-      return isAuth() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in
-        ['SUPER_ADMIN','ADMIN','MANAGER','ACCOUNTANT','TECHNICIAN'];
-    }
-
-    // Users collection — only own profile readable, admin can read all
+    // ── Users ─────────────────────────────────────────────────────────────────
     match /users/{userId} {
-      allow read: if isOwner(userId) || isStaff();
-      allow create: if isAuth();
-      allow update: if isOwner(userId) || isStaff();
-      allow delete: if hasRole('SUPER_ADMIN') || hasRole('ADMIN');
+      allow read:   if isAuth() && (uid() == userId || isManager());
+      allow create: if isAdmin();
+      allow update: if isAdmin() ||
+        (isAuth() && uid() == userId &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role','suspended']));
+      allow delete: if isAdmin() && userId != uid();
     }
 
-    // Chats — only participants can read/write
-    match /chats/{chatId} {
-      allow read, write: if isAuth() &&
-        request.auth.uid in resource.data.participants;
+    // ── Properties ────────────────────────────────────────────────────────────
+    match /properties/{propId} {
+      allow read:   if isAuth();
+      allow create: if isManager();
+      allow update: if isManager() || isConcierge();
+      allow delete: if isManager();
+    }
 
-      // Allow creating new chat if you're a participant
-      allow create: if isAuth() &&
-        request.auth.uid in request.resource.data.participants;
+    // ── Contracts ─────────────────────────────────────────────────────────────
+    match /contracts/{contractId} {
+      allow read:  if isAuth();
+      allow write: if isManager();
+    }
 
-      match /messages/{messageId} {
-        allow read: if isAuth();
-        allow create: if isAuth() &&
-          request.auth.uid == request.resource.data.senderId;
-        allow update: if isAuth() &&
-          request.auth.uid == resource.data.receiverId; // only receiver marks read
+    // ── Tenants ───────────────────────────────────────────────────────────────
+    match /tenants/{tenantId} {
+      allow read:  if isAuth();
+      allow write: if isManager();
+    }
+
+    // ── Owners ────────────────────────────────────────────────────────────────
+    match /owners/{ownerId} {
+      allow read:  if isAuth();
+      allow write: if isManager();
+    }
+
+    // ── Payments ──────────────────────────────────────────────────────────────
+    match /payments/{paymentId} {
+      allow read:  if isAuth();
+      allow write: if isManager() || isAccountant();
+    }
+
+    // ── Transactions ──────────────────────────────────────────────────────────
+    match /transactions/{txId} {
+      allow read:  if isManager() || isAccountant();
+      allow write: if isManager() || isAccountant();
+    }
+
+    // ── Tickets (Maintenance) ─────────────────────────────────────────────────
+    match /tickets/{ticketId} {
+      allow read:   if isAuth();
+      allow create: if isAuth();
+      allow update: if isManager() || isConcierge() || isTechOrMore();
+      allow delete: if isManager();
+    }
+
+    // ── Inspections ───────────────────────────────────────────────────────────
+    match /inspections/{inspId} {
+      allow read:   if isAuth();
+      allow create: if isManager() || isConcierge();
+      allow update: if isManager() || isConcierge();
+      allow delete: if isManager();
+    }
+
+    // ── Conversations / Messages ───────────────────────────────────────────────
+    match /conversations/{convId} {
+      allow read:   if isAuth();
+      allow create: if isAuth();
+      allow update: if isAuth();
+      allow delete: if isManager();
+
+      match /messages/{msgId} {
+        allow read:   if isAuth();
+        allow create: if isAuth();
+        allow update: if false;
+        allow delete: if isManager();
       }
     }
 
-    // Notifications — only the target user can read/update their notifications
-    match /notifications/{notifId} {
-      allow read, update: if isAuth() &&
-        request.auth.uid == resource.data.userId;
-      allow create: if isStaff(); // only staff can create notifications
+    // ── Activity Log ──────────────────────────────────────────────────────────
+    match /activityLog/{logId} {
+      allow read:   if isManager();
+      allow create: if isAuth();
+      allow update: if false;
+      allow delete: if isAdmin();
     }
 
-    // Support tickets — staff can read all, users can read their own
-    match /supportTickets/{ticketId} {
-      allow read: if isStaff() ||
-        (isAuth() && request.auth.uid == resource.data.createdBy);
-      allow create: if isAuth();
-      allow update: if isStaff();
-      allow delete: if hasRole('SUPER_ADMIN') || hasRole('ADMIN');
+    // ── Organisation / System settings ────────────────────────────────────────
+    match /orgSettings/{docId} {
+      allow read:  if isAuth();
+      allow write: if isManager();
+    }
+    match /systemSettings/{docId} {
+      allow read:  if isAuth();
+      allow write: if isAdmin();
     }
   }
 }

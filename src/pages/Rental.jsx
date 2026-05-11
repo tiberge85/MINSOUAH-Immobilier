@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
+import { openContractReport } from '../lib/contractReport';
 
 const TABS = ['Contrats', 'Locataires', 'Propriétaires'];
 const CONTRACT_STATUSES = ['Tous', 'Actif', 'Expirant', 'Brouillon', 'Résilié'];
@@ -257,6 +258,12 @@ export default function Rental() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 justify-end">
+                          <IconBtn icon="picture_as_pdf" color="text-on-surface-variant" title="Générer le bail PDF"
+                            onClick={() => {
+                              const prop = properties.find(p => p.id === c.propertyId || p.name === c.propertyName);
+                              const org = state.orgSettings || {};
+                              openContractReport(c, prop, org);
+                            }} />
                           <IconBtn icon="edit" color="text-primary" onClick={() => openEditContract(c)} />
                           <IconBtn icon="delete" color="text-error" onClick={() => setDeleteTarget({ type: 'contract', data: c })} />
                         </div>
@@ -582,9 +589,9 @@ function Btn({ icon, onClick, children }) {
     </button>
   );
 }
-function IconBtn({ icon, color, onClick }) {
+function IconBtn({ icon, color, onClick, title }) {
   return (
-    <button onClick={e => { e.stopPropagation(); onClick(); }} className={`w-7 h-7 rounded-full flex items-center justify-center ${color} hover:bg-surface-container transition-colors`}>
+    <button title={title} onClick={e => { e.stopPropagation(); onClick(); }} className={`w-7 h-7 rounded-full flex items-center justify-center ${color} hover:bg-surface-container transition-colors`}>
       <Icon name={icon} size={14} />
     </button>
   );

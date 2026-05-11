@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 
@@ -131,6 +132,7 @@ export default function Assets() {
   const [addingUnitToDetail, setAddingUnitToDetail] = useState(false);
   const [newDetailUnit, setNewDetailUnit] = useState(EMPTY_UNIT);
   const photoInputRef = useRef();
+  const [qrModal, setQrModal] = useState(null); // property or building object
 
   // ── Filtres ────────────────────────────────────────────────────────────────
   const filtered = properties.filter(p => {
@@ -332,12 +334,14 @@ export default function Assets() {
                 onDetail={() => { setTarget(p); setModal('detail'); setAddingUnitToDetail(false); setDetailUnitEdit(null); }}
                 onEdit={() => openEdit(p)}
                 onDelete={() => { setTarget(p); setModal('delete'); }}
+                onQr={() => setQrModal(p)}
               />
             ) : (
               <PropertyCard key={p.id} property={p}
                 onDetail={() => { setTarget(p); setModal('detail'); }}
                 onEdit={() => openEdit(p)}
                 onDelete={() => { setTarget(p); setModal('delete'); }}
+                onQr={() => setQrModal(p)}
               />
             )
           ))}
@@ -688,6 +692,30 @@ export default function Assets() {
         </ModalOverlay>
       )}
 
+      {/* ── Modal QR Code ────────────────────────────────────────────────── */}
+      {qrModal && (
+        <ModalOverlay onClose={() => setQrModal(null)}>
+          <div className="bg-surface rounded-3xl w-full max-w-xs p-6 text-center">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg text-on-surface">{qrModal.name}</h3>
+              <button onClick={() => setQrModal(null)} className="text-on-surface-variant hover:text-on-surface">
+                <Icon name="close" size={20} />
+              </button>
+            </div>
+            <p className="text-xs text-on-surface-variant mb-4">{qrModal.address}</p>
+            <div className="flex justify-center p-4 bg-white rounded-2xl border border-outline-variant/20 mb-4">
+              <QRCodeSVG
+                value={`MINSOUAH:PROPERTY\nNom: ${qrModal.name}\nAdresse: ${qrModal.address}\nType: ${qrModal.type || (qrModal.isBuilding ? 'Immeuble' : '—')}\nID: ${qrModal.id}`}
+                size={180}
+                level="M"
+                includeMargin={false}
+              />
+            </div>
+            <p className="text-xs text-on-surface-variant">Scannez ce QR pour identifier le bien</p>
+          </div>
+        </ModalOverlay>
+      )}
+
       {/* ── Modal Confirmation suppression ───────────────────────────────── */}
       {modal === 'delete' && target && (
         <ModalOverlay onClose={() => setModal(null)}>
@@ -718,7 +746,7 @@ export default function Assets() {
 }
 
 // ── Cartes ────────────────────────────────────────────────────────────────────
-function BuildingCard({ building, onDetail, onEdit, onDelete }) {
+function BuildingCard({ building, onDetail, onEdit, onDelete, onQr }) {
   const units = building.units || [];
   const loued = units.filter(u => u.status === 'Loué').length;
   const libres = units.filter(u => u.status === 'Disponible').length;
@@ -739,6 +767,9 @@ function BuildingCard({ building, onDetail, onEdit, onDelete }) {
           </span>
         </div>
         <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={e => { e.stopPropagation(); onQr(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-on-surface shadow hover:bg-white">
+            <Icon name="qr_code" size={14} />
+          </button>
           <button onClick={e => { e.stopPropagation(); onEdit(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-primary shadow hover:bg-white">
             <Icon name="edit" size={14} />
           </button>
@@ -793,7 +824,7 @@ function BuildingCard({ building, onDetail, onEdit, onDelete }) {
   );
 }
 
-function PropertyCard({ property, onDetail, onEdit, onDelete }) {
+function PropertyCard({ property, onDetail, onEdit, onDelete, onQr }) {
   return (
     <div onClick={onDetail} className="bg-surface rounded-2xl overflow-hidden border border-outline-variant/20 shadow-sm hover:shadow-md transition-shadow cursor-pointer group">
       <div className="relative h-44 overflow-hidden bg-surface-container">
@@ -805,6 +836,9 @@ function PropertyCard({ property, onDetail, onEdit, onDelete }) {
           <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${STATUS_COLORS[property.status] || 'bg-surface-container text-on-surface'}`}>{property.status}</span>
         </div>
         <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={e => { e.stopPropagation(); onQr(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-on-surface shadow hover:bg-white">
+            <Icon name="qr_code" size={14} />
+          </button>
           <button onClick={e => { e.stopPropagation(); onEdit(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-primary shadow hover:bg-white">
             <Icon name="edit" size={14} />
           </button>
