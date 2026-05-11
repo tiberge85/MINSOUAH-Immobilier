@@ -397,7 +397,20 @@ export function AppProvider({ children }) {
     const refs = fbSyncRef.current;
     if (refs.isSyncing) { refs.isSyncing = false; return; }
 
-    localStorage.setItem('minsouah_v1', JSON.stringify(state));
+    try {
+      localStorage.setItem('minsouah_v1', JSON.stringify(state));
+    } catch {
+      // Quota exceeded — strip avatars and retry
+      try {
+        const slim = {
+          ...state,
+          currentUser: state.currentUser ? { ...state.currentUser, avatar: null } : null,
+          users: (state.users || []).map(u => ({ ...u, avatar: null })),
+          tenants: (state.tenants || []).map(t => ({ ...t, avatar: null })),
+        };
+        localStorage.setItem('minsouah_v1', JSON.stringify(slim));
+      } catch { /* still too large — skip */ }
+    }
 
     const fb = state.systemSettings?.firebase;
     if (fb?.enabled && fb?.databaseURL && fb?.workspaceId) {

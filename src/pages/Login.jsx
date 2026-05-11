@@ -241,7 +241,23 @@ export default function Login() {
           </div>
         </div>
 
-        <p className="text-center text-xs text-on-surface-variant mt-6">
+        {/* Bouton de récupération d'urgence */}
+        <div className="text-center mt-4">
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm('Réinitialiser la session locale ? Vos données seront rechargées depuis le serveur.')) {
+                localStorage.removeItem('minsouah_v1');
+                window.location.reload();
+              }
+            }}
+            className="text-xs text-on-surface-variant/50 hover:text-on-surface-variant transition-colors underline underline-offset-2"
+          >
+            Problème de connexion ? Réinitialiser la session
+          </button>
+        </div>
+
+        <p className="text-center text-xs text-on-surface-variant mt-4">
           © {new Date().getFullYear()} Minsouah — Gestion immobilière Côte d'Ivoire
         </p>
       </div>
