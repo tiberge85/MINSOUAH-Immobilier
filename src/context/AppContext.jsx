@@ -104,51 +104,51 @@ function reducer(state, action) {
   switch (type) {
     // ── Properties ──────────────────────────────────────────────────────────
     case 'ADD_PROPERTY':
-      return { ...state, properties: [{ ...payload, id: Date.now() }, ...state.properties] };
+      return { ...state, properties: [{ ...payload, id: Date.now() }, ...(state.properties || [])] };
     case 'UPDATE_PROPERTY':
-      return { ...state, properties: state.properties.map(p => p.id === payload.id ? payload : p) };
+      return { ...state, properties: (state.properties || []).map(p => p.id === payload.id ? payload : p) };
     case 'DELETE_PROPERTY':
-      return { ...state, properties: state.properties.filter(p => p.id !== payload) };
+      return { ...state, properties: (state.properties || []).filter(p => p.id !== payload) };
 
     // ── Contracts ────────────────────────────────────────────────────────────
     case 'ADD_CONTRACT':
-      return { ...state, contracts: [{ ...payload, id: Date.now() }, ...state.contracts] };
+      return { ...state, contracts: [{ ...payload, id: Date.now() }, ...(state.contracts || [])] };
     case 'UPDATE_CONTRACT':
-      return { ...state, contracts: state.contracts.map(c => c.id === payload.id ? payload : c) };
+      return { ...state, contracts: (state.contracts || []).map(c => c.id === payload.id ? payload : c) };
     case 'DELETE_CONTRACT':
-      return { ...state, contracts: state.contracts.filter(c => c.id !== payload) };
+      return { ...state, contracts: (state.contracts || []).filter(c => c.id !== payload) };
 
     // ── Tenants ──────────────────────────────────────────────────────────────
     case 'ADD_TENANT':
-      return { ...state, tenants: [{ ...payload, id: Date.now() }, ...state.tenants] };
+      return { ...state, tenants: [{ ...payload, id: Date.now() }, ...(state.tenants || [])] };
     case 'UPDATE_TENANT':
-      return { ...state, tenants: state.tenants.map(t => t.id === payload.id ? payload : t) };
+      return { ...state, tenants: (state.tenants || []).map(t => t.id === payload.id ? payload : t) };
     case 'DELETE_TENANT':
-      return { ...state, tenants: state.tenants.filter(t => t.id !== payload) };
+      return { ...state, tenants: (state.tenants || []).filter(t => t.id !== payload) };
 
     // ── Owners ───────────────────────────────────────────────────────────────
     case 'ADD_OWNER':
-      return { ...state, owners: [{ ...payload, id: Date.now() }, ...state.owners] };
+      return { ...state, owners: [{ ...payload, id: Date.now() }, ...(state.owners || [])] };
     case 'UPDATE_OWNER':
-      return { ...state, owners: state.owners.map(o => o.id === payload.id ? payload : o) };
+      return { ...state, owners: (state.owners || []).map(o => o.id === payload.id ? payload : o) };
     case 'DELETE_OWNER':
-      return { ...state, owners: state.owners.filter(o => o.id !== payload) };
+      return { ...state, owners: (state.owners || []).filter(o => o.id !== payload) };
 
     // ── Transactions ─────────────────────────────────────────────────────────
     case 'ADD_TRANSACTION':
-      return { ...state, transactions: [{ ...payload, id: Date.now() }, ...state.transactions] };
+      return { ...state, transactions: [{ ...payload, id: Date.now() }, ...(state.transactions || [])] };
     case 'DELETE_TRANSACTION':
-      return { ...state, transactions: state.transactions.filter(t => t.id !== payload) };
+      return { ...state, transactions: (state.transactions || []).filter(t => t.id !== payload) };
 
     // ── Payments ─────────────────────────────────────────────────────────────
     case 'ADD_PAYMENT':
-      return { ...state, payments: [{ ...payload, id: Date.now() }, ...state.payments] };
+      return { ...state, payments: [{ ...payload, id: Date.now() }, ...(state.payments || [])] };
     case 'UPDATE_PAYMENT':
-      return { ...state, payments: state.payments.map(p => p.id === payload.id ? payload : p) };
+      return { ...state, payments: (state.payments || []).map(p => p.id === payload.id ? payload : p) };
     case 'MARK_PAYMENT_PAID':
       return {
         ...state,
-        payments: state.payments.map(p =>
+        payments: (state.payments || []).map(p =>
           p.id === payload
             ? { ...p, status: 'Payé', paidDate: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) }
             : p
@@ -157,7 +157,7 @@ function reducer(state, action) {
     case 'SEND_REMINDER':
       return {
         ...state,
-        payments: state.payments.map(p =>
+        payments: (state.payments || []).map(p =>
           p.id === payload
             ? { ...p, reminderSent: true, reminderCount: (p.reminderCount || 0) + 1, status: p.status === 'Impayé' ? 'En retard' : p.status }
             : p
@@ -166,11 +166,11 @@ function reducer(state, action) {
 
     // ── Tickets ──────────────────────────────────────────────────────────────
     case 'ADD_TICKET':
-      return { ...state, tickets: [payload, ...state.tickets] };
+      return { ...state, tickets: [payload, ...(state.tickets || [])] };
     case 'UPDATE_TICKET':
-      return { ...state, tickets: state.tickets.map(t => t.id === payload.id ? payload : t) };
+      return { ...state, tickets: (state.tickets || []).map(t => t.id === payload.id ? payload : t) };
     case 'DELETE_TICKET':
-      return { ...state, tickets: state.tickets.filter(t => t.id !== payload) };
+      return { ...state, tickets: (state.tickets || []).filter(t => t.id !== payload) };
 
     // ── Inspections ──────────────────────────────────────────────────────────
     case 'ADD_INSPECTION':
@@ -185,14 +185,14 @@ function reducer(state, action) {
       const { convId, message } = payload;
       return {
         ...state,
-        conversations: state.conversations.map(c => {
+        conversations: (state.conversations || []).map(c => {
           if (c.id !== convId) return c;
-          return { ...c, lastMessage: message.text, time: message.time, unread: 0, messages: [...c.messages, message] };
+          return { ...c, lastMessage: message.text, time: message.time, unread: 0, messages: [...(c.messages || []), message] };
         }),
       };
     }
     case 'MARK_READ':
-      return { ...state, conversations: state.conversations.map(c => c.id === payload ? { ...c, unread: 0 } : c) };
+      return { ...state, conversations: (state.conversations || []).map(c => c.id === payload ? { ...c, unread: 0 } : c) };
     case 'ADD_CONVERSATION':
       return { ...state, conversations: [payload, ...(state.conversations || [])] };
 
@@ -352,6 +352,18 @@ function reducer(state, action) {
       if (!hasAdmin) mergedUsers.unshift({ ...DEFAULT_ADMIN });
       return {
         ...incoming,
+        // Guard every array field — if Firebase data is partial, fall back to local then empty
+        properties:    incoming.properties    || state.properties    || [],
+        contracts:     incoming.contracts     || state.contracts     || [],
+        tenants:       incoming.tenants       || state.tenants       || [],
+        owners:        incoming.owners        || state.owners        || [],
+        payments:      incoming.payments      || state.payments      || [],
+        tickets:       incoming.tickets       || state.tickets       || [],
+        transactions:  incoming.transactions  || state.transactions  || [],
+        conversations: incoming.conversations || state.conversations || [],
+        inspections:   incoming.inspections   || state.inspections   || [],
+        alerts:        incoming.alerts        || state.alerts        || [],
+        revenueData:   incoming.revenueData   || state.revenueData   || [],
         users: mergedUsers,
         currentUser: state.currentUser,
         systemSettings: state.systemSettings,
