@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 
@@ -130,6 +130,7 @@ export default function Assets() {
   const [detailUnitEdit, setDetailUnitEdit] = useState(null);
   const [addingUnitToDetail, setAddingUnitToDetail] = useState(false);
   const [newDetailUnit, setNewDetailUnit] = useState(EMPTY_UNIT);
+  const photoInputRef = useRef();
 
   // ── Filtres ────────────────────────────────────────────────────────────────
   const filtered = properties.filter(p => {
@@ -168,6 +169,27 @@ export default function Assets() {
     } else {
       setForm(f => ({ ...f, [name]: value }));
     }
+  };
+
+  const handlePhotoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 800;
+        const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        setForm(f => ({ ...f, image: canvas.toDataURL('image/jpeg', 0.82) }));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   // Ajouter un appartement dans le formulaire
@@ -395,9 +417,23 @@ export default function Assets() {
                       </div>
                     )}
                     <div>
-                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">URL photo (optionnel)</label>
-                      <input name="image" value={form.image} onChange={handleChange} placeholder="https://..."
-                        className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">Photo du bien</label>
+                      <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                      {form.image ? (
+                        <div className="relative rounded-xl overflow-hidden border border-outline-variant/40 h-36">
+                          <img src={form.image} alt="aperçu" className="w-full h-full object-cover" />
+                          <button type="button" onClick={() => setForm(f => ({ ...f, image: '' }))}
+                            className="absolute top-2 right-2 bg-black/50 text-white rounded-full w-7 h-7 flex items-center justify-center hover:bg-black/70">
+                            <Icon name="close" size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button type="button" onClick={() => photoInputRef.current?.click()}
+                          className="w-full h-24 rounded-xl border-2 border-dashed border-outline-variant/40 bg-surface-container flex flex-col items-center justify-center gap-1 hover:border-primary/40 hover:bg-primary/5 transition-colors text-on-surface-variant">
+                          <Icon name="add_photo_alternate" size={24} />
+                          <span className="text-sm">Choisir une photo</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 

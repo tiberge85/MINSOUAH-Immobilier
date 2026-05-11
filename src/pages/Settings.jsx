@@ -118,9 +118,21 @@ export default function Settings() {
   const handleAvatarChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { showToast('Image trop grande (max 2 Mo)'); return; }
+    if (file.size > 10 * 1024 * 1024) { showToast('Image trop grande (max 10 Mo)'); return; }
     const reader = new FileReader();
-    reader.onload = (ev) => setProfile(p => ({ ...p, avatar: ev.target.result }));
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 256;
+        const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        setProfile(p => ({ ...p, avatar: canvas.toDataURL('image/jpeg', 0.80) }));
+      };
+      img.src = ev.target.result;
+    };
     reader.readAsDataURL(file);
   };
 

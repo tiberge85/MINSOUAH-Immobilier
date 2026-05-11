@@ -336,10 +336,16 @@ function reducer(state, action) {
       // Preserve locally hashed passwords — don't let Firebase plain-text override them
       const mergedUsers = (incoming.users || []).map(incomingUser => {
         const localUser = (state.users || []).find(u => u.email === incomingUser.email);
+        const merged = { ...incomingUser };
+        // Preserve locally hashed password if Firebase still has plain-text
         if (localUser?.password?.startsWith('sha256:') && !incomingUser.password?.startsWith('sha256:')) {
-          return { ...incomingUser, password: localUser.password };
+          merged.password = localUser.password;
         }
-        return incomingUser;
+        // Preserve local avatar — base64 images may be stripped in Firebase if too large
+        if (localUser?.avatar && !incomingUser.avatar) {
+          merged.avatar = localUser.avatar;
+        }
+        return merged;
       });
       // Always guarantee DEFAULT_ADMIN exists so login never breaks
       const hasAdmin = mergedUsers.some(u => u.id === 1);
