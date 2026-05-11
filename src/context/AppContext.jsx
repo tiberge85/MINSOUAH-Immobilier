@@ -332,7 +332,7 @@ function reducer(state, action) {
     // ── Cloud sync (Firebase REST) ────────────────────────────────────────────
     case 'CLOUD_SYNC': {
       const incoming = payload;
-      if (!incoming || !incoming.users) return state;
+      if (!incoming || !incoming.users?.length) return state;
       // Preserve locally hashed passwords — don't let Firebase plain-text override them
       const mergedUsers = (incoming.users || []).map(incomingUser => {
         const localUser = (state.users || []).find(u => u.email === incomingUser.email);
@@ -341,6 +341,9 @@ function reducer(state, action) {
         }
         return incomingUser;
       });
+      // Always guarantee DEFAULT_ADMIN exists so login never breaks
+      const hasAdmin = mergedUsers.some(u => u.id === 1);
+      if (!hasAdmin) mergedUsers.unshift({ ...DEFAULT_ADMIN });
       return {
         ...incoming,
         users: mergedUsers,
@@ -382,7 +385,7 @@ export function AppProvider({ children }) {
         const saved = localStorage.getItem('minsouah_v1');
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (!parsed.users) parsed.users = [DEFAULT_ADMIN];
+          if (!parsed.users?.length) parsed.users = [DEFAULT_ADMIN];
           if (!parsed.activityLog) parsed.activityLog = [];
           if (!parsed.systemSettings) {
             parsed.systemSettings = DEFAULT_SYSTEM;
@@ -454,7 +457,7 @@ export function AppProvider({ children }) {
     const poll = async () => {
       try {
         const data = await fbFetch(fb.databaseURL, fb.workspaceId);
-        if (!data || !data.users) return;
+        if (!data || !data.users?.length) return;
         const localSaved = state._savedAt || 0;
         if ((data._savedAt || 0) > localSaved) {
           refs.isSyncing = true;
