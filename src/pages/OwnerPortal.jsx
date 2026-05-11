@@ -11,12 +11,19 @@ import Icon from '../components/Icon';
 const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
 const fmtK = (n) => `${(Number(n || 0) / 1000).toFixed(0)}k`;
 
+// Handles "DD/MM/YYYY" and "DD Mois AAAA" (French locale, with or without accents/dots)
+const FR_M = { jan:0, fev:1, mar:2, avr:3, mai:4, juin:5, juil:6, jul:6, aou:7, sep:8, oct:9, nov:10, dec:11 };
 function parsePaidDate(str) {
   if (!str) return null;
-  const parts = str.split('/');
-  if (parts.length === 3) {
-    const d = parseInt(parts[0]), m = parseInt(parts[1]) - 1, y = parseInt(parts[2]);
-    if (!isNaN(d) && !isNaN(m) && !isNaN(y)) return { month: m, year: y };
+  if (str.includes('/')) {
+    const [d, m, y] = str.split('/').map(Number);
+    if (!isNaN(d) && !isNaN(m) && !isNaN(y)) return { month: m - 1, year: y };
+  }
+  const match = str.match(/^(\d{1,2})\s+(\S+)\s+(\d{4})$/i);
+  if (match) {
+    const tok = match[2].toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\./g, '');
+    const monthIdx = FR_M[tok.slice(0, 4)] ?? FR_M[tok.slice(0, 3)];
+    if (monthIdx !== undefined) return { month: monthIdx, year: parseInt(match[3]) };
   }
   return null;
 }
@@ -59,9 +66,13 @@ export default function OwnerPortal() {
     payments = [],
     tickets = [],
     inspections = [],
+    currentUser,
   } = state;
   const navigate = useNavigate();
-  const [selectedId, setSelectedId] = useState(null);
+  const isOwnerRole = currentUser?.role === 'OWNER';
+  const [selectedId, setSelectedId] = useState(() =>
+    isOwnerRole && currentUser?.personId ? currentUser.personId : null
+  );
   const [activeTab, setActiveTab] = useState('overview');
 
   const owner = owners.find(o => o.id === selectedId);
@@ -229,12 +240,14 @@ export default function OwnerPortal() {
     <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl max-w-6xl mx-auto flex flex-col gap-gutter">
       {/* Header */}
       <div className="flex items-center gap-md flex-wrap">
-        <button
-          onClick={() => setSelectedId(null)}
-          className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-surface-container border border-outline-variant text-on-surface-variant transition-colors"
-        >
-          <Icon name="arrow_back" size={18} />
-        </button>
+        {!isOwnerRole && (
+          <button
+            onClick={() => setSelectedId(null)}
+            className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-surface-container border border-outline-variant text-on-surface-variant transition-colors"
+          >
+            <Icon name="arrow_back" size={18} />
+          </button>
+        )}
         {owner.avatar
           ? <img src={owner.avatar} alt="" className="w-12 h-12 rounded-full object-cover flex-shrink-0" />
           : <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold flex-shrink-0 ${owner.color || 'bg-primary-container text-on-primary-container'}`}>{owner.initials || owner.name?.[0]}</div>

@@ -4,7 +4,13 @@ import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import Icon from './Icon';
 
-const ROLE_LABELS = { ADMIN: 'Administrateur', MANAGER: 'Manager', TENANT: 'Locataire', OWNER: 'Propriétaire', ACCOUNTANT: 'Comptable', TECHNICIAN: 'Technicien' };
+const ROLE_LABELS = { ADMIN: 'Administrateur', MANAGER: 'Manager', TENANT: 'Locataire', OWNER: 'Propriétaire', ACCOUNTANT: 'Comptable', TECHNICIAN: 'Technicien', CONCIERGE: 'Concierge' };
+
+const ROLE_NAV = {
+  CONCIERGE:  new Set(['/maintenance', '/inspections', '/inbox']),
+  TECHNICIAN: new Set(['/maintenance', '/inbox']),
+  ACCOUNTANT: new Set(['/finance', '/payments', '/inbox']),
+};
 
 const navItems = [
   { path: '/',            label: 'Tableau de Bord',  icon: 'dashboard',              mobileIcon: 'home' },
@@ -45,6 +51,8 @@ export default function Layout() {
   const { currentUser } = state;
   const unpaidCount = (state.payments || []).filter(p => p.status !== 'Payé').length;
   const title = pageTitles[location.pathname] || 'Minsouah';
+  const allowedPaths = ROLE_NAV[currentUser?.role];
+  const visibleNav = allowedPaths ? navItems.filter(i => allowedPaths.has(i.path)) : navItems;
 
   // Parse contract endDate — handles both "12/12/2025" and "12 Déc 2025" formats
   const parseContractDate = (str) => {
@@ -240,7 +248,7 @@ export default function Layout() {
 
         {/* Nav */}
         <nav className="flex-1 flex flex-col gap-1 px-1">
-          {navItems.map((item) => (
+          {visibleNav.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
@@ -274,21 +282,25 @@ export default function Layout() {
 
         {/* Bottom — Portals + Settings */}
         <div className="px-1 pt-md border-t border-outline-variant/30 mt-auto flex flex-col gap-1">
-          <p className="px-margin text-label-sm text-on-surface-variant uppercase tracking-widest mb-1">Portails</p>
-          <button
-            onClick={() => { navigate('/portal/tenant'); setSidebarOpen(false); }}
-            className="flex items-center gap-md py-3 pl-margin text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface rounded-r-full mr-4 transition-all duration-200"
-          >
-            <Icon name="person" />
-            <span className="font-label-md text-label-md">Portail Locataires</span>
-          </button>
-          <button
-            onClick={() => { navigate('/portal/owner'); setSidebarOpen(false); }}
-            className="flex items-center gap-md py-3 pl-margin text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface rounded-r-full mr-4 transition-all duration-200"
-          >
-            <Icon name="manage_accounts" />
-            <span className="font-label-md text-label-md">Portail Propriétaires</span>
-          </button>
+          {['ADMIN', 'MANAGER'].includes(currentUser?.role) && (
+            <>
+              <p className="px-margin text-label-sm text-on-surface-variant uppercase tracking-widest mb-1">Portails</p>
+              <button
+                onClick={() => { navigate('/portal/tenant'); setSidebarOpen(false); }}
+                className="flex items-center gap-md py-3 pl-margin text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface rounded-r-full mr-4 transition-all duration-200"
+              >
+                <Icon name="person" />
+                <span className="font-label-md text-label-md">Portail Locataires</span>
+              </button>
+              <button
+                onClick={() => { navigate('/portal/owner'); setSidebarOpen(false); }}
+                className="flex items-center gap-md py-3 pl-margin text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface rounded-r-full mr-4 transition-all duration-200"
+              >
+                <Icon name="manage_accounts" />
+                <span className="font-label-md text-label-md">Portail Propriétaires</span>
+              </button>
+            </>
+          )}
           <div className="border-t border-outline-variant/30 mt-1 pt-1">
             <button
               onClick={() => { navigate('/settings'); setSidebarOpen(false); }}
@@ -408,7 +420,7 @@ export default function Layout() {
 
       {/* ── Mobile bottom nav ─────────────────────────────────────────── */}
       <nav className="md:hidden fixed bottom-0 w-full z-40 bg-surface border-t border-outline-variant shadow-[0px_-4px_20px_rgba(62,56,54,0.05)] flex justify-around items-center h-16">
-        {navItems.map((item) => (
+        {visibleNav.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}

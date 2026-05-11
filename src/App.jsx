@@ -26,14 +26,20 @@ const queryClient = new QueryClient({
   },
 });
 
+const ROLE_HOME = {
+  TENANT:     '/portal/tenant',
+  OWNER:      '/portal/owner',
+  CONCIERGE:  '/maintenance',
+  TECHNICIAN: '/maintenance',
+  ACCOUNTANT: '/finance',
+};
+
 function ProtectedRoute({ children, allowedRoles }) {
   const { state } = useApp();
   const user = state.currentUser;
   if (!user) return <Navigate to="/login" replace />;
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    if (user.role === 'TENANT') return <Navigate to="/portal/tenant" replace />;
-    if (user.role === 'OWNER') return <Navigate to="/portal/owner" replace />;
-    return <Navigate to="/" replace />;
+    return <Navigate to={ROLE_HOME[user.role] || '/'} replace />;
   }
   return children;
 }
@@ -48,8 +54,7 @@ function AppRoutes() {
         path="/login"
         element={user ? <Navigate to={
           user.firstLogin ? '/change-password' :
-          user.role === 'TENANT' ? '/portal/tenant' :
-          user.role === 'OWNER'  ? '/portal/owner' : '/'
+          ROLE_HOME[user.role] || '/'
         } replace /> : <Login />}
       />
       <Route
@@ -63,9 +68,9 @@ function AppRoutes() {
         <Route path="rental"      element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}><Rental /></ProtectedRoute>} />
         <Route path="finance"     element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'ACCOUNTANT']}><Finance /></ProtectedRoute>} />
         <Route path="payments"    element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'ACCOUNTANT']}><Payments /></ProtectedRoute>} />
-        <Route path="maintenance"  element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'TECHNICIAN']}><Maintenance /></ProtectedRoute>} />
-        <Route path="inspections" element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}><Inspections /></ProtectedRoute>} />
-        <Route path="inbox"       element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}><Inbox /></ProtectedRoute>} />
+        <Route path="maintenance"  element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'TECHNICIAN', 'CONCIERGE']}><Maintenance /></ProtectedRoute>} />
+        <Route path="inspections" element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'CONCIERGE']}><Inspections /></ProtectedRoute>} />
+        <Route path="inbox"       element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'CONCIERGE', 'TECHNICIAN', 'ACCOUNTANT']}><Inbox /></ProtectedRoute>} />
         <Route path="portal/tenant" element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'TENANT']}><TenantPortal /></ProtectedRoute>} />
         <Route path="portal/owner"  element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'OWNER']}><OwnerPortal /></ProtectedRoute>} />
         <Route path="settings"    element={<ProtectedRoute><Settings /></ProtectedRoute>} />

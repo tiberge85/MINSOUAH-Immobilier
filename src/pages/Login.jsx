@@ -11,6 +11,7 @@ const ROLE_LABELS = {
   MANAGER: 'Manager',
   ACCOUNTANT: 'Comptable',
   TECHNICIAN: 'Technicien',
+  CONCIERGE: 'Concierge',
   OWNER: 'Propriétaire',
   TENANT: 'Locataire',
 };
@@ -20,8 +21,17 @@ const ROLE_ICON = {
   MANAGER: 'manage_history',
   ACCOUNTANT: 'calculate',
   TECHNICIAN: 'engineering',
+  CONCIERGE: 'supervised_user_circle',
   OWNER: 'manage_accounts',
   TENANT: 'person',
+};
+
+const ROLE_HOME = {
+  TENANT:     '/portal/tenant',
+  OWNER:      '/portal/owner',
+  CONCIERGE:  '/maintenance',
+  TECHNICIAN: '/maintenance',
+  ACCOUNTANT: '/finance',
 };
 
 export default function Login() {
@@ -118,10 +128,7 @@ export default function Login() {
       if (user.firstLogin) {
         navigate('/change-password');
       } else {
-        const dest =
-          user.role === 'TENANT' ? '/portal/tenant' :
-          user.role === 'OWNER'  ? '/portal/owner' : '/';
-        navigate(dest);
+        navigate(ROLE_HOME[user.role] || '/');
       }
     } finally {
       setLoading(false);

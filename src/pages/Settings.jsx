@@ -977,6 +977,7 @@ const ALL_ROLES = [
   { value: 'MANAGER',    label: 'Manager',          color: 'bg-secondary-container text-on-secondary-container', icon: 'manage_history' },
   { value: 'ACCOUNTANT', label: 'Comptable',        color: 'bg-tertiary-container text-on-tertiary-container',   icon: 'calculate' },
   { value: 'TECHNICIAN', label: 'Technicien',       color: 'bg-surface-container-high text-on-surface',         icon: 'engineering' },
+  { value: 'CONCIERGE',  label: 'Concierge',        color: 'bg-surface-container-high text-on-surface',         icon: 'supervised_user_circle' },
   { value: 'OWNER',      label: 'Propriétaire',     color: 'bg-tertiary-container text-on-tertiary-container',   icon: 'manage_accounts' },
   { value: 'TENANT',     label: 'Locataire',        color: 'bg-secondary-container text-on-secondary-container', icon: 'person' },
 ];
