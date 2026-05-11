@@ -57,9 +57,9 @@ export const DEFAULT_SYSTEM = {
   platform: { timezone: 'Africa/Abidjan', dateFormat: 'dd/MM/yyyy' },
   sessionTimeout: 30,
   firebase: {
-    databaseURL: import.meta.env.VITE_FIREBASE_URL || '',
+    databaseURL: import.meta.env.VITE_FIREBASE_URL || 'https://minsouah-7d698-default-rtdb.europe-west1.firebasedatabase.app',
     workspaceId: import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah',
-    enabled: !!(import.meta.env.VITE_FIREBASE_URL),
+    enabled: true,
   },
 };
 
@@ -369,12 +369,17 @@ export function AppProvider({ children }) {
           if (!parsed.systemSettings) {
             parsed.systemSettings = DEFAULT_SYSTEM;
           } else {
-            // Merge new DEFAULT_SYSTEM keys (e.g. firebase, sessionTimeout) into old saves
+            // Merge new DEFAULT_SYSTEM keys into old saves
             parsed.systemSettings = { ...DEFAULT_SYSTEM, ...parsed.systemSettings };
-            // If firebase wasn't manually configured but env vars are set, use env config
-            if (!parsed.systemSettings.firebase?.databaseURL && DEFAULT_SYSTEM.firebase.enabled) {
-              parsed.systemSettings.firebase = DEFAULT_SYSTEM.firebase;
-            }
+            // Toujours forcer la config Firebase à jour (URL réelle + enabled:true)
+            parsed.systemSettings.firebase = {
+              ...DEFAULT_SYSTEM.firebase,
+              // Garde l'URL customisée si elle est valide, sinon utilise le fallback
+              databaseURL: (parsed.systemSettings.firebase?.databaseURL || '').startsWith('https://')
+                ? parsed.systemSettings.firebase.databaseURL
+                : DEFAULT_SYSTEM.firebase.databaseURL,
+              enabled: true,
+            };
           }
           return parsed;
         }
