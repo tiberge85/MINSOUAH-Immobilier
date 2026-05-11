@@ -1,3 +1,8 @@
+const COND_ORDER  = ['HS', 'MAUVAIS', 'USAGE', 'BON', 'NEUF'];
+const condScore   = (c) => COND_ORDER.indexOf(c ?? 'BON');
+const deltaStyle  = (ec, xc) => { const se = condScore(ec), sx = condScore(xc); return sx < se ? '#fee2e2;color:#991b1b' : sx > se ? '#dcfce7;color:#14532d' : '#f5f5f5;color:#555'; };
+const deltaLabel  = (ec, xc) => { const se = condScore(ec), sx = condScore(xc); return sx < se ? '⬇ Dégradé' : sx > se ? '⬆ Amélioré' : '✓ Stable'; };
+
 const COND_LABEL  = { NEUF: 'Neuf', BON: 'Bon', USAGE: 'Usé', MAUVAIS: 'Mauvais', HS: 'Hors service' };
 const COND_COLOR  = { NEUF: '#d1fae5;color:#065f46', BON: '#dcfce7;color:#14532d', USAGE: '#fef3c7;color:#92400e', MAUVAIS: '#ffedd5;color:#9a3412', HS: '#fee2e2;color:#991b1b' };
 const SEV_LABEL   = { MINOR: 'Mineur', MODERATE: 'Modéré', MAJOR: 'Majeur' };
@@ -124,5 +129,143 @@ export function openEDLReport(insp) {
   const blob  = new Blob([html], { type: 'text/html' });
   const url   = URL.createObjectURL(blob);
   const w     = window.open(url, '_blank');
+  if (w) { w.onload = () => { w.print(); URL.revokeObjectURL(url); }; }
+}
+
+export function generateSynthesisHTML(entry, exit) {
+  const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const entryItems = entry.items || [];
+  const exitItems  = exit.items  || [];
+
+  const matched = entryItems.map(ei => ({
+    ei,
+    xi: exitItems.find(x => x.label.toLowerCase() === ei.label.toLowerCase() && x.category === ei.category) || null,
+  }));
+  const newInExit = exitItems.filter(xi =>
+    !entryItems.some(ei => ei.label.toLowerCase() === xi.label.toLowerCase() && ei.category === xi.category)
+  );
+
+  const degradations = matched.filter(({ ei, xi }) => xi && condScore(xi.condition) < condScore(ei.condition)).length;
+  const totalDamages  = (exit.damages || []).reduce((s, d) => s + (d.cost || 0), 0);
+
+  const grouped = matched.reduce((acc, item) => {
+    const k = item.ei.category;
+    if (!acc[k]) acc[k] = [];
+    acc[k].push(item);
+    return acc;
+  }, {});
+
+  const compHTML = Object.entries(grouped).map(([cat, items]) => `
+    <h3 style="color:#555;font-size:1em;margin:18px 0 6px;border-bottom:1px solid #eee;padding-bottom:4px">${CAT_LABEL[cat] || cat}</h3>
+    <table>
+      <tr><th style="width:28%">Élément</th><th style="width:18%">Entrée</th><th style="width:18%">Sortie</th><th style="width:16%">Évolution</th><th>Observations</th></tr>
+      ${items.map(({ ei, xi }) => `<tr>
+        <td><strong>${ei.label}</strong></td>
+        <td><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:.8em;font-weight:bold;background:${COND_COLOR[ei.condition] || '#f5f5f5;color:#333'}">${COND_LABEL[ei.condition] || ei.condition}</span></td>
+        <td>${xi ? `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:.8em;font-weight:bold;background:${COND_COLOR[xi.condition] || '#f5f5f5;color:#333'}">${COND_LABEL[xi.condition] || xi.condition}</span>` : '<span style="color:#bbb;font-style:italic">Non inspecté</span>'}</td>
+        <td>${xi ? `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:.8em;font-weight:bold;background:${deltaStyle(ei.condition, xi.condition)}">${deltaLabel(ei.condition, xi.condition)}</span>` : '—'}</td>
+        <td style="color:#666;font-size:.9em">${xi?.notes || ei.notes || '—'}</td>
+      </tr>`).join('')}
+    </table>`).join('');
+
+  const newHTML = newInExit.length > 0 ? `
+    <h2>Éléments nouveaux (sortie uniquement)</h2>
+    <table>
+      <tr><th>Élément</th><th>Catégorie</th><th>État</th><th>Observations</th></tr>
+      ${newInExit.map(i => `<tr>
+        <td><strong>${i.label}</strong></td>
+        <td>${CAT_LABEL[i.category] || i.category}</td>
+        <td><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:.8em;font-weight:bold;background:${COND_COLOR[i.condition] || '#f5f5f5;color:#333'}">${COND_LABEL[i.condition] || i.condition}</span></td>
+        <td style="color:#666;font-size:.9em">${i.notes || '—'}</td>
+      </tr>`).join('')}
+    </table>` : '';
+
+  const dmgHTML = (exit.damages || []).length > 0 ? `
+    <h2>Dommages constatés à la sortie</h2>
+    <table>
+      <tr><th>Élément</th><th>Description</th><th>Gravité</th><th>Coût estimé</th></tr>
+      ${(exit.damages || []).map(d => `<tr>
+        <td>${d.itemLabel || '—'}</td><td>${d.description}</td>
+        <td><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:.8em;font-weight:bold;background:${SEV_COLOR[d.severity] || '#f5f5f5;color:#333'}">${SEV_LABEL[d.severity] || d.severity}</span></td>
+        <td style="font-weight:bold;color:${d.cost > 0 ? '#dc2626' : '#333'}">${d.cost > 0 ? fmt(d.cost) : '—'}</td>
+      </tr>`).join('')}
+      <tr style="background:#fef9ee;font-weight:bold"><td colspan="3">Total estimé</td><td style="color:#dc2626">${totalDamages > 0 ? fmt(totalDamages) : '—'}</td></tr>
+    </table>` : '';
+
+  const sigHTML = (sig, label, name) => `
+    <div style="border:1px solid #ddd;border-radius:8px;padding:12px;flex:1">
+      <p style="margin:0 0 6px;font-weight:bold;color:#333">${label}</p>
+      <p style="margin:0 0 8px;color:#666;font-size:.9em">${name || '—'}</p>
+      ${sig ? `<img src="${sig.data}" style="max-height:70px;border:1px solid #eee;border-radius:4px;display:block">
+               <p style="margin:6px 0 0;font-size:.8em;color:#999">Signé le ${new Date(sig.signedAt).toLocaleDateString('fr-FR')}</p>`
+             : '<p style="color:#bbb;font-style:italic">Non signé</p>'}
+    </div>`;
+
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+  <title>Synthèse EDL — ${exit.tenantName || ''}</title>
+  <style>
+    body{font-family:Arial,sans-serif;padding:32px;max-width:920px;margin:auto;color:#222;font-size:14px}
+    h1{color:#785a00;border-bottom:3px solid #785a00;padding-bottom:10px;margin-bottom:4px}
+    h2{color:#444;font-size:1.05em;margin:22px 0 8px;text-transform:uppercase;letter-spacing:.05em;border-left:3px solid #785a00;padding-left:8px}
+    h3{color:#555;font-size:1em;margin:18px 0 6px;border-bottom:1px solid #eee;padding-bottom:4px}
+    table{width:100%;border-collapse:collapse;margin:8px 0}
+    th{background:#f8f4ed;padding:7px 10px;text-align:left;font-size:.85em;border:1px solid #ddd;color:#555}
+    td{padding:7px 10px;border:1px solid #ddd;vertical-align:top}
+    tr:nth-child(even){background:#fafafa}
+    .summary{display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap}
+    .s-card{flex:1;min-width:130px;border:1px solid #e3d9cc;border-radius:10px;padding:12px;text-align:center}
+    .s-card .lbl{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#817662;margin-bottom:4px}
+    .s-card .val{font-size:22px;font-weight:900}
+    .sig-row{display:flex;gap:16px;margin-top:8px}
+    .footer{margin-top:36px;padding-top:12px;border-top:1px solid #eee;color:#999;font-size:.8em}
+    @media print{body{padding:16px}}
+  </style></head>
+  <body>
+    <h1>RAPPORT DE SYNTHÈSE — ÉTAT DES LIEUX</h1>
+    <p style="color:#666;margin-bottom:16px">Comparaison entrée / sortie — Généré le ${today}</p>
+
+    <h2>Informations</h2>
+    <table>
+      <tr><th style="width:22%">Locataire</th><td>${exit.tenantName || entry.tenantName || '—'}</td><th style="width:22%">Propriété</th><td>${exit.propertyName || entry.propertyName || '—'}${(exit.unitRef || entry.unitRef) ? ' — ' + (exit.unitRef || entry.unitRef) : ''}</td></tr>
+      <tr><th>État d'entrée</th><td>${entry.ref} — ${entry.scheduledDate ? new Date(entry.scheduledDate).toLocaleDateString('fr-FR') : '—'}</td><th>État de sortie</th><td>${exit.ref} — ${exit.scheduledDate ? new Date(exit.scheduledDate).toLocaleDateString('fr-FR') : '—'}</td></tr>
+    </table>
+
+    <h2>Résumé</h2>
+    <div class="summary">
+      <div class="s-card"><div class="lbl">Éléments comparés</div><div class="val">${matched.length}</div></div>
+      <div class="s-card"><div class="lbl">Dégradations</div><div class="val" style="color:${degradations > 0 ? '#dc2626' : '#14532d'}">${degradations}</div></div>
+      <div class="s-card"><div class="lbl">Dommages</div><div class="val">${(exit.damages || []).length}</div></div>
+      <div class="s-card"><div class="lbl">Coût total</div><div class="val" style="color:${totalDamages > 0 ? '#dc2626' : '#14532d'};font-size:${totalDamages > 0 ? '15' : '22'}px">${totalDamages > 0 ? fmt(totalDamages) : 'Aucun'}</div></div>
+    </div>
+
+    <h2>Comparaison des éléments inventoriés</h2>
+    ${matched.length === 0 ? '<p style="color:#999;font-style:italic">Aucun élément à comparer</p>' : compHTML}
+
+    ${newHTML}
+    ${dmgHTML}
+
+    <h2>Signatures — Entrée (${entry.ref})</h2>
+    <div class="sig-row">
+      ${sigHTML(entry.managerSignature, 'Gestionnaire', entry.managerName)}
+      ${sigHTML(entry.tenantSignature, 'Locataire', entry.tenantName)}
+    </div>
+    <h2>Signatures — Sortie (${exit.ref})</h2>
+    <div class="sig-row">
+      ${sigHTML(exit.managerSignature, 'Gestionnaire', exit.managerName)}
+      ${sigHTML(exit.tenantSignature, 'Locataire', exit.tenantName)}
+    </div>
+
+    <div class="footer">
+      Document généré le ${today} — Minsouah Immobilier<br>
+      Ce rapport compare l'EDL d'entrée (${entry.ref}) et de sortie (${exit.ref}).
+    </div>
+  </body></html>`;
+}
+
+export function openSynthesisReport(entry, exit) {
+  const html = generateSynthesisHTML(entry, exit);
+  const blob = new Blob([html], { type: 'text/html' });
+  const url  = URL.createObjectURL(blob);
+  const w    = window.open(url, '_blank');
   if (w) { w.onload = () => { w.print(); URL.revokeObjectURL(url); }; }
 }

@@ -8,7 +8,14 @@ import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
 
-const typeFilterOpts = ['Tous', 'Loyer', 'Réparations', 'Taxes'];
+const typeFilterOpts = ['Tous', 'Loyer', 'Réparations', 'Taxes', 'Entretien', 'Charges', 'Autre'];
+const expenseTypes = ['Réparations', 'Taxes', 'Entretien', 'Charges', 'Autre'];
+
+function isoToFr(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -37,12 +44,14 @@ function parsePaidDate(str) {
 }
 
 export default function Finance() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const { transactions = [], payments = [] } = state;
   const [chartType, setChartType] = useState('area');
   const [chartPeriod, setChartPeriod] = useState('12 Mois');
   const [typeFilter, setTypeFilter] = useState('Tous');
   const [searchTx, setSearchTx] = useState('');
+  const [expenseModal, setExpenseModal] = useState(false);
+  const [expenseForm, setExpenseForm] = useState({ date: '', entity: '', description: '', amount: '', type: 'Réparations' });
 
   const currentYear = new Date().getFullYear();
 
@@ -56,9 +65,16 @@ export default function Finance() {
           return parsed && parsed.month === idx && parsed.year === currentYear;
         })
         .reduce((s, p) => s + (p.amount || 0), 0);
-      return { mois, revenus, depenses: 0 };
+      const depenses = transactions
+        .filter(t => {
+          if (t.positive) return false;
+          const parsed = parsePaidDate(t.date);
+          return parsed && parsed.month === idx && parsed.year === currentYear;
+        })
+        .reduce((s, t) => s + Math.abs(t.amount || 0), 0);
+      return { mois, revenus, depenses };
     });
-  }, [payments, currentYear]);
+  }, [payments, transactions, currentYear]);
 
   // Use manual transactions if any, else derive from paid payments
   const effectiveTx = useMemo(() => {
@@ -119,6 +135,68 @@ export default function Finance() {
       highlight: true,
     },
   ];
+
+  const handleExportPDF = () => {
+    const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+    const totalRev = filteredTx.filter(t => t.positive).reduce((s, t) => s + t.amount, 0);
+    const totalDep = filteredTx.filter(t => !t.positive).reduce((s, t) => s + Math.abs(t.amount), 0);
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<title>Rapport Financier ${currentYear}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;color:#1c1b19;background:#fff;padding:40px}
+  h1{font-size:22px;font-weight:900;color:#785a00;margin-bottom:4px}
+  .sub{font-size:12px;color:#817662;margin-bottom:20px}
+  .kpis{display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap}
+  .kpi{flex:1;min-width:140px;border:1px solid #e3d9cc;border-radius:10px;padding:14px}
+  .kpi-l{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#817662;margin-bottom:4px}
+  .kpi-v{font-size:20px;font-weight:900;color:#1c1b19}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{background:#785a00;color:#fff;padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px}
+  td{padding:8px 12px;border-bottom:1px solid #f0e8de;vertical-align:top}
+  .pos{color:#166534;font-weight:700}.neg{color:#ba1a1a;font-weight:700}
+  .footer{margin-top:20px;font-size:10px;color:#b0a090;text-align:center}
+  @media print{body{padding:20px}}
+</style></head><body>
+<h1>Rapport Financier — ${currentYear}</h1>
+<p class="sub">Généré le ${today} — ${filteredTx.length} transaction(s)${typeFilter !== 'Tous' ? ' — Filtre : ' + typeFilter : ''}</p>
+<div class="kpis">
+  <div class="kpi"><div class="kpi-l">Revenus</div><div class="kpi-v">${totalRev.toLocaleString('fr-FR')} FCFA</div></div>
+  <div class="kpi"><div class="kpi-l">Dépenses</div><div class="kpi-v">${totalDep.toLocaleString('fr-FR')} FCFA</div></div>
+  <div class="kpi"><div class="kpi-l">Cash Flow</div><div class="kpi-v" style="color:${totalRev - totalDep >= 0 ? '#166534' : '#ba1a1a'}">${(totalRev - totalDep).toLocaleString('fr-FR')} FCFA</div></div>
+</div>
+<table>
+  <thead><tr><th>Date</th><th>Entité</th><th>Description</th><th>Type</th><th>Statut</th><th style="text-align:right">Montant</th></tr></thead>
+  <tbody>
+    ${filteredTx.map(tx => `<tr>
+      <td>${tx.date}</td><td>${tx.entity}</td><td>${tx.description}</td><td>${tx.type}</td><td>${tx.status}</td>
+      <td style="text-align:right" class="${tx.positive ? 'pos' : 'neg'}">${tx.positive ? '+' : ''}${tx.amount.toLocaleString('fr-FR')} FCFA</td>
+    </tr>`).join('')}
+  </tbody>
+</table>
+<p class="footer">Minsouah — Gestion Immobilière — Document généré automatiquement</p>
+<script>window.onload=()=>window.print();</script>
+</body></html>`;
+    const win = window.open('', '_blank', 'width=900,height=700');
+    if (win) { win.document.write(html); win.document.close(); }
+  };
+
+  const handleAddExpense = () => {
+    if (!expenseForm.description.trim() || !expenseForm.amount) return;
+    dispatch({
+      type: 'ADD_TRANSACTION',
+      payload: {
+        date: isoToFr(expenseForm.date) || new Date().toLocaleDateString('fr-FR'),
+        entity: expenseForm.entity.trim() || 'Interne',
+        description: expenseForm.description.trim(),
+        amount: Math.abs(Number(expenseForm.amount)),
+        positive: false,
+        type: expenseForm.type,
+        status: 'Confirmé',
+      },
+    });
+    setExpenseModal(false);
+    setExpenseForm({ date: '', entity: '', description: '', amount: '', type: 'Réparations' });
+  };
 
   return (
     <div className="px-margin pt-gutter pb-xl max-w-7xl mx-auto flex flex-col gap-gutter">
@@ -268,7 +346,10 @@ export default function Finance() {
                 className="pl-9 pr-md py-xs bg-surface-container-lowest border border-outline-variant rounded-lg text-body-sm focus:outline-none focus:border-primary w-44"
               />
             </div>
-            <Button icon="picture_as_pdf" variant="secondary" size="sm">
+            <Button icon="add_circle" size="sm" onClick={() => setExpenseModal(true)}>
+              Dépense
+            </Button>
+            <Button icon="picture_as_pdf" variant="secondary" size="sm" onClick={handleExportPDF}>
               Export PDF
             </Button>
           </div>
@@ -337,6 +418,66 @@ export default function Finance() {
           </div>
         </div>
       </div>
+
+      {/* Expense modal */}
+      {expenseModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-md">
+          <div className="bg-surface-container-lowest rounded-2xl shadow-modal w-full max-w-md p-lg flex flex-col gap-md">
+            <div className="flex items-center justify-between">
+              <h2 className="font-h2 text-h2 text-on-surface">Enregistrer une dépense</h2>
+              <button onClick={() => setExpenseModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container text-on-surface-variant">
+                <Icon name="close" size={20} />
+              </button>
+            </div>
+            <div className="flex flex-col gap-sm">
+              <label className="text-label-sm font-label-sm text-on-surface-variant">Date</label>
+              <input
+                type="date"
+                value={expenseForm.date}
+                onChange={e => setExpenseForm(f => ({ ...f, date: e.target.value }))}
+                className="border border-outline-variant rounded-lg px-md py-xs bg-surface-container-low text-body-sm focus:outline-none focus:border-primary"
+              />
+              <label className="text-label-sm font-label-sm text-on-surface-variant">Bénéficiaire / Entité</label>
+              <input
+                type="text"
+                placeholder="Ex : Entreprise Koné, Mairie..."
+                value={expenseForm.entity}
+                onChange={e => setExpenseForm(f => ({ ...f, entity: e.target.value }))}
+                className="border border-outline-variant rounded-lg px-md py-xs bg-surface-container-low text-body-sm focus:outline-none focus:border-primary"
+              />
+              <label className="text-label-sm font-label-sm text-on-surface-variant">Libellé *</label>
+              <input
+                type="text"
+                placeholder="Description de la dépense..."
+                value={expenseForm.description}
+                onChange={e => setExpenseForm(f => ({ ...f, description: e.target.value }))}
+                className="border border-outline-variant rounded-lg px-md py-xs bg-surface-container-low text-body-sm focus:outline-none focus:border-primary"
+              />
+              <label className="text-label-sm font-label-sm text-on-surface-variant">Catégorie</label>
+              <select
+                value={expenseForm.type}
+                onChange={e => setExpenseForm(f => ({ ...f, type: e.target.value }))}
+                className="border border-outline-variant rounded-lg px-md py-xs bg-surface-container-low text-body-sm focus:outline-none focus:border-primary"
+              >
+                {expenseTypes.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <label className="text-label-sm font-label-sm text-on-surface-variant">Montant (FCFA) *</label>
+              <input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={expenseForm.amount}
+                onChange={e => setExpenseForm(f => ({ ...f, amount: e.target.value }))}
+                className="border border-outline-variant rounded-lg px-md py-xs bg-surface-container-low text-body-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div className="flex gap-sm justify-end pt-sm border-t border-outline-variant/20">
+              <Button variant="ghost" onClick={() => setExpenseModal(false)}>Annuler</Button>
+              <Button icon="remove_circle" onClick={handleAddExpense}>Enregistrer la dépense</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

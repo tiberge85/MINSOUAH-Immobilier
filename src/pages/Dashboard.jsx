@@ -238,7 +238,7 @@ export default function Dashboard() {
           <div className="flex flex-wrap justify-between items-center mb-lg gap-sm">
             <div>
               <h3 className="font-h3 text-h3 text-on-surface">Évolution des Revenus</h3>
-              <p className="text-body-sm text-on-surface-variant">Performance financière 2024</p>
+              <p className="text-body-sm text-on-surface-variant">Performance financière {new Date().getFullYear()}</p>
             </div>
             <div className="flex gap-2">
               {['7 Jours', 'Mensuel', 'Annuel'].map((p) => (

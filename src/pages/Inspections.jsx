@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import Icon from '../components/Icon';
-import { openEDLReport } from '../lib/inspectionReport';
+import { openEDLReport, openSynthesisReport } from '../lib/inspectionReport';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const CATEGORIES = [
@@ -143,6 +143,9 @@ export default function Inspections() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('Tous');
   const [typeFilter, setTypeFilter] = useState('Tous');
+
+  // ── Group-by toggle
+  const [groupBy, setGroupBy] = useState('none');
 
   // ── Modals / views
   const [createModal, setCreateModal] = useState(false);
@@ -316,6 +319,84 @@ export default function Inspections() {
 
   const generatePDF = useCallback((insp) => { openEDLReport(insp); }, []);
 
+  // ── Inspections grouped by tenant or property
+  const groups = useMemo(() => {
+    if (groupBy === 'none') return null;
+    const g = {};
+    filtered.forEach(insp => {
+      const key = groupBy === 'tenant' ? (insp.tenantName || '—') : (insp.propertyName || '—');
+      if (!g[key]) g[key] = [];
+      g[key].push(insp);
+    });
+    return Object.fromEntries(Object.entries(g).sort(([a], [b]) => a.localeCompare(b, 'fr')));
+  }, [filtered, groupBy]);
+
+  // ── Card renderer (shared between flat and grouped views)
+  const renderInspCard = (insp) => {
+    const isEntry = insp.type === 'ENTRY';
+    const totalDmg = (insp.damages || []).reduce((s, d) => s + (d.cost || 0), 0);
+    return (
+      <div
+        key={insp.id}
+        onClick={() => { setDetail(insp); setDetailTab('inventaire'); }}
+        className="bg-surface-container-lowest rounded-2xl shadow-card border border-outline-variant/20 p-md cursor-pointer hover:shadow-lg hover:border-primary/30 transition-all group"
+      >
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className={`text-label-sm font-bold px-2 py-0.5 rounded-full ${isEntry ? 'bg-tertiary/10 text-tertiary' : 'bg-error/10 text-error'}`}>
+                {isEntry ? 'Entrée' : 'Sortie'}
+              </span>
+              <StatusBadge status={insp.status} />
+            </div>
+            <p className="font-bold text-on-surface text-label-md">{insp.ref}</p>
+          </div>
+          <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-all">
+            <button
+              onClick={e => { e.stopPropagation(); generatePDF(insp); }}
+              className="w-8 h-8 rounded-full hover:bg-primary/10 text-on-surface-variant hover:text-primary flex items-center justify-center transition-all"
+              title="Télécharger PDF"
+            >
+              <Icon name="picture_as_pdf" size={16} />
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); setDeleteConfirm(insp.id); }}
+              className="w-8 h-8 rounded-full hover:bg-error/10 text-on-surface-variant hover:text-error flex items-center justify-center transition-all"
+              title="Supprimer"
+            >
+              <Icon name="delete" size={16} />
+            </button>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2 text-body-sm text-on-surface-variant">
+            <Icon name="apartment" size={15} />
+            <span className="truncate">{insp.propertyName || '—'} {insp.unitRef ? `• ${insp.unitRef}` : ''}</span>
+          </div>
+          <div className="flex items-center gap-2 text-body-sm text-on-surface-variant">
+            <Icon name="person" size={15} />
+            <span>{insp.tenantName || '—'}</span>
+          </div>
+          <div className="flex items-center gap-2 text-body-sm text-on-surface-variant">
+            <Icon name="calendar_today" size={15} />
+            <span>{insp.scheduledDate ? new Date(insp.scheduledDate).toLocaleDateString('fr-FR') : '—'}</span>
+          </div>
+        </div>
+        <div className="mt-3 pt-3 border-t border-outline-variant/20 flex items-center justify-between">
+          <span className="text-label-sm text-on-surface-variant">{(insp.items || []).length} éléments</span>
+          {totalDmg > 0 && (
+            <span className="text-label-sm font-bold text-error">{fmtMoney(totalDmg)} dommages</span>
+          )}
+          {totalDmg === 0 && (insp.damages || []).length === 0 && insp.status === 'COMPLETED' && (
+            <span className="text-label-sm text-green-700 font-bold flex items-center gap-1">
+              <Icon name="check_circle" size={14} /> Signé
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // ── Items grouped by category
   const itemsByCategory = useMemo(() => {
     if (!detail) return {};
@@ -382,6 +463,17 @@ export default function Inspections() {
               className={`px-sm py-xs rounded-full text-label-sm font-label-sm whitespace-nowrap transition-colors ${typeFilter === t ? 'bg-secondary text-on-secondary' : 'border border-outline-variant text-on-surface-variant hover:bg-surface-container-high'}`}
             >{t === 'Tous' ? 'Tous types' : t === 'ENTRY' ? 'Entrée' : 'Sortie'}</button>
           ))}
+          <div className="w-px h-5 bg-outline-variant/40 mx-1 hidden sm:block" />
+          {[['none', 'Toutes', 'grid_view'], ['tenant', 'Par locataire', 'person'], ['property', 'Par bien', 'apartment']].map(([val, lbl, ico]) => (
+            <button
+              key={val}
+              onClick={() => setGroupBy(val)}
+              className={`flex items-center gap-1 px-sm py-xs rounded-full text-label-sm font-label-sm whitespace-nowrap transition-colors ${groupBy === val ? 'bg-tertiary/80 text-white' : 'border border-outline-variant text-on-surface-variant hover:bg-surface-container-high'}`}
+            >
+              <span className="material-symbols-outlined text-[14px]">{ico}</span>
+              {lbl}
+            </button>
+          ))}
         </div>
         {isAdmin && (
           <Button icon="add_circle" onClick={() => setCreateModal(true)} className="ml-auto flex-shrink-0">
@@ -399,74 +491,43 @@ export default function Inspections() {
         </div>
       )}
 
-      {/* Inspection cards */}
-      <div className="grid gap-gutter sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.map(insp => {
-          const cfg = STATUS_CFG[insp.status] || STATUS_CFG.DRAFT;
-          const isEntry = insp.type === 'ENTRY';
-          const totalDmg = (insp.damages || []).reduce((s, d) => s + (d.cost || 0), 0);
-          return (
-            <div
-              key={insp.id}
-              onClick={() => { setDetail(insp); setDetailTab('inventaire'); }}
-              className="bg-surface-container-lowest rounded-2xl shadow-card border border-outline-variant/20 p-md cursor-pointer hover:shadow-lg hover:border-primary/30 transition-all group"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-label-sm font-bold px-2 py-0.5 rounded-full ${isEntry ? 'bg-tertiary/10 text-tertiary' : 'bg-error/10 text-error'}`}>
-                      {isEntry ? 'Entrée' : 'Sortie'}
-                    </span>
-                    <StatusBadge status={insp.status} />
+      {/* Inspection cards — flat or grouped */}
+      {groupBy === 'none' ? (
+        <div className="grid gap-gutter sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map(renderInspCard)}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-lg">
+          {Object.entries(groups || {}).map(([groupKey, items]) => {
+            const entryInsp = items.find(i => i.type === 'ENTRY');
+            const exitInsp  = items.find(i => i.type === 'EXIT');
+            const canSynth  = !!(entryInsp && exitInsp);
+            return (
+              <div key={groupKey}>
+                <div className="flex items-center justify-between mb-sm px-xs">
+                  <div className="flex items-center gap-sm">
+                    <Icon name={groupBy === 'tenant' ? 'person' : 'apartment'} size={18} className="text-primary" />
+                    <h3 className="font-h3 text-h3 text-on-surface">{groupKey}</h3>
+                    <span className="text-label-sm text-on-surface-variant bg-surface-container px-sm py-0.5 rounded-full">{items.length} EDL</span>
                   </div>
-                  <p className="font-bold text-on-surface text-label-md">{insp.ref}</p>
+                  {canSynth && (
+                    <button
+                      onClick={() => openSynthesisReport(entryInsp, exitInsp)}
+                      className="flex items-center gap-1.5 px-sm py-xs rounded-lg bg-primary/10 text-primary text-label-sm font-label-sm hover:bg-primary/20 transition-colors"
+                    >
+                      <Icon name="compare_arrows" size={16} />
+                      Rapport de synthèse
+                    </button>
+                  )}
                 </div>
-                <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-all">
-                  <button
-                    onClick={e => { e.stopPropagation(); generatePDF(insp); }}
-                    className="w-8 h-8 rounded-full hover:bg-primary/10 text-on-surface-variant hover:text-primary flex items-center justify-center transition-all"
-                    title="Télécharger PDF"
-                  >
-                    <Icon name="picture_as_pdf" size={16} />
-                  </button>
-                  <button
-                    onClick={e => { e.stopPropagation(); setDeleteConfirm(insp.id); }}
-                    className="w-8 h-8 rounded-full hover:bg-error/10 text-on-surface-variant hover:text-error flex items-center justify-center transition-all"
-                    title="Supprimer"
-                  >
-                    <Icon name="delete" size={16} />
-                  </button>
+                <div className="grid gap-gutter sm:grid-cols-2 lg:grid-cols-3">
+                  {items.map(renderInspCard)}
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-body-sm text-on-surface-variant">
-                  <Icon name="apartment" size={15} />
-                  <span className="truncate">{insp.propertyName || '—'} {insp.unitRef ? `• ${insp.unitRef}` : ''}</span>
-                </div>
-                <div className="flex items-center gap-2 text-body-sm text-on-surface-variant">
-                  <Icon name="person" size={15} />
-                  <span>{insp.tenantName || '—'}</span>
-                </div>
-                <div className="flex items-center gap-2 text-body-sm text-on-surface-variant">
-                  <Icon name="calendar_today" size={15} />
-                  <span>{insp.scheduledDate ? new Date(insp.scheduledDate).toLocaleDateString('fr-FR') : '—'}</span>
-                </div>
-              </div>
-              <div className="mt-3 pt-3 border-t border-outline-variant/20 flex items-center justify-between">
-                <span className="text-label-sm text-on-surface-variant">{(insp.items || []).length} éléments</span>
-                {totalDmg > 0 && (
-                  <span className="text-label-sm font-bold text-error">{fmtMoney(totalDmg)} dommages</span>
-                )}
-                {totalDmg === 0 && (insp.damages || []).length === 0 && insp.status === 'COMPLETED' && (
-                  <span className="text-label-sm text-green-700 font-bold flex items-center gap-1">
-                    <Icon name="check_circle" size={14} /> Signé
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── CREATE MODAL ── */}
       <Modal

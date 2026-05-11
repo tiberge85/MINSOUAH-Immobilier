@@ -46,6 +46,24 @@ export default function Layout() {
   const unpaidCount = (state.payments || []).filter(p => p.status !== 'Payé').length;
   const title = pageTitles[location.pathname] || 'Minsouah';
 
+  // Parse contract endDate — handles both "12/12/2025" and "12 Déc 2025" formats
+  const parseContractDate = (str) => {
+    if (!str || str === '—') return null;
+    if (str.includes('/')) {
+      const [d, m, y] = str.split('/');
+      const dt = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+      return isNaN(dt.getTime()) ? null : dt;
+    }
+    const FR_MONTHS = { jan: 0, fév: 1, fev: 1, mar: 2, avr: 3, mai: 4, juin: 5, jul: 6, jui: 6, aoû: 7, aou: 7, sep: 8, oct: 9, nov: 10, déc: 11, dec: 11 };
+    const m = str.match(/^(\d{1,2})\s+(\S+)\s+(\d{4})$/i);
+    if (m) {
+      const key = m[2].toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').slice(0, 3);
+      const monthIdx = FR_MONTHS[key];
+      if (monthIdx !== undefined) return new Date(parseInt(m[3]), monthIdx, parseInt(m[1]));
+    }
+    return null;
+  };
+
   // Auto-generated notifications
   const notifications = useMemo(() => {
     const now = Date.now();
@@ -57,7 +75,7 @@ export default function Layout() {
       ...(state.contracts || [])
         .filter(c => {
           if (c.status !== 'Actif' || !c.endDate || c.endDate === '—') return false;
-          try { const [d, m, y] = c.endDate.split('/'); return ((new Date(y, m-1, d) - now) / 86400000) <= 30; } catch { return false; }
+          try { const dt = parseContractDate(c.endDate); return dt && ((dt.getTime() - now) / 86400000) <= 30; } catch { return false; }
         })
         .slice(0, 3)
         .map(c => ({ id: `cont-${c.id}`, icon: 'contract', color: 'text-amber-600', bg: 'bg-amber-100', label: 'Contrat expirant', sub: `${c.tenant} — ${c.endDate}`, path: '/rental' })),
