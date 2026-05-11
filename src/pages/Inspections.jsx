@@ -413,6 +413,16 @@ export default function Inspections() {
 
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER';
 
+  // For EXIT inspections in detail view — find matching ENTRY for synthesis
+  const matchingEntry = useMemo(() => {
+    if (!detail || detail.type !== 'EXIT') return null;
+    return inspections.find(i =>
+      i.type === 'ENTRY' &&
+      (i.tenantId === detail.tenantId || (i.tenantName && i.tenantName === detail.tenantName)) &&
+      (i.propertyId === detail.propertyId || (i.propertyName && i.propertyName === detail.propertyName))
+    ) || null;
+  }, [detail, inspections]);
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="px-margin pt-gutter pb-xl max-w-7xl mx-auto flex flex-col gap-gutter">
@@ -673,6 +683,11 @@ export default function Inspections() {
                 <Button size="sm" variant="secondary" icon="picture_as_pdf" onClick={() => generatePDF(detail)}>
                   PDF
                 </Button>
+                {matchingEntry && (
+                  <Button size="sm" icon="compare_arrows" onClick={() => openSynthesisReport(matchingEntry, detail)}>
+                    Synthèse
+                  </Button>
+                )}
                 {isAdmin && detail.status !== 'COMPLETED' && (
                   <>
                     {detail.status !== 'PENDING_SIGNATURE' && (

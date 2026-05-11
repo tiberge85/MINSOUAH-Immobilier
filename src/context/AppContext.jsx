@@ -485,7 +485,7 @@ export function AppProvider({ children }) {
     };
 
     poll();
-    refs.pollInterval = setInterval(poll, 30000);
+    refs.pollInterval = setInterval(poll, 5000);
     return () => clearInterval(refs.pollInterval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [`${state.systemSettings?.firebase?.enabled}-${state.systemSettings?.firebase?.databaseURL}-${state.systemSettings?.firebase?.workspaceId}`]);

@@ -11,6 +11,16 @@ import Icon from '../components/Icon';
 const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
 const fmtK = (n) => `${(Number(n || 0) / 1000).toFixed(0)}k`;
 
+function parsePaidDate(str) {
+  if (!str) return null;
+  const parts = str.split('/');
+  if (parts.length === 3) {
+    const d = parseInt(parts[0]), m = parseInt(parts[1]) - 1, y = parseInt(parts[2]);
+    if (!isNaN(d) && !isNaN(m) && !isNaN(y)) return { month: m, year: y };
+  }
+  return null;
+}
+
 const CHART_COLORS = ['#785a00', '#006399', '#4CAF50', '#FF6B35', '#9C27B0'];
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -68,12 +78,17 @@ export default function OwnerPortal() {
     [ownerProperties, contracts]
   );
 
-  const ownerPayments = useMemo(() =>
-    ownerContracts.length
-      ? payments.filter(p => ownerContracts.some(c => c.id === p.contractId))
-      : [],
-    [ownerContracts, payments]
-  );
+  const ownerPayments = useMemo(() => {
+    if (!ownerContracts.length && !ownerProperties.length) return [];
+    const contractIds = new Set(ownerContracts.map(c => c.id));
+    const propNames   = new Set(ownerProperties.map(p => p.name));
+    const tenantIds   = new Set(ownerContracts.map(c => c.tenantId).filter(Boolean));
+    return payments.filter(p =>
+      (p.contractId  && contractIds.has(p.contractId))  ||
+      (p.propertyName && propNames.has(p.propertyName)) ||
+      (p.tenantId    && tenantIds.has(p.tenantId))
+    );
+  }, [ownerContracts, ownerProperties, payments]);
 
   const ownerTickets = useMemo(() =>
     ownerProperties.length
@@ -92,14 +107,23 @@ export default function OwnerPortal() {
   /* ─── Analytics data ─────────────────────────────────────────── */
   const monthlyRevData = useMemo(() => {
     const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+    const curYear = new Date().getFullYear();
     return MONTHS.map((mois, i) => ({
       mois,
       revenus: ownerPayments
-        .filter(p => p.status === 'Payé')
-        .reduce((s, p) => s + (p.amount || 0), 0) / 12 * (0.7 + Math.random() * 0.6),
+        .filter(p => {
+          if (p.status !== 'Payé') return false;
+          const parsed = parsePaidDate(p.paidDate);
+          return parsed && parsed.month === i && parsed.year === curYear;
+        })
+        .reduce((s, p) => s + (p.amount || 0), 0),
       impayés: ownerPayments
-        .filter(p => p.status !== 'Payé')
-        .reduce((s, p) => s + (p.amount || 0), 0) / 12 * Math.random(),
+        .filter(p => {
+          if (p.status === 'Payé') return false;
+          const parsed = parsePaidDate(p.dueDate) || parsePaidDate(p.paidDate);
+          return parsed && parsed.month === i && parsed.year === curYear;
+        })
+        .reduce((s, p) => s + (p.amount || 0), 0),
     }));
   }, [ownerPayments]);
 
