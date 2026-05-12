@@ -991,6 +991,7 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
   const [editForm, setEditForm] = useState(null);
   const [filter, setFilter] = useState('');
   const [subTab, setSubTab] = useState('users'); // 'users' | 'log' | 'sync'
+  const [quickRoleUserId, setQuickRoleUserId] = useState(null);
   const [newUser, setNewUser] = useState({
     name: '', email: '', password: '', role: 'TENANT',
     personId: null, firstLogin: true,
@@ -1072,6 +1073,13 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
     dispatch({ type: 'UPDATE_USER', payload: { ...editUser, ...editForm, email: editForm.email.trim().toLowerCase(), initials, color: roleInfo.color } });
     showToast(`Compte de ${editForm.name} mis à jour`);
     setEditUser(null); setEditForm(null);
+  };
+
+  const handleQuickRole = (u, newRole) => {
+    const roleInfo = ROLE_MAP[newRole] || ROLE_MAP.TENANT;
+    dispatch({ type: 'UPDATE_USER', payload: { ...u, role: newRole, color: roleInfo.color } });
+    showToast(`Rôle de ${u.name} changé en ${roleInfo.label}`);
+    setQuickRoleUserId(null);
   };
 
   /* Export users JSON */
@@ -1389,6 +1397,11 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
         ))}
       </div>
 
+      {/* Overlay to close quick role picker */}
+      {quickRoleUserId && (
+        <div className="fixed inset-0 z-10" onClick={() => setQuickRoleUserId(null)} />
+      )}
+
       {/* User list */}
       <div className="flex flex-col gap-2">
         {filtered.length === 0 && (
@@ -1421,8 +1434,37 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
                   {isLocked && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Bloqué</span>}
                 </div>
                 <p className="text-xs text-on-surface-variant truncate">{u.email}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${roleInfo.color}`}>{roleInfo.label}</span>
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  {/* Role badge — clickable for ADMIN to quick-change role */}
+                  <div className="relative">
+                    {currentUser?.role === 'ADMIN' && !isMe ? (
+                      <button
+                        onClick={() => setQuickRoleUserId(quickRoleUserId === u.id ? null : u.id)}
+                        className={`text-xs px-1.5 py-0.5 rounded-full font-semibold flex items-center gap-1 hover:ring-2 hover:ring-primary/40 transition-all ${roleInfo.color}`}
+                        title="Cliquer pour changer le rôle">
+                        {roleInfo.label}
+                        <Icon name="expand_more" size={12} />
+                      </button>
+                    ) : (
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${roleInfo.color}`}>{roleInfo.label}</span>
+                    )}
+                    {/* Quick role picker popover */}
+                    {quickRoleUserId === u.id && (
+                      <div className="absolute left-0 top-7 z-20 bg-surface rounded-xl shadow-xl border border-outline-variant/30 py-1 min-w-[160px]">
+                        <p className="px-3 py-1.5 text-[10px] font-bold text-on-surface-variant uppercase tracking-wide border-b border-outline-variant/20 mb-1">
+                          Changer le rôle
+                        </p>
+                        {ALL_ROLES.map(r => (
+                          <button key={r.value} onClick={() => handleQuickRole(u, r.value)}
+                            className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold hover:bg-surface-container transition-colors text-left ${u.role === r.value ? 'text-primary' : 'text-on-surface'}`}>
+                            <Icon name={r.icon} size={14} />
+                            {r.label}
+                            {u.role === r.value && <Icon name="check" size={12} className="ml-auto text-primary" />}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   {u.lastLogin && (
                     <span className="text-xs text-on-surface-variant">
                       Dernière co. : {new Date(u.lastLogin).toLocaleDateString('fr-FR')}
