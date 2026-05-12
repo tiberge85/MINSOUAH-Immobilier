@@ -80,6 +80,9 @@ export const DEFAULT_SYSTEM = {
   },
 };
 
+// Bump this whenever mockData changes to force auto-refresh of stale localStorage
+const DEMO_VERSION = '3';
+
 // ─── EMPTY state — used by full reset (no demo data) ──────────────────────────
 const EMPTY_STATE = {
   properties:     [],
@@ -362,6 +365,7 @@ function reducer(state, action) {
     case 'RESET_DEMO':
       return {
         ...DEMO_STATE,
+        demoVersion:    DEMO_VERSION,
         users:          state.users || [DEFAULT_ADMIN],
         systemSettings: state.systemSettings || DEFAULT_SYSTEM,
         activityLog:    state.activityLog || [],
@@ -384,6 +388,18 @@ function reducer(state, action) {
     case 'CLOUD_SYNC': {
       const incoming = payload;
       if (!incoming || !incoming.users?.length) return state;
+      // If Firebase has stale demo data (older demoVersion), only sync users — keep local entity data
+      if (state.demoVersion === DEMO_VERSION && incoming.demoVersion && incoming.demoVersion !== DEMO_VERSION) {
+        const mergedUsersOnly = (incoming.users || []).map(u => {
+          const local = (state.users || []).find(lu => lu.email === u.email);
+          if (local?.password?.startsWith('sha256:') && !u.password?.startsWith('sha256:')) return { ...u, password: local.password };
+          if (local?.avatar && !u.avatar) return { ...u, avatar: local.avatar };
+          return u;
+        });
+        if (!mergedUsersOnly.some(u => u.id === 1)) mergedUsersOnly.unshift({ ...DEFAULT_ADMIN });
+        if (!mergedUsersOnly.some(u => u.id === 2)) mergedUsersOnly.push({ ...DEFAULT_CONCIERGE });
+        return { ...state, users: mergedUsersOnly, currentUser: state.currentUser };
+      }
       // Preserve locally hashed passwords — don't let Firebase plain-text override them
       const mergedUsers = (incoming.users || []).map(incomingUser => {
         const localUser = (state.users || []).find(u => u.email === incomingUser.email);
@@ -473,6 +489,24 @@ export function AppProvider({ children }) {
         const saved = localStorage.getItem('minsouah_v1');
         if (saved) {
           const parsed = JSON.parse(saved);
+
+          // Auto-refresh stale demo data when DEMO_VERSION changes
+          if (parsed.demoVersion !== DEMO_VERSION) {
+            const users = parsed.users || [DEFAULT_ADMIN, DEFAULT_CONCIERGE];
+            if (!users.some(u => u.id === 1)) users.unshift({ ...DEFAULT_ADMIN });
+            if (!users.some(u => u.id === 2)) users.push({ ...DEFAULT_CONCIERGE });
+            return {
+              ...DEMO_STATE,
+              demoVersion:    DEMO_VERSION,
+              users,
+              systemSettings: parsed.systemSettings
+                ? { ...DEFAULT_SYSTEM, ...parsed.systemSettings, firebase: { ...DEFAULT_SYSTEM.firebase, ...(parsed.systemSettings.firebase || {}) } }
+                : DEFAULT_SYSTEM,
+              activityLog:    parsed.activityLog || [],
+              currentUser:    null,
+            };
+          }
+
           if (!parsed.users?.length) parsed.users = [DEFAULT_ADMIN, DEFAULT_CONCIERGE];
           // Guarantee demo accounts always exist
           if (!parsed.users.some(u => u.id === 1)) parsed.users.unshift({ ...DEFAULT_ADMIN });
@@ -510,9 +544,9 @@ export function AppProvider({ children }) {
               enabled: true,
             };
           }
-          return parsed;
+          return { ...parsed, demoVersion: DEMO_VERSION };
         }
-        return { ...EMPTY_STATE };
+        return { ...DEMO_STATE, demoVersion: DEMO_VERSION };
       } catch {
         return { ...EMPTY_STATE };
       }
