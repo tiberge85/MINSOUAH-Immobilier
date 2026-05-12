@@ -121,25 +121,31 @@ export default function OwnerPortal() {
 
   /* ─── Analytics data ─────────────────────────────────────────── */
   const monthlyRevData = useMemo(() => {
-    const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-    const curYear = new Date().getFullYear();
-    return MONTHS.map((mois, i) => ({
-      mois,
-      revenus: ownerPayments
-        .filter(p => {
-          if (p.status !== 'Payé') return false;
-          const parsed = parsePaidDate(p.paidDate);
-          return parsed && parsed.month === i && parsed.year === curYear;
-        })
-        .reduce((s, p) => s + (p.amount || 0), 0),
-      impayés: ownerPayments
-        .filter(p => {
-          if (p.status === 'Payé') return false;
-          const parsed = parsePaidDate(p.dueDate) || parsePaidDate(p.paidDate);
-          return parsed && parsed.month === i && parsed.year === curYear;
-        })
-        .reduce((s, p) => s + (p.amount || 0), 0),
-    }));
+    // Rolling 12-month window so data always shows regardless of year
+    const now = new Date();
+    return Array.from({ length: 12 }, (_, idx) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (11 - idx), 1);
+      const m = d.getMonth();
+      const y = d.getFullYear();
+      const mois = d.toLocaleDateString('fr-FR', { month: 'short' });
+      return {
+        mois,
+        revenus: ownerPayments
+          .filter(p => {
+            if (p.status !== 'Payé') return false;
+            const parsed = parsePaidDate(p.paidDate);
+            return parsed && parsed.month === m && parsed.year === y;
+          })
+          .reduce((s, p) => s + (p.amount || 0), 0),
+        impayés: ownerPayments
+          .filter(p => {
+            if (p.status === 'Payé') return false;
+            const parsed = parsePaidDate(p.dueDate) || parsePaidDate(p.paidDate);
+            return parsed && parsed.month === m && parsed.year === y;
+          })
+          .reduce((s, p) => s + (p.amount || 0), 0),
+      };
+    });
   }, [ownerPayments]);
 
   const occupancyData = useMemo(() => {

@@ -65,8 +65,8 @@ function AppRoutes() {
 
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}><Dashboard /></ProtectedRoute>} />
-        <Route path="assets"      element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}><Assets /></ProtectedRoute>} />
-        <Route path="rental"      element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}><Rental /></ProtectedRoute>} />
+        <Route path="assets"      element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'CONCIERGE']}><Assets /></ProtectedRoute>} />
+        <Route path="rental"      element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'CONCIERGE']}><Rental /></ProtectedRoute>} />
         <Route path="finance"     element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'ACCOUNTANT']}><Finance /></ProtectedRoute>} />
         <Route path="payments"    element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'ACCOUNTANT']}><Payments /></ProtectedRoute>} />
         <Route path="maintenance"  element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'TECHNICIAN', 'CONCIERGE']}><Maintenance /></ProtectedRoute>} />

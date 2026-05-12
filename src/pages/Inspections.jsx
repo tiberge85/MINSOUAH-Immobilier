@@ -411,7 +411,7 @@ export default function Inspections() {
   const totalDamageCost = useMemo(() =>
     (detail?.damages || []).reduce((s, d) => s + (d.cost || 0), 0), [detail]);
 
-  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER';
+  const isAdmin = ['ADMIN', 'MANAGER', 'CONCIERGE'].includes(currentUser?.role);
 
   // For EXIT inspections in detail view — find matching ENTRY for synthesis
   const matchingEntry = useMemo(() => {

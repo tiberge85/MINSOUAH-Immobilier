@@ -7,7 +7,7 @@ import Icon from './Icon';
 const ROLE_LABELS = { ADMIN: 'Administrateur', MANAGER: 'Manager', TENANT: 'Locataire', OWNER: 'Propriétaire', ACCOUNTANT: 'Comptable', TECHNICIAN: 'Technicien', CONCIERGE: 'Concierge' };
 
 const ROLE_NAV = {
-  CONCIERGE:  new Set(['/concierge', '/maintenance', '/inspections', '/inbox']),
+  CONCIERGE:  new Set(['/concierge', '/assets', '/rental', '/maintenance', '/inspections', '/inbox']),
   TECHNICIAN: new Set(['/maintenance', '/inbox']),
   ACCOUNTANT: new Set(['/finance', '/payments', '/inbox']),
 };
