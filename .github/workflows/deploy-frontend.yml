@@ -40,6 +40,14 @@ jobs:
           VITE_FIREBASE_DATABASE_URL: ${{ secrets.VITE_FIREBASE_DATABASE_URL }}
 
       - name: Trigger Render Deploy
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
         run: |
-          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}" \
-            -H "Content-Type: application/json"
+          if [ -n "$RENDER_DEPLOY_HOOK" ]; then
+            curl -X POST "$RENDER_DEPLOY_HOOK" \
+              -H "Content-Type: application/json" \
+              --fail --silent --show-error
+            echo "Render deploy triggered successfully"
+          else
+            echo "RENDER_DEPLOY_HOOK secret not configured — skipping Render trigger"
+          fi

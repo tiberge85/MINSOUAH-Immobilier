@@ -77,10 +77,14 @@ export default function OwnerPortal() {
 
   const owner = owners.find(o => o.id === selectedId);
 
-  const ownerProperties = useMemo(() =>
-    owner ? properties.filter(p => p.owner === owner.name) : [],
-    [owner, properties]
-  );
+  const ownerProperties = useMemo(() => {
+    if (!owner) return [];
+    const ownerNameNorm = owner.name?.trim().toLowerCase();
+    return properties.filter(p =>
+      p.owner?.trim().toLowerCase() === ownerNameNorm ||
+      p.ownerId === owner.id
+    );
+  }, [owner, properties]);
 
   const ownerContracts = useMemo(() =>
     ownerProperties.length
@@ -182,7 +186,8 @@ export default function OwnerPortal() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md">
             {owners.map(o => {
-              const ownedProps = properties.filter(p => p.owner === o.name);
+              const oNameNorm = o.name?.trim().toLowerCase();
+              const ownedProps = properties.filter(p => p.owner?.trim().toLowerCase() === oNameNorm || p.ownerId === o.id);
               const ownedContracts = contracts.filter(c => ownedProps.some(p => p.name === c.propertyName) && c.status === 'Actif');
               const rev = ownedContracts.reduce((s, c) => s + (c.rent || 0), 0);
               const pending = payments.filter(p =>

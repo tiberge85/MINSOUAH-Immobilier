@@ -20,7 +20,7 @@ const navItems = [
   { path: '/payments',    label: 'Paiements',         icon: 'payments',               mobileIcon: 'payments' },
   { path: '/maintenance',  label: 'Maintenance',       icon: 'engineering',             mobileIcon: 'engineering' },
   { path: '/inspections', label: 'États des lieux',   icon: 'home_work',               mobileIcon: 'home_work' },
-  { path: '/concierge',   label: 'Portail Concierge', icon: 'supervised_user_circle',  mobileIcon: 'supervised_user_circle', roles: ['ADMIN','MANAGER','CONCIERGE'] },
+  { path: '/concierge',   label: 'Mon Espace',        icon: 'supervised_user_circle',  mobileIcon: 'supervised_user_circle', roles: ['CONCIERGE'] },
   { path: '/inbox',       label: 'Messagerie',        icon: 'support_agent',           mobileIcon: 'mail' },
 ];
 
@@ -303,6 +303,13 @@ export default function Layout() {
               >
                 <Icon name="manage_accounts" />
                 <span className="font-label-md text-label-md">Portail Propriétaires</span>
+              </button>
+              <button
+                onClick={() => { navigate('/concierge'); setSidebarOpen(false); }}
+                className="flex items-center gap-md py-3 pl-margin text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface rounded-r-full mr-4 transition-all duration-200"
+              >
+                <Icon name="supervised_user_circle" />
+                <span className="font-label-md text-label-md">Portail Concierge</span>
               </button>
             </>
           )}

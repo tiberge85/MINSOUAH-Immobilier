@@ -11,7 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Render deploy
+        env:
+          RENDER_BACKEND_DEPLOY_HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}
         run: |
-          curl -s -X POST \
-            "https://api.render.com/deploy/${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}" \
-            | jq .
+          if [ -n "$RENDER_BACKEND_DEPLOY_HOOK" ]; then
+            curl -s -X POST "$RENDER_BACKEND_DEPLOY_HOOK" \
+              --fail --silent --show-error
+            echo "Backend deploy triggered successfully"
+          else
+            echo "RENDER_BACKEND_DEPLOY_HOOK secret not configured — skipping"
+          fi
