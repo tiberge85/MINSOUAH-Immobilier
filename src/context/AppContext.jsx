@@ -388,8 +388,8 @@ function reducer(state, action) {
     case 'CLOUD_SYNC': {
       const incoming = payload;
       if (!incoming || !incoming.users?.length) return state;
-      // If Firebase has stale demo data (older demoVersion), only sync users — keep local entity data
-      if (state.demoVersion === DEMO_VERSION && incoming.demoVersion && incoming.demoVersion !== DEMO_VERSION) {
+      // If Firebase has stale demo data (older/missing demoVersion), only sync users — keep local entity data
+      if (state.demoVersion === DEMO_VERSION && incoming.demoVersion !== DEMO_VERSION) {
         const mergedUsersOnly = (incoming.users || []).map(u => {
           const local = (state.users || []).find(lu => lu.email === u.email);
           if (local?.password?.startsWith('sha256:') && !u.password?.startsWith('sha256:')) return { ...u, password: local.password };
@@ -489,23 +489,6 @@ export function AppProvider({ children }) {
         const saved = localStorage.getItem('minsouah_v1');
         if (saved) {
           const parsed = JSON.parse(saved);
-
-          // Auto-refresh stale demo data when DEMO_VERSION changes
-          if (parsed.demoVersion !== DEMO_VERSION) {
-            const users = parsed.users || [DEFAULT_ADMIN, DEFAULT_CONCIERGE];
-            if (!users.some(u => u.id === 1)) users.unshift({ ...DEFAULT_ADMIN });
-            if (!users.some(u => u.id === 2)) users.push({ ...DEFAULT_CONCIERGE });
-            return {
-              ...DEMO_STATE,
-              demoVersion:    DEMO_VERSION,
-              users,
-              systemSettings: parsed.systemSettings
-                ? { ...DEFAULT_SYSTEM, ...parsed.systemSettings, firebase: { ...DEFAULT_SYSTEM.firebase, ...(parsed.systemSettings.firebase || {}) } }
-                : DEFAULT_SYSTEM,
-              activityLog:    parsed.activityLog || [],
-              currentUser:    null,
-            };
-          }
 
           if (!parsed.users?.length) parsed.users = [DEFAULT_ADMIN, DEFAULT_CONCIERGE];
           // Guarantee demo accounts always exist

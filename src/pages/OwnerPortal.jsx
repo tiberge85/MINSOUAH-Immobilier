@@ -87,29 +87,39 @@ export default function OwnerPortal() {
   }, [owner, properties]);
 
   const ownerContracts = useMemo(() => {
-    if (!ownerProperties.length) return [];
+    if (!owner) return [];
     const norm = s => (s || '').trim().toLowerCase();
-    const propNameSet = new Set(ownerProperties.map(p => norm(p.name)));
-    const ownerNameNorm = norm(owner?.name);
+    const ownerNameNorm = norm(owner.name);
+    // All property names belonging to this owner (case-insensitive set)
+    const allOwnerPropNames = new Set(
+      properties
+        .filter(p => p.owner?.trim().toLowerCase() === ownerNameNorm || p.ownerId === owner.id)
+        .map(p => norm(p.name))
+    );
     return contracts.filter(c =>
-      propNameSet.has(norm(c.propertyName)) ||
-      (c.ownerId && c.ownerId === owner?.id) ||
+      allOwnerPropNames.has(norm(c.propertyName)) ||
+      (c.ownerId && c.ownerId === owner.id) ||
       (c.ownerName && norm(c.ownerName) === ownerNameNorm)
     );
-  }, [ownerProperties, contracts, owner]);
+  }, [owner, properties, contracts]);
 
   const ownerPayments = useMemo(() => {
-    if (!ownerContracts.length && !ownerProperties.length) return [];
+    if (!owner) return [];
     const norm = s => (s || '').trim().toLowerCase();
+    const ownerNameNorm = norm(owner.name);
     const contractIds = new Set(ownerContracts.map(c => c.id));
-    const propNameSet = new Set(ownerProperties.map(p => norm(p.name)));
-    const tenantIds   = new Set(ownerContracts.map(c => c.tenantId).filter(Boolean));
+    const allOwnerPropNames = new Set(
+      properties
+        .filter(p => p.owner?.trim().toLowerCase() === ownerNameNorm || p.ownerId === owner.id)
+        .map(p => norm(p.name))
+    );
+    const tenantIds = new Set(ownerContracts.map(c => c.tenantId).filter(Boolean));
     return payments.filter(p =>
       (p.contractId   && contractIds.has(p.contractId))  ||
-      (p.propertyName && propNameSet.has(norm(p.propertyName))) ||
+      (p.propertyName && allOwnerPropNames.has(norm(p.propertyName))) ||
       (p.tenantId     && tenantIds.has(p.tenantId))
     );
-  }, [ownerContracts, ownerProperties, payments]);
+  }, [owner, ownerContracts, properties, payments]);
 
   const ownerTickets = useMemo(() =>
     ownerProperties.length
