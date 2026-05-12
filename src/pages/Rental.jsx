@@ -92,7 +92,13 @@ export default function Rental() {
 
   // ── Sauvegardes ────────────────────────────────────────────────────────────
   const saveContract = () => {
-    const payload = { ...cForm, rent: Number(cForm.rent) || 0 };
+    const prop = properties.find(p => p.name === cForm.propertyName);
+    const payload = {
+      ...cForm,
+      rent: Number(cForm.rent) || 0,
+      ownerId:   prop?.ownerId   || null,
+      ownerName: prop?.owner     || null,
+    };
     if (target) dispatch({ type: 'UPDATE_CONTRACT', payload: { ...payload, id: target.id } });
     else dispatch({ type: 'ADD_CONTRACT', payload });
     setModal(null);

@@ -86,22 +86,28 @@ export default function OwnerPortal() {
     );
   }, [owner, properties]);
 
-  const ownerContracts = useMemo(() =>
-    ownerProperties.length
-      ? contracts.filter(c => ownerProperties.some(p => p.name === c.propertyName))
-      : [],
-    [ownerProperties, contracts]
-  );
+  const ownerContracts = useMemo(() => {
+    if (!ownerProperties.length) return [];
+    const norm = s => (s || '').trim().toLowerCase();
+    const propNameSet = new Set(ownerProperties.map(p => norm(p.name)));
+    const ownerNameNorm = norm(owner?.name);
+    return contracts.filter(c =>
+      propNameSet.has(norm(c.propertyName)) ||
+      (c.ownerId && c.ownerId === owner?.id) ||
+      (c.ownerName && norm(c.ownerName) === ownerNameNorm)
+    );
+  }, [ownerProperties, contracts, owner]);
 
   const ownerPayments = useMemo(() => {
     if (!ownerContracts.length && !ownerProperties.length) return [];
+    const norm = s => (s || '').trim().toLowerCase();
     const contractIds = new Set(ownerContracts.map(c => c.id));
-    const propNames   = new Set(ownerProperties.map(p => p.name));
+    const propNameSet = new Set(ownerProperties.map(p => norm(p.name)));
     const tenantIds   = new Set(ownerContracts.map(c => c.tenantId).filter(Boolean));
     return payments.filter(p =>
-      (p.contractId  && contractIds.has(p.contractId))  ||
-      (p.propertyName && propNames.has(p.propertyName)) ||
-      (p.tenantId    && tenantIds.has(p.tenantId))
+      (p.contractId   && contractIds.has(p.contractId))  ||
+      (p.propertyName && propNameSet.has(norm(p.propertyName))) ||
+      (p.tenantId     && tenantIds.has(p.tenantId))
     );
   }, [ownerContracts, ownerProperties, payments]);
 
@@ -194,7 +200,13 @@ export default function OwnerPortal() {
             {owners.map(o => {
               const oNameNorm = o.name?.trim().toLowerCase();
               const ownedProps = properties.filter(p => p.owner?.trim().toLowerCase() === oNameNorm || p.ownerId === o.id);
-              const ownedContracts = contracts.filter(c => ownedProps.some(p => p.name === c.propertyName) && c.status === 'Actif');
+              const propNamesNorm = new Set(ownedProps.map(p => p.name?.trim().toLowerCase()));
+              const ownedContracts = contracts.filter(c =>
+                (propNamesNorm.has(c.propertyName?.trim().toLowerCase()) ||
+                  (c.ownerId && c.ownerId === o.id) ||
+                  (c.ownerName && c.ownerName.trim().toLowerCase() === oNameNorm)
+                ) && c.status === 'Actif'
+              );
               const rev = ownedContracts.reduce((s, c) => s + (c.rent || 0), 0);
               const pending = payments.filter(p =>
                 ownedContracts.some(c => c.id === p.contractId) && p.status !== 'Payé'
