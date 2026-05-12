@@ -114,6 +114,31 @@ const DEMO_STATE = {
   payments:      mockPayments,
 };
 
+// ─── Property status sync helper ──────────────────────────────────────────────
+// After a contract add/update/delete, set property.status to 'Loué' or 'Disponible'
+function syncPropertyStatus(properties, updatedContract, previousContract) {
+  // Normalize identifiers for matching
+  const norm = s => (s || '').trim().toLowerCase();
+  const propId = updatedContract?.propertyId;
+  const propName = norm(updatedContract?.propertyName || updatedContract?.bien);
+
+  // Find the affected property
+  const findProp = p =>
+    (propId && (p.id === propId || String(p.id) === String(propId))) ||
+    (!propId && propName && norm(p.name) === propName);
+
+  return properties.map(p => {
+    if (p.isBuilding) return p; // buildings derive status from units
+    if (!findProp(p)) return p;
+
+    const isActive =
+      updatedContract?.status === 'Actif' ||
+      updatedContract?.statut === 'Actif';
+
+    return { ...p, status: isActive ? 'Loué' : 'Disponible' };
+  });
+}
+
 // ─── Reducer ───────────────────────────────────────────────────────────────────
 function reducer(state, action) {
   const { type, payload } = action;
@@ -128,12 +153,21 @@ function reducer(state, action) {
       return { ...state, properties: (state.properties || []).filter(p => p.id !== payload) };
 
     // ── Contracts ────────────────────────────────────────────────────────────
-    case 'ADD_CONTRACT':
-      return { ...state, contracts: [{ ...payload, id: Date.now() }, ...(state.contracts || [])] };
-    case 'UPDATE_CONTRACT':
-      return { ...state, contracts: (state.contracts || []).map(c => c.id === payload.id ? payload : c) };
-    case 'DELETE_CONTRACT':
-      return { ...state, contracts: (state.contracts || []).filter(c => c.id !== payload) };
+    case 'ADD_CONTRACT': {
+      const newContract = { ...payload, id: Date.now() };
+      const syncedProps = syncPropertyStatus(state.properties || [], newContract, null);
+      return { ...state, contracts: [newContract, ...(state.contracts || [])], properties: syncedProps };
+    }
+    case 'UPDATE_CONTRACT': {
+      const old = (state.contracts || []).find(c => c.id === payload.id);
+      const syncedProps = syncPropertyStatus(state.properties || [], payload, old);
+      return { ...state, contracts: (state.contracts || []).map(c => c.id === payload.id ? payload : c), properties: syncedProps };
+    }
+    case 'DELETE_CONTRACT': {
+      const deleted = (state.contracts || []).find(c => c.id === payload);
+      const syncedProps = deleted ? syncPropertyStatus(state.properties || [], { ...deleted, status: 'Résilié' }, deleted) : state.properties || [];
+      return { ...state, contracts: (state.contracts || []).filter(c => c.id !== payload), properties: syncedProps };
+    }
 
     // ── Tenants ──────────────────────────────────────────────────────────────
     case 'ADD_TENANT':
@@ -369,10 +403,25 @@ function reducer(state, action) {
       if (!hasAdmin) mergedUsers.unshift({ ...DEFAULT_ADMIN });
       const hasConcierge = mergedUsers.some(u => u.id === 2);
       if (!hasConcierge) mergedUsers.push({ ...DEFAULT_CONCIERGE });
+
+      // Reconcile property statuses from active contracts
+      const norm = s => (s || '').trim().toLowerCase();
+      const incomingContracts = incoming.contracts || state.contracts || [];
+      const activePropNamesSync = new Set(
+        incomingContracts.filter(c => c.status === 'Actif').map(c => norm(c.propertyName || c.bien || '')).filter(Boolean)
+      );
+      const syncedProperties = (incoming.properties || state.properties || []).map(p => {
+        if (p.isBuilding) return p;
+        const nameNorm = norm(p.name);
+        if (activePropNamesSync.has(nameNorm)) return { ...p, status: 'Loué' };
+        if (p.status === 'Loué') return { ...p, status: 'Disponible' };
+        return p;
+      });
+
       return {
         ...incoming,
         // Guard every array field — if Firebase data is partial, fall back to local then empty
-        properties:    incoming.properties    || state.properties    || [],
+        properties:    syncedProperties,
         contracts:     incoming.contracts     || state.contracts     || [],
         tenants:       incoming.tenants       || state.tenants       || [],
         owners:        incoming.owners        || state.owners        || [],
@@ -429,6 +478,23 @@ export function AppProvider({ children }) {
           if (!parsed.users.some(u => u.id === 1)) parsed.users.unshift({ ...DEFAULT_ADMIN });
           if (!parsed.users.some(u => u.id === 2)) parsed.users.push({ ...DEFAULT_CONCIERGE });
           if (!parsed.activityLog) parsed.activityLog = [];
+          // Reconcile property statuses with active contracts on every load
+          if (parsed.properties?.length && parsed.contracts?.length) {
+            const norm = s => (s || '').trim().toLowerCase();
+            const activePropNames = new Set(
+              parsed.contracts
+                .filter(c => c.status === 'Actif')
+                .map(c => norm(c.propertyName || c.bien || ''))
+                .filter(Boolean)
+            );
+            parsed.properties = parsed.properties.map(p => {
+              if (p.isBuilding) return p;
+              const nameNorm = norm(p.name);
+              if (activePropNames.has(nameNorm)) return { ...p, status: 'Loué' };
+              if (p.status === 'Loué') return { ...p, status: 'Disponible' };
+              return p;
+            });
+          }
           if (!parsed.systemSettings) {
             parsed.systemSettings = DEFAULT_SYSTEM;
           } else {
