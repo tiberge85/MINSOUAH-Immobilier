@@ -497,19 +497,20 @@ export function AppProvider({ children }) {
           if (!parsed.activityLog) parsed.activityLog = [];
           // Enrich contracts with propertyId/ownerName/ownerId if missing (migration)
           if (parsed.properties?.length && parsed.contracts?.length) {
-            const norm = s => (s || '').trim().toLowerCase();
+            const norm = s => (s || '').trim().toLowerCase()
+              .normalize('NFD').replace(/[̀-ͯ]/g, '');
             parsed.contracts = parsed.contracts.map(c => {
-              if (c.propertyId && c.ownerName) return c;
+              // Look up property by id first, then by normalised name
               const prop = parsed.properties.find(p =>
-                (c.propertyId && (p.id === c.propertyId || String(p.id) === String(c.propertyId))) ||
-                (!c.propertyId && norm(p.name) === norm(c.propertyName || ''))
+                (c.propertyId != null && (p.id === c.propertyId || Number(p.id) === Number(c.propertyId))) ||
+                (norm(p.name) === norm(c.propertyName || ''))
               );
               if (!prop) return c;
               return {
                 ...c,
-                propertyId: c.propertyId || prop.id,
-                ownerName:  c.ownerName  || prop.owner  || null,
-                ownerId:    c.ownerId    || prop.ownerId || null,
+                propertyId: c.propertyId ?? prop.id,
+                ownerName:  c.ownerName  ?? prop.owner  ?? null,
+                ownerId:    c.ownerId    ?? prop.ownerId ?? null,
               };
             });
           }

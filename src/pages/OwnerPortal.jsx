@@ -77,53 +77,45 @@ export default function OwnerPortal() {
 
   const owner = owners.find(o => o.id === selectedId);
 
+  // Normalise: lowercase + strip diacritics so "Côte" === "cote", "RÉSIDENCE" === "residence"
+  const norm = s => (s || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+  // All properties that belong to this owner
   const ownerProperties = useMemo(() => {
     if (!owner) return [];
-    const ownerNameNorm = owner.name?.trim().toLowerCase();
+    const ownerN = norm(owner.name);
     return properties.filter(p =>
-      p.owner?.trim().toLowerCase() === ownerNameNorm ||
+      norm(p.owner) === ownerN ||
       p.ownerId === owner.id
     );
   }, [owner, properties]);
 
   const ownerContracts = useMemo(() => {
     if (!owner) return [];
-    const norm = s => (s || '').trim().toLowerCase();
-    const ownerNameNorm = norm(owner.name);
-    // All property names belonging to this owner (case-insensitive set)
-    const allOwnerPropNames = new Set(
-      properties
-        .filter(p => p.owner?.trim().toLowerCase() === ownerNameNorm || p.ownerId === owner.id)
-        .map(p => norm(p.name))
-    );
-    const allOwnerPropIds = new Set(
-      properties
-        .filter(p => p.owner?.trim().toLowerCase() === ownerNameNorm || p.ownerId === owner.id)
-        .map(p => p.id)
-    );
+    const ownerN = norm(owner.name);
+    const ownerProps = properties.filter(p => norm(p.owner) === ownerN || p.ownerId === owner.id);
+    const propNameSet = new Set(ownerProps.map(p => norm(p.name)));
+    const propIdSet   = new Set(ownerProps.map(p => p.id));
     return contracts.filter(c =>
-      allOwnerPropNames.has(norm(c.propertyName)) ||
-      (c.propertyId && allOwnerPropIds.has(c.propertyId)) ||
-      (c.ownerId && c.ownerId === owner.id) ||
-      (c.ownerName && norm(c.ownerName) === ownerNameNorm)
+      propNameSet.has(norm(c.propertyName)) ||
+      (c.propertyId != null && (propIdSet.has(c.propertyId) || propIdSet.has(Number(c.propertyId)))) ||
+      (c.ownerId != null && (c.ownerId === owner.id || Number(c.ownerId) === owner.id)) ||
+      (c.ownerName && norm(c.ownerName) === ownerN)
     );
   }, [owner, properties, contracts]);
 
   const ownerPayments = useMemo(() => {
     if (!owner) return [];
-    const norm = s => (s || '').trim().toLowerCase();
-    const ownerNameNorm = norm(owner.name);
+    const ownerN = norm(owner.name);
+    const ownerProps = properties.filter(p => norm(p.owner) === ownerN || p.ownerId === owner.id);
+    const propNameSet = new Set(ownerProps.map(p => norm(p.name)));
     const contractIds = new Set(ownerContracts.map(c => c.id));
-    const allOwnerPropNames = new Set(
-      properties
-        .filter(p => p.owner?.trim().toLowerCase() === ownerNameNorm || p.ownerId === owner.id)
-        .map(p => norm(p.name))
-    );
-    const tenantIds = new Set(ownerContracts.map(c => c.tenantId).filter(Boolean));
+    const tenantIds   = new Set(ownerContracts.map(c => c.tenantId).filter(Boolean));
     return payments.filter(p =>
-      (p.contractId   && contractIds.has(p.contractId))  ||
-      (p.propertyName && allOwnerPropNames.has(norm(p.propertyName))) ||
-      (p.tenantId     && tenantIds.has(p.tenantId))
+      (p.contractId   != null && contractIds.has(p.contractId))  ||
+      (p.propertyName && propNameSet.has(norm(p.propertyName))) ||
+      (p.tenantId     != null && tenantIds.has(p.tenantId))
     );
   }, [owner, ownerContracts, properties, payments]);
 
