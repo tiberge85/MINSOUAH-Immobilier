@@ -495,6 +495,24 @@ export function AppProvider({ children }) {
           if (!parsed.users.some(u => u.id === 1)) parsed.users.unshift({ ...DEFAULT_ADMIN });
           if (!parsed.users.some(u => u.id === 2)) parsed.users.push({ ...DEFAULT_CONCIERGE });
           if (!parsed.activityLog) parsed.activityLog = [];
+          // Enrich contracts with propertyId/ownerName/ownerId if missing (migration)
+          if (parsed.properties?.length && parsed.contracts?.length) {
+            const norm = s => (s || '').trim().toLowerCase();
+            parsed.contracts = parsed.contracts.map(c => {
+              if (c.propertyId && c.ownerName) return c;
+              const prop = parsed.properties.find(p =>
+                (c.propertyId && (p.id === c.propertyId || String(p.id) === String(c.propertyId))) ||
+                (!c.propertyId && norm(p.name) === norm(c.propertyName || ''))
+              );
+              if (!prop) return c;
+              return {
+                ...c,
+                propertyId: c.propertyId || prop.id,
+                ownerName:  c.ownerName  || prop.owner  || null,
+                ownerId:    c.ownerId    || prop.ownerId || null,
+              };
+            });
+          }
           // Reconcile property statuses with active contracts on every load
           if (parsed.properties?.length && parsed.contracts?.length) {
             const norm = s => (s || '').trim().toLowerCase();

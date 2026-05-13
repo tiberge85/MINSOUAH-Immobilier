@@ -92,12 +92,15 @@ export default function Rental() {
 
   // ── Sauvegardes ────────────────────────────────────────────────────────────
   const saveContract = () => {
-    const prop = properties.find(p => p.name === cForm.propertyName);
+    // Find property by id first, fall back to name match
+    const prop = properties.find(p => p.id === cForm.propertyId) ||
+                 properties.find(p => p.name?.trim().toLowerCase() === cForm.propertyName?.trim().toLowerCase());
     const payload = {
       ...cForm,
-      rent: Number(cForm.rent) || 0,
-      ownerId:   prop?.ownerId   || null,
-      ownerName: prop?.owner     || null,
+      rent:       Number(cForm.rent) || 0,
+      propertyId: prop?.id           || cForm.propertyId || null,
+      ownerName:  prop?.owner        || cForm.ownerName  || null,
+      ownerId:    prop?.ownerId      || cForm.ownerId    || null,
     };
     if (target) dispatch({ type: 'UPDATE_CONTRACT', payload: { ...payload, id: target.id } });
     else dispatch({ type: 'ADD_CONTRACT', payload });
@@ -160,8 +163,8 @@ export default function Rental() {
 
   // ── Quand propriété sélectionnée → pré-remplir loyer dans contrat ──────────
   const onContractPropChange = (e) => {
-    const opt = allPropertyOptions.find(o => o.value === e.target.value);
-    if (opt) setCForm(f => ({ ...f, propertyName: opt.label, rent: String(opt.rent) }));
+    const opt = allPropertyOptions.find(o => String(o.value) === String(e.target.value));
+    if (opt) setCForm(f => ({ ...f, propertyId: opt.value, propertyName: opt.label, rent: String(opt.rent) }));
   };
 
   // ── Quand propriété sélectionnée → auto loyer dans tenant form ────────────

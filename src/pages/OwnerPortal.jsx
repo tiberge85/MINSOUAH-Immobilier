@@ -96,8 +96,14 @@ export default function OwnerPortal() {
         .filter(p => p.owner?.trim().toLowerCase() === ownerNameNorm || p.ownerId === owner.id)
         .map(p => norm(p.name))
     );
+    const allOwnerPropIds = new Set(
+      properties
+        .filter(p => p.owner?.trim().toLowerCase() === ownerNameNorm || p.ownerId === owner.id)
+        .map(p => p.id)
+    );
     return contracts.filter(c =>
       allOwnerPropNames.has(norm(c.propertyName)) ||
+      (c.propertyId && allOwnerPropIds.has(c.propertyId)) ||
       (c.ownerId && c.ownerId === owner.id) ||
       (c.ownerName && norm(c.ownerName) === ownerNameNorm)
     );
