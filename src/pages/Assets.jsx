@@ -620,7 +620,7 @@ export default function Assets() {
 
             <div className="p-6">
               {/* Stats immeuble */}
-              <div className="grid grid-cols-4 gap-3 mb-6">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                 {[
                   { l: 'Total', v: target.units?.length || 0, c: 'text-primary' },
                   { l: 'Loués', v: target.units?.filter(u => u.status === 'Loué').length || 0, c: 'text-green-600' },

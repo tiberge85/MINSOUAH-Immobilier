@@ -371,6 +371,40 @@ function reducer(state, action) {
         activityLog:    state.activityLog || [],
       };
 
+    // ── Bootstrap: first load from Firebase (no localStorage) ───────────────
+    case 'BOOTSTRAP_DONE': {
+      const data = payload || DEMO_STATE;
+      let { properties: props = [], contracts: ctrs = [], ...rest } = data;
+      // Migration: enrich contracts with propertyId/ownerName/ownerId
+      const normB = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      if (props.length && ctrs.length) {
+        ctrs = ctrs.map(c => {
+          const prop = props.find(p =>
+            (c.propertyId != null && (p.id === c.propertyId || Number(p.id) === Number(c.propertyId))) ||
+            (normB(p.name) === normB(c.propertyName || ''))
+          );
+          if (!prop) return c;
+          return { ...c, propertyId: c.propertyId ?? prop.id, ownerName: c.ownerName ?? prop.owner ?? null, ownerId: c.ownerId ?? prop.ownerId ?? null };
+        });
+        const activePropNames = new Set(ctrs.filter(c => c.status === 'Actif').map(c => normB(c.propertyName || c.bien || '')).filter(Boolean));
+        props = props.map(p => {
+          if (p.isBuilding) return p;
+          if (activePropNames.has(normB(p.name))) return { ...p, status: 'Loué' };
+          if (p.status === 'Loué') return { ...p, status: 'Disponible' };
+          return p;
+        });
+      }
+      const bUsers = [...(data.users || [DEFAULT_ADMIN, DEFAULT_CONCIERGE])];
+      if (!bUsers.some(u => u.id === 1)) bUsers.unshift({ ...DEFAULT_ADMIN });
+      if (!bUsers.some(u => u.id === 2)) bUsers.push({ ...DEFAULT_CONCIERGE });
+      return {
+        ...DEMO_STATE, ...rest,
+        properties: props, contracts: ctrs, users: bUsers,
+        currentUser: null, _bootstrapping: false, demoVersion: DEMO_VERSION,
+        systemSettings: { ...DEFAULT_SYSTEM, ...(data.systemSettings || {}), firebase: { ...DEFAULT_SYSTEM.firebase, ...(data.systemSettings?.firebase || {}), enabled: true } },
+      };
+    }
+
     // ── Import full state (multi-browser sync) ───────────────────────────────
     case 'IMPORT_STATE': {
       const imported = payload;
@@ -548,17 +582,35 @@ export function AppProvider({ children }) {
           }
           return { ...parsed, demoVersion: DEMO_VERSION };
         }
-        return { ...DEMO_STATE, demoVersion: DEMO_VERSION };
+        // No localStorage → start empty; bootstrap effect will pull from Firebase
+        return { ...EMPTY_STATE, _bootstrapping: true, demoVersion: DEMO_VERSION };
       } catch {
-        return { ...EMPTY_STATE };
+        return { ...EMPTY_STATE, _bootstrapping: true };
       }
     }
   );
 
   const fbSyncRef = useRef({ isSyncing: false, saveTimer: null, pollInterval: null, configKey: '', lastSavedAt: 0 });
 
+  // ── Bootstrap: first load without localStorage → pull from Firebase ──────────
+  useEffect(() => {
+    if (!state._bootstrapping) return;
+    const fb = state.systemSettings?.firebase;
+    if (!fb?.enabled || !fb?.databaseURL || !fb?.workspaceId) {
+      dispatch({ type: 'BOOTSTRAP_DONE', payload: DEMO_STATE });
+      return;
+    }
+    fbFetch(fb.databaseURL, fb.workspaceId)
+      .then(data => {
+        dispatch({ type: 'BOOTSTRAP_DONE', payload: (data && data.users?.length) ? data : DEMO_STATE });
+      })
+      .catch(() => dispatch({ type: 'BOOTSTRAP_DONE', payload: DEMO_STATE }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Persist to localStorage + push to Firebase ──────────────────────────────
   useEffect(() => {
+    if (state._bootstrapping) return; // don't overwrite Firebase while loading
     const refs = fbSyncRef.current;
     if (refs.isSyncing) { refs.isSyncing = false; return; }
 
@@ -618,6 +670,19 @@ export function AppProvider({ children }) {
     return () => clearInterval(refs.pollInterval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [`${state.systemSettings?.firebase?.enabled}-${state.systemSettings?.firebase?.databaseURL}-${state.systemSettings?.firebase?.workspaceId}`]);
+
+  if (state._bootstrapping) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fdf8f0' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 56, height: 56, border: '4px solid #785a00', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
+          <h1 style={{ fontWeight: 900, fontSize: 24, color: '#785a00', marginBottom: 6 }}>Minsouah</h1>
+          <p style={{ color: '#817662', fontSize: 14 }}>Chargement en cours…</p>
+        </div>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    );
+  }
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>
