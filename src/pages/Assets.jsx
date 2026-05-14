@@ -206,43 +206,45 @@ export default function Assets() {
   const removeUnitFromForm = (id) => setForm(f => ({ ...f, units: f.units.filter(u => u.id !== id) }));
 
   const handleSave = () => {
+    const normO = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const existingOwner = (state.owners || []).find(o => normO(o.name) === normO(form.owner || ''));
+    const ownerName = (form.owner || '').trim();
+    const newOwnerExists = (state.owners || []).some(o => o.name?.toLowerCase() === ownerName.toLowerCase());
+    // Pre-generate owner id so property can reference it even for brand-new owners
+    const preOwnerId = existingOwner?.id ?? (ownerName && !newOwnerExists ? Date.now() + 1 : null);
     const payload = {
       ...form,
       rent: form.isBuilding ? 0 : (Number(form.rent) || 0),
       surface: Number(form.surface) || 0,
       rooms: Number(form.rooms) || 0,
+      ownerId: preOwnerId,
     };
     if (modal === 'edit') {
       dispatch({ type: 'UPDATE_PROPERTY', payload: { ...payload, id: target.id } });
     } else {
       dispatch({ type: 'ADD_PROPERTY', payload });
       // Auto-create owner if name provided and not already in owners list
-      if (form.owner && form.owner.trim()) {
-        const ownerName = form.owner.trim();
-        const exists = (state.owners || []).some(o =>
-          o.name?.toLowerCase() === ownerName.toLowerCase()
-        );
-        if (!exists) {
-          const parts = ownerName.split(' ');
-          const initials = parts.map(p => p[0]).join('').toUpperCase().slice(0, 2);
-          const COLORS = [
-            'bg-primary-container text-on-primary-container',
-            'bg-secondary-container text-on-secondary-container',
-            'bg-tertiary-container text-on-tertiary-container',
-          ];
-          dispatch({
-            type: 'ADD_OWNER',
-            payload: {
-              name: ownerName,
-              initials: form.ownerInitials || initials,
-              email: '',
-              phone: '',
-              status: 'Actif',
-              color: COLORS[Math.floor(Math.random() * COLORS.length)],
-              revenue: Number(form.rent) || 0,
-            },
-          });
-        }
+      if (ownerName && !newOwnerExists) {
+        const parts = ownerName.split(' ');
+        const initials = parts.map(p => p[0]).join('').toUpperCase().slice(0, 2);
+        const COLORS = [
+          'bg-primary-container text-on-primary-container',
+          'bg-secondary-container text-on-secondary-container',
+          'bg-tertiary-container text-on-tertiary-container',
+        ];
+        dispatch({
+          type: 'ADD_OWNER',
+          payload: {
+            id: preOwnerId,
+            name: ownerName,
+            initials: form.ownerInitials || initials,
+            email: '',
+            phone: '',
+            status: 'Actif',
+            color: COLORS[Math.floor(Math.random() * COLORS.length)],
+            revenue: Number(form.rent) || 0,
+          },
+        });
       }
     }
     setModal(null); setTarget(null); setForm(EMPTY_FORM); setStep(1);

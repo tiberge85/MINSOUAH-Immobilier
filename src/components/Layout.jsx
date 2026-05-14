@@ -370,7 +370,7 @@ export default function Layout() {
                 )}
               </button>
               {showNotif && (
-                <div className="absolute right-0 top-12 w-80 bg-surface rounded-2xl shadow-xl border border-outline-variant/20 z-50 overflow-hidden">
+                <div className="absolute right-0 top-12 w-80 max-w-[calc(100vw-1rem)] bg-surface rounded-2xl shadow-xl border border-outline-variant/20 z-50 overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-outline-variant/10">
                     <p className="font-bold text-on-surface text-sm">Notifications</p>
                     {notifications.length > 0 && (

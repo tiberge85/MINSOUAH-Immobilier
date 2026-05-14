@@ -152,10 +152,11 @@ export default function Rental() {
     const payload = { ...oForm, initials, propertyIds: ids, properties: ids.length, revenue };
     if (target) {
       dispatch({ type: 'UPDATE_OWNER', payload: { ...payload, id: target.id } });
-      ids.forEach(pid => { const prop = properties.find(p => p.id === pid); if (prop) dispatch({ type: 'UPDATE_PROPERTY', payload: { ...prop, owner: oForm.name, ownerInitials: initials } }); });
+      ids.forEach(pid => { const prop = properties.find(p => p.id === pid); if (prop) dispatch({ type: 'UPDATE_PROPERTY', payload: { ...prop, owner: oForm.name, ownerInitials: initials, ownerId: target.id } }); });
     } else {
-      dispatch({ type: 'ADD_OWNER', payload });
-      ids.forEach(pid => { const prop = properties.find(p => p.id === pid); if (prop) dispatch({ type: 'UPDATE_PROPERTY', payload: { ...prop, owner: oForm.name, ownerInitials: initials } }); });
+      const newOwnerId = Date.now();
+      dispatch({ type: 'ADD_OWNER', payload: { ...payload, id: newOwnerId } });
+      ids.forEach(pid => { const prop = properties.find(p => p.id === pid); if (prop) dispatch({ type: 'UPDATE_PROPERTY', payload: { ...prop, owner: oForm.name, ownerInitials: initials, ownerId: newOwnerId } }); });
       if (oForm.email) offerCreateAccount(oForm.name, oForm.email, 'OWNER');
     }
     setModal(null);
@@ -210,14 +211,16 @@ export default function Rental() {
       )}
 
       {/* Onglets */}
-      <div className="flex items-center gap-1 border-b border-outline-variant/30 mb-6 overflow-x-auto no-scrollbar">
-        {TABS.map(t => (
-          <button key={t} onClick={() => { setTab(t); setSearch(''); setCFilter('Tous'); }}
-            className={`py-3 px-5 text-sm font-semibold whitespace-nowrap transition-all border-b-2 ${tab === t ? 'text-primary border-primary' : 'text-on-surface-variant border-transparent hover:text-on-surface'}`}>
-            {t}
-          </button>
-        ))}
-        <div className="ml-auto pb-1 flex gap-2">
+      <div className="flex items-end gap-2 mb-6">
+        <div className="flex items-center gap-1 border-b border-outline-variant/30 overflow-x-auto no-scrollbar flex-1 min-w-0">
+          {TABS.map(t => (
+            <button key={t} onClick={() => { setTab(t); setSearch(''); setCFilter('Tous'); }}
+              className={`py-3 px-5 text-sm font-semibold whitespace-nowrap transition-all border-b-2 ${tab === t ? 'text-primary border-primary' : 'text-on-surface-variant border-transparent hover:text-on-surface'}`}>
+              {t}
+            </button>
+          ))}
+        </div>
+        <div className="pb-1 flex-shrink-0 flex gap-2">
           {tab === 'Contrats' && <Btn icon="note_add" onClick={openAddContract}>Nouveau Contrat</Btn>}
           {tab === 'Locataires' && <Btn icon="person_add" onClick={openAddTenant}>Ajouter Locataire</Btn>}
           {tab === 'Propriétaires' && <Btn icon="add_business" onClick={openAddOwner}>Ajouter Propriétaire</Btn>}
@@ -392,7 +395,7 @@ export default function Rental() {
                 {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="form-label">Loyer mensuel (FCFA) *</label>
                 <input type="number" value={cForm.rent} onChange={e => setCForm(f => ({ ...f, rent: e.target.value }))} className="form-input" placeholder="150000" />
@@ -429,8 +432,8 @@ export default function Rental() {
 
           {step === 1 && (
             <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="col-span-full sm:col-span-2">
                   <label className="form-label">Nom complet *</label>
                   <input value={tForm.name} onChange={e => setTForm(f => ({ ...f, name: e.target.value }))} className="form-input" placeholder="Prénom Nom" />
                 </div>
@@ -506,7 +509,7 @@ export default function Rental() {
               <label className="form-label">Nom complet *</label>
               <input value={oForm.name} onChange={e => setOForm(f => ({ ...f, name: e.target.value }))} className="form-input" placeholder="Prénom Nom" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="form-label">Email</label>
                 <input type="email" value={oForm.email} onChange={e => setOForm(f => ({ ...f, email: e.target.value }))} className="form-input" />

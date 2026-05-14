@@ -176,7 +176,7 @@ function reducer(state, action) {
 
     // ── Owners ───────────────────────────────────────────────────────────────
     case 'ADD_OWNER':
-      return { ...state, owners: [{ ...payload, id: Date.now() }, ...(state.owners || [])] };
+      return { ...state, owners: [{ id: Date.now(), ...payload }, ...(state.owners || [])] };
     case 'UPDATE_OWNER':
       return { ...state, owners: (state.owners || []).map(o => o.id === payload.id ? payload : o) };
     case 'DELETE_OWNER':
@@ -369,8 +369,15 @@ function reducer(state, action) {
     case 'BOOTSTRAP_DONE': {
       const data = payload || DEMO_STATE;
       let { properties: props = [], contracts: ctrs = [], ...rest } = data;
-      // Migration: enrich contracts with propertyId/ownerName/ownerId
       const normB = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      const bOwners = data.owners || [];
+      // Migration: backfill ownerId on properties missing it (owner name lookup)
+      props = props.map(p => {
+        if (p.ownerId != null) return p;
+        const o = bOwners.find(ow => normB(ow.name) === normB(p.owner || ''));
+        return o ? { ...p, ownerId: o.id } : p;
+      });
+      // Migration: enrich contracts with propertyId/ownerName/ownerId
       if (props.length && ctrs.length) {
         ctrs = ctrs.map(c => {
           const prop = props.find(p =>
@@ -378,14 +385,23 @@ function reducer(state, action) {
             (normB(p.name) === normB(c.propertyName || ''))
           );
           if (!prop) return c;
-          return { ...c, propertyId: c.propertyId ?? prop.id, ownerName: c.ownerName ?? prop.owner ?? null, ownerId: c.ownerId ?? prop.ownerId ?? null };
+          const ownerForProp = bOwners.find(o => normB(o.name) === normB(prop.owner || ''));
+          return {
+            ...c,
+            propertyId: c.propertyId ?? prop.id,
+            ownerName:  c.ownerName  ?? prop.owner  ?? null,
+            ownerId:    c.ownerId    ?? prop.ownerId ?? ownerForProp?.id ?? null,
+          };
         });
-        const activePropNames = new Set(ctrs.filter(c => c.status === 'Actif').map(c => normB(c.propertyName || c.bien || '')).filter(Boolean));
+        const activeCtrs = ctrs.filter(c => c.status === 'Actif' || c.status === 'Expirant');
+        const activePropNames = new Set(activeCtrs.map(c => normB(c.propertyName || c.bien || '')).filter(Boolean));
+        const activePropIds   = new Set(activeCtrs.map(c => c.propertyId).filter(v => v != null));
         props = props.map(p => {
           if (p.isBuilding) return p;
-          if (activePropNames.has(normB(p.name))) return { ...p, status: 'Loué' };
-          if (p.status === 'Loué') return { ...p, status: 'Disponible' };
-          return p;
+          const isActive = activePropNames.has(normB(p.name)) ||
+            activePropIds.has(p.id) || activePropIds.has(String(p.id)) || activePropIds.has(Number(p.id));
+          if (isActive) return { ...p, status: 'Loué' };
+          return p; // never force-reset — trust the stored status
         });
       }
       const bUsers = [...(data.users || [DEFAULT_ADMIN, DEFAULT_CONCIERGE])];
@@ -463,13 +479,32 @@ function reducer(state, action) {
       const hasConcierge = mergedUsers.some(u => u.id === 2);
       if (!hasConcierge) mergedUsers.push({ ...DEFAULT_CONCIERGE });
 
-      // Reconcile property statuses: SET to Loué when active contract found, never force-reset
+      // Reconcile + migrate: enrich contracts/properties with ownerId, then reconcile status
       const normS = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-      const incomingContracts = incoming.contracts || state.contracts || [];
+      const syncOwners = incoming.owners || state.owners || [];
+      let syncedProps = (incoming.properties || state.properties || []).map(p => {
+        if (p.ownerId != null) return p;
+        const o = syncOwners.find(ow => normS(ow.name) === normS(p.owner || ''));
+        return o ? { ...p, ownerId: o.id } : p;
+      });
+      let incomingContracts = (incoming.contracts || state.contracts || []).map(c => {
+        const prop = syncedProps.find(p =>
+          (c.propertyId != null && (p.id === c.propertyId || Number(p.id) === Number(c.propertyId))) ||
+          (normS(p.name) === normS(c.propertyName || ''))
+        );
+        if (!prop) return c;
+        const ownerForProp = syncOwners.find(o => normS(o.name) === normS(prop.owner || ''));
+        return {
+          ...c,
+          propertyId: c.propertyId ?? prop.id,
+          ownerName:  c.ownerName  ?? prop.owner  ?? null,
+          ownerId:    c.ownerId    ?? prop.ownerId ?? ownerForProp?.id ?? null,
+        };
+      });
       const activeSyncContracts = incomingContracts.filter(c => c.status === 'Actif' || c.status === 'Expirant');
       const activeSyncNames = new Set(activeSyncContracts.map(c => normS(c.propertyName || c.bien || '')).filter(Boolean));
       const activeSyncIds   = new Set(activeSyncContracts.map(c => c.propertyId).filter(v => v != null));
-      const syncedProperties = (incoming.properties || state.properties || []).map(p => {
+      const syncedProperties = syncedProps.map(p => {
         if (p.isBuilding) return p;
         const isActive = activeSyncNames.has(normS(p.name)) ||
           activeSyncIds.has(p.id) || activeSyncIds.has(String(p.id)) || activeSyncIds.has(Number(p.id));
@@ -481,7 +516,7 @@ function reducer(state, action) {
         ...incoming,
         // Guard every array field — if Firebase data is partial, fall back to local then empty
         properties:    syncedProperties,
-        contracts:     incoming.contracts     || state.contracts     || [],
+        contracts:     incomingContracts.length ? incomingContracts : (state.contracts || []),
         tenants:       incoming.tenants       || state.tenants       || [],
         owners:        incoming.owners        || state.owners        || [],
         payments:      incoming.payments      || state.payments      || [],
@@ -539,23 +574,33 @@ export function AppProvider({ children }) {
           if (!parsed.users.some(u => u.id === 2)) parsed.users.push({ ...DEFAULT_CONCIERGE });
           if (!parsed.activityLog) parsed.activityLog = [];
           // Enrich contracts with propertyId/ownerName/ownerId if missing (migration)
-          if (parsed.properties?.length && parsed.contracts?.length) {
+          if (parsed.properties?.length) {
             const norm = s => (s || '').trim().toLowerCase()
               .normalize('NFD').replace(/[̀-ͯ]/g, '');
-            parsed.contracts = parsed.contracts.map(c => {
-              // Look up property by id first, then by normalised name
-              const prop = parsed.properties.find(p =>
-                (c.propertyId != null && (p.id === c.propertyId || Number(p.id) === Number(c.propertyId))) ||
-                (norm(p.name) === norm(c.propertyName || ''))
-              );
-              if (!prop) return c;
-              return {
-                ...c,
-                propertyId: c.propertyId ?? prop.id,
-                ownerName:  c.ownerName  ?? prop.owner  ?? null,
-                ownerId:    c.ownerId    ?? prop.ownerId ?? null,
-              };
+            const lsOwners = parsed.owners || [];
+            // Backfill ownerId on properties missing it (owner name lookup)
+            parsed.properties = parsed.properties.map(p => {
+              if (p.ownerId != null) return p;
+              const o = lsOwners.find(ow => norm(ow.name) === norm(p.owner || ''));
+              return o ? { ...p, ownerId: o.id } : p;
             });
+            if (parsed.contracts?.length) {
+              parsed.contracts = parsed.contracts.map(c => {
+                // Look up property by id first, then by normalised name
+                const prop = parsed.properties.find(p =>
+                  (c.propertyId != null && (p.id === c.propertyId || Number(p.id) === Number(c.propertyId))) ||
+                  (norm(p.name) === norm(c.propertyName || ''))
+                );
+                if (!prop) return c;
+                const ownerForProp = lsOwners.find(o => norm(o.name) === norm(prop.owner || ''));
+                return {
+                  ...c,
+                  propertyId: c.propertyId ?? prop.id,
+                  ownerName:  c.ownerName  ?? prop.owner  ?? null,
+                  ownerId:    c.ownerId    ?? prop.ownerId ?? ownerForProp?.id ?? null,
+                };
+              });
+            }
           }
           // Reconcile property statuses: SET to Loué when active contract found, never force-reset
           if (parsed.properties?.length && parsed.contracts?.length) {
