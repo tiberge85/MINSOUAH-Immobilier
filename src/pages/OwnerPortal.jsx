@@ -153,6 +153,31 @@ export default function OwnerPortal() {
     [ownerProperties, inspections]
   );
 
+  const isActiveContract = c => c.status === 'Actif' || c.status === 'Expirant';
+
+  /* ─── KPIs ─────────────────────────────────────────────────────── */
+  const occupiedCount = ownerProperties.filter(p =>
+    p.status === 'Loué' ||
+    ownerContracts.some(c => isActiveContract(c) && (
+      norm(c.propertyName || c.bien || '') === norm(p.name) ||
+      (c.propertyId != null && (c.propertyId === p.id || Number(c.propertyId) === p.id))
+    ))
+  ).length;
+  const freeCount = ownerProperties.length - occupiedCount;
+  const activeContractsCount = ownerContracts.filter(isActiveContract).length;
+  const occupancyRate = ownerProperties.length > 0
+    ? Math.round((occupiedCount / ownerProperties.length) * 100)
+    : 0;
+
+  // Expected monthly revenue = active contract rents OR sum of all property rents (fallback)
+  const contractRevenue = ownerContracts.filter(isActiveContract).reduce((s, c) => s + (c.rent || 0), 0);
+  const propertyRentSum = ownerProperties.reduce((s, p) => {
+    if (p.isBuilding) return s + (p.units || []).reduce((a, u) => a + (u.rent || 0), 0);
+    return s + (p.rent || 0);
+  }, 0);
+  const expectedMonthly = contractRevenue > 0 ? contractRevenue : propertyRentSum;
+  const expectedAnnual = expectedMonthly * 12;
+
   /* ─── Analytics data ─────────────────────────────────────────── */
   const monthlyRevData = useMemo(() => {
     const now = new Date();
@@ -181,13 +206,10 @@ export default function OwnerPortal() {
         mois,
         revenus: collected,
         impayés: unpaid,
-        // Show expected revenue as dotted baseline — always populated if owner has properties
-        attendu: isFuture ? expectedMth : (collected === 0 && unpaid === 0 ? expectedMth : expectedMth),
+        attendu: expectedMth,
       };
     });
   }, [ownerPayments, contractRevenue, propertyRentSum]);
-
-  const isActiveContract = c => c.status === 'Actif' || c.status === 'Expirant';
 
   const occupancyData = useMemo(() => {
     const loué = ownerProperties.filter(p => p.status === 'Loué' || ownerContracts.some(c => (c.propertyName === p.name || norm(c.propertyName) === norm(p.name)) && isActiveContract(c))).length;
@@ -197,29 +219,6 @@ export default function OwnerPortal() {
       { name: 'Libres', value: libre, color: '#d2c5ae' },
     ].filter(d => d.value > 0);
   }, [ownerProperties, ownerContracts]);
-
-  /* ─── KPIs ─────────────────────────────────────────────────────── */
-  const occupiedCount = ownerProperties.filter(p =>
-    p.status === 'Loué' ||
-    ownerContracts.some(c => isActiveContract(c) && (
-      norm(c.propertyName || c.bien || '') === norm(p.name) ||
-      (c.propertyId != null && (c.propertyId === p.id || Number(c.propertyId) === p.id))
-    ))
-  ).length;
-  const freeCount = ownerProperties.length - occupiedCount;
-  const activeContractsCount = ownerContracts.filter(isActiveContract).length;
-  const occupancyRate = ownerProperties.length > 0
-    ? Math.round((occupiedCount / ownerProperties.length) * 100)
-    : 0;
-
-  // Expected monthly revenue = active contract rents OR sum of all property rents (fallback)
-  const contractRevenue = ownerContracts.filter(isActiveContract).reduce((s, c) => s + (c.rent || 0), 0);
-  const propertyRentSum = ownerProperties.reduce((s, p) => {
-    if (p.isBuilding) return s + (p.units || []).reduce((a, u) => a + (u.rent || 0), 0);
-    return s + (p.rent || 0);
-  }, 0);
-  const expectedMonthly = contractRevenue > 0 ? contractRevenue : propertyRentSum;
-  const expectedAnnual = expectedMonthly * 12;
 
   // Collected: from payment records; fallback to expected if no records yet
   const collectedTotal = ownerPayments.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
