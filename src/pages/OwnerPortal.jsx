@@ -97,12 +97,15 @@ export default function OwnerPortal() {
     const ownerProps = properties.filter(p => norm(p.owner) === ownerN || p.ownerId === owner.id);
     const propNameSet = new Set(ownerProps.map(p => norm(p.name)));
     const propIdSet   = new Set(ownerProps.map(p => p.id));
-    return contracts.filter(c =>
-      propNameSet.has(norm(c.propertyName)) ||
-      (c.propertyId != null && (propIdSet.has(c.propertyId) || propIdSet.has(Number(c.propertyId)))) ||
-      (c.ownerId != null && (c.ownerId === owner.id || Number(c.ownerId) === owner.id)) ||
-      (c.ownerName && norm(c.ownerName) === ownerN)
-    );
+    return contracts.filter(c => {
+      const cName = norm(c.propertyName || c.bien || '');
+      return (
+        (cName && propNameSet.has(cName)) ||
+        (c.propertyId != null && (propIdSet.has(c.propertyId) || propIdSet.has(Number(c.propertyId)))) ||
+        (c.ownerId != null && (c.ownerId === owner.id || Number(c.ownerId) === owner.id)) ||
+        (c.ownerName && norm(c.ownerName) === ownerN)
+      );
+    });
   }, [owner, properties, contracts]);
 
   const ownerPayments = useMemo(() => {
@@ -174,13 +177,25 @@ export default function OwnerPortal() {
   }, [ownerProperties, ownerContracts]);
 
   /* ─── KPIs ─────────────────────────────────────────────────────── */
-  const totalRevenue = ownerContracts.filter(isActiveContract).reduce((s, c) => s + (c.rent || 0), 0);
-  const collectedTotal = ownerPayments.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
-  const pendingAmount = ownerPayments.filter(p => p.status !== 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+  // Occupancy based on property.status (most reliable) with contract as supplement
+  const occupiedCount = ownerProperties.filter(p =>
+    p.status === 'Loué' ||
+    ownerContracts.some(c => isActiveContract(c) && (
+      norm(c.propertyName || c.bien || '') === norm(p.name) ||
+      (c.propertyId != null && (c.propertyId === p.id || Number(c.propertyId) === p.id))
+    ))
+  ).length;
   const activeContractsCount = ownerContracts.filter(isActiveContract).length;
   const occupancyRate = ownerProperties.length > 0
-    ? Math.round((activeContractsCount / ownerProperties.length) * 100)
+    ? Math.round((occupiedCount / ownerProperties.length) * 100)
     : 0;
+  // Revenue: use active contracts if available, else sum rents of occupied properties
+  const contractRevenue = ownerContracts.filter(isActiveContract).reduce((s, c) => s + (c.rent || 0), 0);
+  const totalRevenue = contractRevenue > 0
+    ? contractRevenue
+    : ownerProperties.filter(p => p.status === 'Loué').reduce((s, p) => s + (p.rent || 0), 0);
+  const collectedTotal = ownerPayments.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+  const pendingAmount = ownerPayments.filter(p => p.status !== 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
   const openTickets = ownerTickets.filter(t => t.status !== 'Résolu').length;
 
   /* ─── Owner selector ─────────────────────────────────────────── */
@@ -208,16 +223,19 @@ export default function OwnerPortal() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md">
             {owners.map(o => {
-              const oNameNorm = o.name?.trim().toLowerCase();
-              const ownedProps = properties.filter(p => p.owner?.trim().toLowerCase() === oNameNorm || p.ownerId === o.id);
-              const propNamesNorm = new Set(ownedProps.map(p => p.name?.trim().toLowerCase()));
-              const ownedContracts = contracts.filter(c =>
-                (propNamesNorm.has(c.propertyName?.trim().toLowerCase()) ||
-                  (c.ownerId && c.ownerId === o.id) ||
-                  (c.ownerName && c.ownerName.trim().toLowerCase() === oNameNorm)
-                ) && c.status === 'Actif'
-              );
-              const rev = ownedContracts.reduce((s, c) => s + (c.rent || 0), 0);
+              const oN = norm(o.name);
+              const ownedProps = properties.filter(p => norm(p.owner) === oN || p.ownerId === o.id);
+              const propNamesNorm = new Set(ownedProps.map(p => norm(p.name)));
+              const ownedContracts = contracts.filter(c => {
+                const cName = norm(c.propertyName || c.bien || '');
+                return (
+                  (cName && propNamesNorm.has(cName)) ||
+                  (c.ownerId && (c.ownerId === o.id || Number(c.ownerId) === o.id)) ||
+                  (c.ownerName && norm(c.ownerName) === oN)
+                ) && isActiveContract(c);
+              });
+              const contractRev = ownedContracts.reduce((s, c) => s + (c.rent || 0), 0);
+              const rev = contractRev > 0 ? contractRev : ownedProps.filter(p => p.status === 'Loué').reduce((s, p) => s + (p.rent || 0), 0);
               const pending = payments.filter(p =>
                 ownedContracts.some(c => c.id === p.contractId) && p.status !== 'Payé'
               ).length;
@@ -234,7 +252,7 @@ export default function OwnerPortal() {
                     }
                     <div className="min-w-0">
                       <h3 className="font-label-md text-label-md text-on-surface font-bold truncate">{o.name}</h3>
-                      <p className="text-body-sm text-on-surface-variant">{ownedProps.length} bien(s) — {ownedContracts.length} contrat(s) actif(s)</p>
+                      <p className="text-body-sm text-on-surface-variant">{ownedProps.length} bien(s) — {ownedProps.filter(p => p.status === 'Loué').length || ownedContracts.length} occupé(s)</p>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 mb-md">
@@ -295,7 +313,7 @@ export default function OwnerPortal() {
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-md">
         <KpiCard label="Biens" value={ownerProperties.length} icon="apartment" color="bg-primary/10 text-primary" />
-        <KpiCard label="Occupation" value={`${occupancyRate}%`} sub={`${activeContractsCount} loués`} icon="group" color="bg-tertiary/10 text-tertiary" />
+        <KpiCard label="Occupation" value={`${occupancyRate}%`} sub={`${occupiedCount} loué(s)`} icon="group" color="bg-tertiary/10 text-tertiary" />
         <KpiCard label="Revenu/mois" value={fmtK(totalRevenue) + 'k'} icon="trending_up" color="bg-green-100 text-green-700" />
         <KpiCard label="Total encaissé" value={fmtK(collectedTotal) + 'k'} icon="check_circle" color="bg-primary/10 text-primary" />
         <KpiCard label="Impayés" value={fmtK(pendingAmount) + 'k'} icon="warning" color={pendingAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700'} />
