@@ -378,8 +378,8 @@ export default function Assets() {
               {/* Step 1 — Infos générales */}
               {step === 1 && (
                 <div className="flex flex-col gap-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="col-span-full sm:col-span-2">
                       <label className="text-sm font-medium text-on-surface-variant mb-1 block">Nom du bien *</label>
                       <input name="name" value={form.name} onChange={handleChange} placeholder="Ex: Résidence Les Palmiers"
                         className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
@@ -400,7 +400,7 @@ export default function Assets() {
                         </select>
                       </div>
                     )}
-                    <div className="col-span-2">
+                    <div className="col-span-full sm:col-span-2">
                       <label className="text-sm font-medium text-on-surface-variant mb-1 block">Adresse *</label>
                       <input name="address" value={form.address} onChange={handleChange} placeholder="Abidjan, Cocody Angré"
                         className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
@@ -458,7 +458,7 @@ export default function Assets() {
               {/* Step 2 — Appartements (immeuble) ou détails (bien simple) */}
               {step === 2 && !form.isBuilding && (
                 <div className="flex flex-col gap-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium text-on-surface-variant mb-1 block">Surface (m²)</label>
                       <input name="surface" type="number" value={form.surface} onChange={handleChange} placeholder="85"
@@ -577,7 +577,7 @@ export default function Assets() {
                 <h2 className="font-bold text-xl text-on-surface">{target.name}</h2>
                 <span className={`text-xs px-2 py-1 rounded-full font-semibold ${STATUS_COLORS[target.status]}`}>{target.status}</span>
               </div>
-              <div className="grid grid-cols-2 gap-3 text-sm mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-6">
                 {[
                   ['Adresse', target.address], ['Type', target.type],
                   ['Loyer', fmt(target.rent) + '/mois'], ['Propriétaire', target.owner || '—'],
@@ -705,15 +705,30 @@ export default function Assets() {
               </button>
             </div>
             <p className="text-xs text-on-surface-variant mb-4">{qrModal.address}</p>
-            <div className="flex justify-center p-4 bg-white rounded-2xl border border-outline-variant/20 mb-4">
+            <div className="flex justify-center p-4 bg-white rounded-2xl border border-outline-variant/20 mb-3">
               <QRCodeSVG
-                value={`MINSOUAH:PROPERTY\nNom: ${qrModal.name}\nAdresse: ${qrModal.address}\nType: ${qrModal.type || (qrModal.isBuilding ? 'Immeuble' : '—')}\nID: ${qrModal.id}`}
-                size={180}
+                value={[
+                  `MINSOUAH IMMOBILIER`,
+                  `Bien: ${qrModal.name}`,
+                  `Adresse: ${qrModal.address || '—'}`,
+                  `Type: ${qrModal.type || (qrModal.isBuilding ? 'Immeuble' : '—')}`,
+                  qrModal.owner ? `Propriétaire: ${qrModal.owner}` : null,
+                  !qrModal.isBuilding && qrModal.rent ? `Loyer: ${Number(qrModal.rent).toLocaleString('fr-CI')} FCFA/mois` : null,
+                  `Statut: ${qrModal.status || '—'}`,
+                  `Ref: MINS-${qrModal.id}`,
+                ].filter(Boolean).join('\n')}
+                size={200}
                 level="M"
-                includeMargin={false}
+                includeMargin={true}
               />
             </div>
-            <p className="text-xs text-on-surface-variant">Scannez ce QR pour identifier le bien</p>
+            <div className="text-left bg-surface-container rounded-xl p-3 mb-3 text-xs space-y-1">
+              {qrModal.owner && <p><span className="text-on-surface-variant">Propriétaire :</span> <strong className="text-on-surface">{qrModal.owner}</strong></p>}
+              {!qrModal.isBuilding && qrModal.rent > 0 && <p><span className="text-on-surface-variant">Loyer :</span> <strong className="text-primary">{fmt(qrModal.rent)}/mois</strong></p>}
+              <p><span className="text-on-surface-variant">Statut :</span> <strong className="text-on-surface">{qrModal.status || '—'}</strong></p>
+              <p className="text-on-surface-variant">Réf : MINS-{qrModal.id}</p>
+            </div>
+            <p className="text-xs text-on-surface-variant">Scannez pour identifier ce bien</p>
           </div>
         </ModalOverlay>
       )}

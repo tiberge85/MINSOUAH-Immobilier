@@ -81,20 +81,27 @@ export default function OwnerPortal() {
   const norm = s => (s || '').trim().toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-  // All properties that belong to this owner
+  // All properties that belong to this owner (4-path matching)
   const ownerProperties = useMemo(() => {
     if (!owner) return [];
     const ownerN = norm(owner.name);
+    const ownerPropIds = new Set((owner.propertyIds || []).map(Number));
     return properties.filter(p =>
       norm(p.owner) === ownerN ||
-      p.ownerId === owner.id
+      (p.ownerId != null && (p.ownerId === owner.id || Number(p.ownerId) === owner.id)) ||
+      ownerPropIds.has(Number(p.id))
     );
   }, [owner, properties]);
 
   const ownerContracts = useMemo(() => {
     if (!owner) return [];
     const ownerN = norm(owner.name);
-    const ownerProps = properties.filter(p => norm(p.owner) === ownerN || p.ownerId === owner.id);
+    const ownerPropIds2 = new Set((owner.propertyIds || []).map(Number));
+    const ownerProps = properties.filter(p =>
+      norm(p.owner) === ownerN ||
+      (p.ownerId != null && (p.ownerId === owner.id || Number(p.ownerId) === owner.id)) ||
+      ownerPropIds2.has(Number(p.id))
+    );
     const propNameSet = new Set(ownerProps.map(p => norm(p.name)));
     const propIdSet   = new Set(ownerProps.map(p => p.id));
     return contracts.filter(c => {
@@ -111,7 +118,12 @@ export default function OwnerPortal() {
   const ownerPayments = useMemo(() => {
     if (!owner) return [];
     const ownerN = norm(owner.name);
-    const ownerProps = properties.filter(p => norm(p.owner) === ownerN || p.ownerId === owner.id);
+    const ownerPropIds3 = new Set((owner.propertyIds || []).map(Number));
+    const ownerProps = properties.filter(p =>
+      norm(p.owner) === ownerN ||
+      (p.ownerId != null && (p.ownerId === owner.id || Number(p.ownerId) === owner.id)) ||
+      ownerPropIds3.has(Number(p.id))
+    );
     const propNameSet = new Set(ownerProps.map(p => norm(p.name)));
     const contractIds = new Set(ownerContracts.map(c => c.id));
     const tenantIds   = new Set(ownerContracts.map(c => c.tenantId).filter(Boolean));
@@ -224,7 +236,12 @@ export default function OwnerPortal() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md">
             {owners.map(o => {
               const oN = norm(o.name);
-              const ownedProps = properties.filter(p => norm(p.owner) === oN || p.ownerId === o.id);
+              const oPropIds = new Set((o.propertyIds || []).map(Number));
+              const ownedProps = properties.filter(p =>
+                norm(p.owner) === oN ||
+                (p.ownerId != null && (p.ownerId === o.id || Number(p.ownerId) === o.id)) ||
+                oPropIds.has(Number(p.id))
+              );
               const propNamesNorm = new Set(ownedProps.map(p => norm(p.name)));
               const ownedContracts = contracts.filter(c => {
                 const cName = norm(c.propertyName || c.bien || '');
