@@ -292,7 +292,7 @@ export default function Assets() {
               <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">{s.label}</span>
               <Icon name={s.icon} size={20} className={s.color} />
             </div>
-            <p className={`text-2xl font-black ${s.highlight ? 'text-on-primary-container' : 'text-on-surface'}`}>{s.value}</p>
+            <p className={`text-lg md:text-2xl font-black truncate ${s.highlight ? 'text-on-primary-container' : 'text-on-surface'}`}>{s.value}</p>
           </div>
         ))}
       </div>

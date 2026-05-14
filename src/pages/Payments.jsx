@@ -538,16 +538,16 @@ export default function Payments() {
             <div className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 ${s.cls}`}>
               <Icon name={s.icon} size={20} />
             </div>
-            <div>
-              <p className="text-on-surface-variant text-xs uppercase tracking-wider font-semibold">{s.label}</p>
-              <p className="font-bold text-on-surface mt-0.5 text-base">{s.value}</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-on-surface-variant text-[10px] md:text-xs uppercase tracking-wider font-semibold truncate">{s.label}</p>
+              <p className="font-bold text-on-surface mt-0.5 text-sm md:text-base truncate">{s.value}</p>
             </div>
           </div>
         ))}
       </section>
 
       {/* ── Tabs ── */}
-      <div className="flex gap-1 bg-surface-container-low rounded-xl p-1 w-fit">
+      <div className="flex gap-1 bg-surface-container-low rounded-xl p-1 w-full overflow-x-auto">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors relative ${

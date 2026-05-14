@@ -422,6 +422,21 @@ function reducer(state, action) {
     case 'CLOUD_SYNC': {
       const incoming = payload;
       if (!incoming || !incoming.users?.length) return state;
+      // Refuse to overwrite rich local data with sparse incoming data (prevents accidental wipe)
+      const localCount  = (state.properties?.length  || 0) + (state.contracts?.length  || 0) + (state.owners?.length  || 0);
+      const incomingCount = (incoming.properties?.length || 0) + (incoming.contracts?.length || 0) + (incoming.owners?.length || 0);
+      if (localCount > 0 && incomingCount < localCount * 0.5) {
+        // Incoming has less than half our data — only sync users, keep local entities
+        const safeMergeUsers = (incoming.users || []).map(u => {
+          const local = (state.users || []).find(lu => lu.email === u.email);
+          if (local?.password?.startsWith('sha256:') && !u.password?.startsWith('sha256:')) return { ...u, password: local.password };
+          if (local?.avatar && !u.avatar) return { ...u, avatar: local.avatar };
+          return u;
+        });
+        if (!safeMergeUsers.some(u => u.id === 1)) safeMergeUsers.unshift({ ...DEFAULT_ADMIN });
+        if (!safeMergeUsers.some(u => u.id === 2)) safeMergeUsers.push({ ...DEFAULT_CONCIERGE });
+        return { ...state, users: safeMergeUsers };
+      }
       // If Firebase has stale demo data (older/missing demoVersion), only sync users — keep local entity data
       if (state.demoVersion === DEMO_VERSION && incoming.demoVersion !== DEMO_VERSION) {
         const mergedUsersOnly = (incoming.users || []).map(u => {
@@ -591,6 +606,18 @@ export function AppProvider({ children }) {
   );
 
   const fbSyncRef = useRef({ isSyncing: false, saveTimer: null, pollInterval: null, configKey: '', lastSavedAt: 0 });
+
+  // ── On startup from localStorage: immediately push to Firebase before poll runs
+  useEffect(() => {
+    if (state._bootstrapping) return; // handled by bootstrap effect below
+    const fb = state.systemSettings?.firebase;
+    if (!fb?.enabled || !fb?.databaseURL || !fb?.workspaceId) return;
+    const { currentUser, ...toSync } = state;
+    fbSave(fb.databaseURL, fb.workspaceId, toSync)
+      .then(savedAt => { fbSyncRef.current.lastSavedAt = savedAt; })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Bootstrap: first load without localStorage → pull from Firebase ──────────
   useEffect(() => {

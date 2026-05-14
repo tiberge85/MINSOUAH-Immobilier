@@ -46,13 +46,13 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 function KpiCard({ label, value, sub, icon, color }) {
   return (
-    <div className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20">
-      <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-sm ${color}`}>
-        <Icon name={icon} size={18} />
+    <div className="bg-surface-container-lowest rounded-xl p-3 md:p-md shadow-card border border-outline-variant/20">
+      <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center mb-2 ${color}`}>
+        <Icon name={icon} size={16} />
       </div>
-      <p className="text-on-surface-variant text-label-sm uppercase tracking-wider">{label}</p>
-      <p className="font-h2 text-h2 text-on-surface font-black mt-0.5 truncate">{value}</p>
-      {sub && <p className="text-label-sm text-on-surface-variant mt-0.5">{sub}</p>}
+      <p className="text-on-surface-variant text-[10px] md:text-label-sm uppercase tracking-wider leading-tight">{label}</p>
+      <p className="text-base md:text-h2 font-black text-on-surface mt-0.5 truncate leading-tight">{value}</p>
+      {sub && <p className="text-[10px] md:text-label-sm text-on-surface-variant mt-0.5 truncate">{sub}</p>}
     </div>
   );
 }
@@ -162,8 +162,10 @@ export default function OwnerPortal() {
     });
   }, [ownerPayments]);
 
+  const isActiveContract = c => c.status === 'Actif' || c.status === 'Expirant';
+
   const occupancyData = useMemo(() => {
-    const loué = ownerProperties.filter(p => p.status === 'Loué' || ownerContracts.some(c => c.propertyName === p.name && c.status === 'Actif')).length;
+    const loué = ownerProperties.filter(p => p.status === 'Loué' || ownerContracts.some(c => (c.propertyName === p.name || norm(c.propertyName) === norm(p.name)) && isActiveContract(c))).length;
     const libre = ownerProperties.length - loué;
     return [
       { name: 'Occupés', value: loué, color: '#785a00' },
@@ -172,10 +174,10 @@ export default function OwnerPortal() {
   }, [ownerProperties, ownerContracts]);
 
   /* ─── KPIs ─────────────────────────────────────────────────────── */
-  const totalRevenue = ownerContracts.filter(c => c.status === 'Actif').reduce((s, c) => s + (c.rent || 0), 0);
+  const totalRevenue = ownerContracts.filter(isActiveContract).reduce((s, c) => s + (c.rent || 0), 0);
   const collectedTotal = ownerPayments.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
   const pendingAmount = ownerPayments.filter(p => p.status !== 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
-  const activeContractsCount = ownerContracts.filter(c => c.status === 'Actif').length;
+  const activeContractsCount = ownerContracts.filter(isActiveContract).length;
   const occupancyRate = ownerProperties.length > 0
     ? Math.round((activeContractsCount / ownerProperties.length) * 100)
     : 0;
@@ -296,7 +298,7 @@ export default function OwnerPortal() {
         <KpiCard label="Occupation" value={`${occupancyRate}%`} sub={`${activeContractsCount} loués`} icon="group" color="bg-tertiary/10 text-tertiary" />
         <KpiCard label="Revenu/mois" value={fmtK(totalRevenue) + 'k'} icon="trending_up" color="bg-green-100 text-green-700" />
         <KpiCard label="Total encaissé" value={fmtK(collectedTotal) + 'k'} icon="check_circle" color="bg-primary/10 text-primary" />
-        <KpiCard label="Impayés" value={fmt(pendingAmount)} icon="warning" color={pendingAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700'} />
+        <KpiCard label="Impayés" value={fmtK(pendingAmount) + 'k'} icon="warning" color={pendingAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700'} />
         <KpiCard label="Tickets ouverts" value={openTickets} icon="engineering" color={openTickets > 0 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} />
       </div>
 
