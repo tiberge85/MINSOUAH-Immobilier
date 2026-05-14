@@ -394,10 +394,18 @@ export default function Payments() {
     const tenant = (tenants || []).find(t => String(t.id) === String(payForm.tenantId));
     const today = new Date().toLocaleDateString('fr-CI');
     const tenantFullName = tenant ? (tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim()) : '';
+    // Find matching contract: prefer one that also matches the property
     const matchingContract = (contracts || []).find(c =>
-      String(c.tenantId) === String(payForm.tenantId) ||
-      c.tenant === tenantFullName
+      (String(c.tenantId) === String(payForm.tenantId) || c.tenant === tenantFullName) &&
+      (c.status === 'Actif' || c.status === 'Expirant') &&
+      (opt ? (String(c.propertyId) === String(opt.buildingId) || c.propertyName === opt.propertyName || c.propertyName === opt.buildingName) : true)
+    ) || (contracts || []).find(c =>
+      String(c.tenantId) === String(payForm.tenantId) || c.tenant === tenantFullName
     );
+    // Look up property for ownerId
+    const linkedProp = opt ? (properties || []).find(p =>
+      p.id === opt.buildingId || Number(p.id) === Number(opt.buildingId)
+    ) : null;
     const newPayment = {
       propertyName: opt?.propertyName || payForm.propertyKey,
       tenantName: tenantFullName,
@@ -405,6 +413,8 @@ export default function Payments() {
       tenantPhone: tenant?.phone || '',
       tenantId: tenant?.id || null,
       contractId: matchingContract?.id || null,
+      ownerId: linkedProp?.ownerId || matchingContract?.ownerId || null,
+      ownerName: linkedProp?.owner || matchingContract?.ownerName || null,
       amount: parseFloat(payForm.amount) || 0,
       month: payForm.month,
       dueDate: payForm.dueDate,

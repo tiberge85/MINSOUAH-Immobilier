@@ -514,20 +514,24 @@ function reducer(state, action) {
         return p; // never force-reset — trust the stored status
       });
 
+      // Merge payments: keep local payments whose id isn't in Firebase yet (prevents loss of recent local adds)
+      const fbPayIds = new Set((incoming.payments || []).map(p => p.id));
+      const localOnlyPayments = (state.payments || []).filter(p => !fbPayIds.has(p.id));
+      const mergedPayments = [...(incoming.payments || state.payments || []), ...localOnlyPayments];
+
       return {
         ...incoming,
-        // Guard every array field — if Firebase data is partial, fall back to local then empty
         properties:    syncedProperties,
         contracts:     incomingContracts.length ? incomingContracts : (state.contracts || []),
-        tenants:       incoming.tenants       || state.tenants       || [],
-        owners:        incoming.owners        || state.owners        || [],
-        payments:      incoming.payments      || state.payments      || [],
-        tickets:       incoming.tickets       || state.tickets       || [],
-        transactions:  incoming.transactions  || state.transactions  || [],
-        conversations: incoming.conversations || state.conversations || [],
-        inspections:   incoming.inspections   || state.inspections   || [],
-        alerts:        incoming.alerts        || state.alerts        || [],
-        revenueData:   incoming.revenueData   || state.revenueData   || [],
+        tenants:       incoming.tenants?.length  ? incoming.tenants  : (state.tenants  || []),
+        owners:        incoming.owners?.length   ? incoming.owners   : (state.owners   || []),
+        payments:      mergedPayments,
+        tickets:       incoming.tickets?.length      ? incoming.tickets      : (state.tickets      || []),
+        transactions:  incoming.transactions?.length ? incoming.transactions : (state.transactions || []),
+        conversations: incoming.conversations?.length ? incoming.conversations : (state.conversations || []),
+        inspections:   incoming.inspections?.length  ? incoming.inspections  : (state.inspections  || []),
+        alerts:        incoming.alerts?.length        ? incoming.alerts       : (state.alerts       || []),
+        revenueData:   incoming.revenueData           || state.revenueData    || [],
         users: mergedUsers,
         currentUser: state.currentUser,
         systemSettings: state.systemSettings,
@@ -677,7 +681,11 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (state._bootstrapping) return; // don't overwrite Firebase while loading
     const refs = fbSyncRef.current;
-    if (refs.isSyncing) { refs.isSyncing = false; return; }
+    // isSyncing = true means this state change came from CLOUD_SYNC:
+    //   - Always save to localStorage (so synced data survives refresh)
+    //   - Skip Firebase re-save (avoid circular: we'd re-save data we just read)
+    const skipFirebase = refs.isSyncing;
+    if (skipFirebase) refs.isSyncing = false;
 
     try {
       localStorage.setItem('minsouah_v1', JSON.stringify(state));
@@ -693,6 +701,8 @@ export function AppProvider({ children }) {
         localStorage.setItem('minsouah_v1', JSON.stringify(slim));
       } catch { /* still too large — skip */ }
     }
+
+    if (skipFirebase) return; // don't re-push what we just pulled from Firebase
 
     const fb = state.systemSettings?.firebase;
     if (fb?.enabled && fb?.databaseURL && fb?.workspaceId) {

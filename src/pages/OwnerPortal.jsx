@@ -129,14 +129,24 @@ export default function OwnerPortal() {
       (p.ownerId != null && (p.ownerId === owner.id || Number(p.ownerId) === owner.id)) ||
       ownerPropIds3.has(Number(p.id))
     );
-    const propNameSet = new Set(ownerProps.map(p => norm(p.name)));
     const contractIds = new Set(ownerContracts.map(c => c.id));
     const tenantIds   = new Set(ownerContracts.map(c => c.tenantId).filter(Boolean));
-    return payments.filter(p =>
-      (p.contractId   != null && contractIds.has(p.contractId))  ||
-      (p.propertyName && propNameSet.has(norm(p.propertyName))) ||
-      (p.tenantId     != null && tenantIds.has(p.tenantId))
-    );
+    return payments.filter(p => {
+      // 1. Direct ownerId match (most reliable — set by Payments.jsx since this fix)
+      if (p.ownerId != null && (p.ownerId === owner.id || Number(p.ownerId) === owner.id)) return true;
+      // 2. ownerName match
+      if (p.ownerName && norm(p.ownerName) === ownerN) return true;
+      // 3. contractId from owner's contracts
+      if (p.contractId != null && contractIds.has(p.contractId)) return true;
+      // 4. tenantId from owner's active contracts
+      if (p.tenantId != null && tenantIds.has(p.tenantId)) return true;
+      // 5. propertyName match — also handles "Building — Unit" format by prefix
+      if (p.propertyName) {
+        const pn = norm(p.propertyName);
+        if (ownerProps.some(op => pn === norm(op.name) || pn.startsWith(norm(op.name) + ' '))) return true;
+      }
+      return false;
+    });
   }, [owner, ownerContracts, properties, payments]);
 
   const ownerTickets = useMemo(() =>

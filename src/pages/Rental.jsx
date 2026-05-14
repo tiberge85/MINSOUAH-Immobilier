@@ -92,7 +92,6 @@ export default function Rental() {
 
   // ── Sauvegardes ────────────────────────────────────────────────────────────
   const saveContract = () => {
-    // Find property by id first, fall back to name match
     const prop = properties.find(p => p.id === cForm.propertyId) ||
                  properties.find(p => p.name?.trim().toLowerCase() === cForm.propertyName?.trim().toLowerCase());
     const payload = {
@@ -102,6 +101,20 @@ export default function Rental() {
       ownerName:  prop?.owner        || cForm.ownerName  || null,
       ownerId:    prop?.ownerId      || cForm.ownerId    || null,
     };
+    const normN = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const isActC = c => c.status === 'Actif' || c.status === 'Expirant';
+    if (!target) {
+      const conflict = contracts.find(c =>
+        isActC(c) && (
+          (payload.propertyId && String(c.propertyId) === String(payload.propertyId)) ||
+          (normN(c.propertyName || '') && normN(c.propertyName || '') === normN(payload.propertyName || ''))
+        )
+      );
+      if (conflict) {
+        alert(`Ce bien est déjà loué par ${conflict.tenant} (contrat ${conflict.status}).\nRésiliez d'abord ce contrat avant d'en créer un nouveau.`);
+        return;
+      }
+    }
     if (target) dispatch({ type: 'UPDATE_CONTRACT', payload: { ...payload, id: target.id } });
     else dispatch({ type: 'ADD_CONTRACT', payload });
     setModal(null);
