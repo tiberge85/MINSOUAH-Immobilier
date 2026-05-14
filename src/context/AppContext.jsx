@@ -120,24 +120,18 @@ const DEMO_STATE = {
 // ─── Property status sync helper ──────────────────────────────────────────────
 // After a contract add/update/delete, set property.status to 'Loué' or 'Disponible'
 function syncPropertyStatus(properties, updatedContract, previousContract) {
-  // Normalize identifiers for matching
-  const norm = s => (s || '').trim().toLowerCase();
+  const norm = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const propId = updatedContract?.propertyId;
-  const propName = norm(updatedContract?.propertyName || updatedContract?.bien);
+  const propName = norm(updatedContract?.propertyName || updatedContract?.bien || '');
 
-  // Find the affected property
   const findProp = p =>
-    (propId && (p.id === propId || String(p.id) === String(propId))) ||
-    (!propId && propName && norm(p.name) === propName);
+    (propId != null && (p.id === propId || String(p.id) === String(propId) || Number(p.id) === Number(propId))) ||
+    (propName && norm(p.name) === propName);
 
   return properties.map(p => {
-    if (p.isBuilding) return p; // buildings derive status from units
+    if (p.isBuilding) return p;
     if (!findProp(p)) return p;
-
-    const isActive =
-      updatedContract?.status === 'Actif' ||
-      updatedContract?.statut === 'Actif';
-
+    const isActive = updatedContract?.status === 'Actif' || updatedContract?.statut === 'Actif' || updatedContract?.status === 'Expirant';
     return { ...p, status: isActive ? 'Loué' : 'Disponible' };
   });
 }
@@ -469,18 +463,18 @@ function reducer(state, action) {
       const hasConcierge = mergedUsers.some(u => u.id === 2);
       if (!hasConcierge) mergedUsers.push({ ...DEFAULT_CONCIERGE });
 
-      // Reconcile property statuses from active contracts
-      const norm = s => (s || '').trim().toLowerCase();
+      // Reconcile property statuses: SET to Loué when active contract found, never force-reset
+      const normS = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
       const incomingContracts = incoming.contracts || state.contracts || [];
-      const activePropNamesSync = new Set(
-        incomingContracts.filter(c => c.status === 'Actif').map(c => norm(c.propertyName || c.bien || '')).filter(Boolean)
-      );
+      const activeSyncContracts = incomingContracts.filter(c => c.status === 'Actif' || c.status === 'Expirant');
+      const activeSyncNames = new Set(activeSyncContracts.map(c => normS(c.propertyName || c.bien || '')).filter(Boolean));
+      const activeSyncIds   = new Set(activeSyncContracts.map(c => c.propertyId).filter(v => v != null));
       const syncedProperties = (incoming.properties || state.properties || []).map(p => {
         if (p.isBuilding) return p;
-        const nameNorm = norm(p.name);
-        if (activePropNamesSync.has(nameNorm)) return { ...p, status: 'Loué' };
-        if (p.status === 'Loué') return { ...p, status: 'Disponible' };
-        return p;
+        const isActive = activeSyncNames.has(normS(p.name)) ||
+          activeSyncIds.has(p.id) || activeSyncIds.has(String(p.id)) || activeSyncIds.has(Number(p.id));
+        if (isActive) return { ...p, status: 'Loué' };
+        return p; // never force-reset — trust the stored status
       });
 
       return {
@@ -563,21 +557,18 @@ export function AppProvider({ children }) {
               };
             });
           }
-          // Reconcile property statuses with active contracts on every load
+          // Reconcile property statuses: SET to Loué when active contract found, never force-reset
           if (parsed.properties?.length && parsed.contracts?.length) {
-            const norm = s => (s || '').trim().toLowerCase();
-            const activePropNames = new Set(
-              parsed.contracts
-                .filter(c => c.status === 'Actif')
-                .map(c => norm(c.propertyName || c.bien || ''))
-                .filter(Boolean)
-            );
+            const normR = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+            const activeContracts = parsed.contracts.filter(c => c.status === 'Actif' || c.status === 'Expirant');
+            const activePropNames = new Set(activeContracts.map(c => normR(c.propertyName || c.bien || '')).filter(Boolean));
+            const activePropIds   = new Set(activeContracts.map(c => c.propertyId).filter(v => v != null));
             parsed.properties = parsed.properties.map(p => {
               if (p.isBuilding) return p;
-              const nameNorm = norm(p.name);
-              if (activePropNames.has(nameNorm)) return { ...p, status: 'Loué' };
-              if (p.status === 'Loué') return { ...p, status: 'Disponible' };
-              return p;
+              const isActive = activePropNames.has(normR(p.name)) ||
+                activePropIds.has(p.id) || activePropIds.has(String(p.id)) || activePropIds.has(Number(p.id));
+              if (isActive) return { ...p, status: 'Loué' };
+              return p; // never force-reset — trust the stored status
             });
           }
           if (!parsed.systemSettings) {
