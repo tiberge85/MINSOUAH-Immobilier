@@ -75,7 +75,12 @@ export default function OwnerPortal() {
   );
   const [activeTab, setActiveTab] = useState('overview');
 
-  const owner = owners.find(o => o.id === selectedId);
+  // Type-safe lookup: handle number/string mismatch from JSON storage or Firebase
+  const owner = owners.find(o =>
+    o.id === selectedId ||
+    Number(o.id) === Number(selectedId) ||
+    String(o.id) === String(selectedId)
+  );
 
   // Normalise: lowercase + strip diacritics so "Côte" === "cote", "RÉSIDENCE" === "residence"
   const norm = s => (s || '').trim().toLowerCase()
@@ -136,7 +141,7 @@ export default function OwnerPortal() {
 
   const ownerTickets = useMemo(() =>
     ownerProperties.length
-      ? tickets.filter(t => ownerProperties.some(p => p.name === t.property))
+      ? tickets.filter(t => ownerProperties.some(p => norm(p.name) === norm(t.property || '')))
       : [],
     [ownerProperties, tickets]
   );
@@ -150,32 +155,37 @@ export default function OwnerPortal() {
 
   /* ─── Analytics data ─────────────────────────────────────────── */
   const monthlyRevData = useMemo(() => {
-    // Rolling 12-month window so data always shows regardless of year
     const now = new Date();
+    const expectedMth = contractRevenue > 0 ? contractRevenue : propertyRentSum;
     return Array.from({ length: 12 }, (_, idx) => {
       const d = new Date(now.getFullYear(), now.getMonth() - (11 - idx), 1);
       const m = d.getMonth();
       const y = d.getFullYear();
+      const isFuture = d > now;
       const mois = d.toLocaleDateString('fr-FR', { month: 'short' });
+      const collected = ownerPayments
+        .filter(p => {
+          if (p.status !== 'Payé') return false;
+          const parsed = parsePaidDate(p.paidDate);
+          return parsed && parsed.month === m && parsed.year === y;
+        })
+        .reduce((s, p) => s + (p.amount || 0), 0);
+      const unpaid = ownerPayments
+        .filter(p => {
+          if (p.status === 'Payé') return false;
+          const parsed = parsePaidDate(p.dueDate) || parsePaidDate(p.paidDate);
+          return parsed && parsed.month === m && parsed.year === y;
+        })
+        .reduce((s, p) => s + (p.amount || 0), 0);
       return {
         mois,
-        revenus: ownerPayments
-          .filter(p => {
-            if (p.status !== 'Payé') return false;
-            const parsed = parsePaidDate(p.paidDate);
-            return parsed && parsed.month === m && parsed.year === y;
-          })
-          .reduce((s, p) => s + (p.amount || 0), 0),
-        impayés: ownerPayments
-          .filter(p => {
-            if (p.status === 'Payé') return false;
-            const parsed = parsePaidDate(p.dueDate) || parsePaidDate(p.paidDate);
-            return parsed && parsed.month === m && parsed.year === y;
-          })
-          .reduce((s, p) => s + (p.amount || 0), 0),
+        revenus: collected,
+        impayés: unpaid,
+        // Show expected revenue as dotted baseline — always populated if owner has properties
+        attendu: isFuture ? expectedMth : (collected === 0 && unpaid === 0 ? expectedMth : expectedMth),
       };
     });
-  }, [ownerPayments]);
+  }, [ownerPayments, contractRevenue, propertyRentSum]);
 
   const isActiveContract = c => c.status === 'Actif' || c.status === 'Expirant';
 
@@ -189,7 +199,6 @@ export default function OwnerPortal() {
   }, [ownerProperties, ownerContracts]);
 
   /* ─── KPIs ─────────────────────────────────────────────────────── */
-  // Occupancy based on property.status (most reliable) with contract as supplement
   const occupiedCount = ownerProperties.filter(p =>
     p.status === 'Loué' ||
     ownerContracts.some(c => isActiveContract(c) && (
@@ -197,18 +206,28 @@ export default function OwnerPortal() {
       (c.propertyId != null && (c.propertyId === p.id || Number(c.propertyId) === p.id))
     ))
   ).length;
+  const freeCount = ownerProperties.length - occupiedCount;
   const activeContractsCount = ownerContracts.filter(isActiveContract).length;
   const occupancyRate = ownerProperties.length > 0
     ? Math.round((occupiedCount / ownerProperties.length) * 100)
     : 0;
-  // Revenue: use active contracts if available, else sum rents of occupied properties
+
+  // Expected monthly revenue = active contract rents OR sum of all property rents (fallback)
   const contractRevenue = ownerContracts.filter(isActiveContract).reduce((s, c) => s + (c.rent || 0), 0);
-  const totalRevenue = contractRevenue > 0
-    ? contractRevenue
-    : ownerProperties.filter(p => p.status === 'Loué').reduce((s, p) => s + (p.rent || 0), 0);
+  const propertyRentSum = ownerProperties.reduce((s, p) => {
+    if (p.isBuilding) return s + (p.units || []).reduce((a, u) => a + (u.rent || 0), 0);
+    return s + (p.rent || 0);
+  }, 0);
+  const expectedMonthly = contractRevenue > 0 ? contractRevenue : propertyRentSum;
+  const expectedAnnual = expectedMonthly * 12;
+
+  // Collected: from payment records; fallback to expected if no records yet
   const collectedTotal = ownerPayments.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
-  const pendingAmount = ownerPayments.filter(p => p.status !== 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
-  const openTickets = ownerTickets.filter(t => t.status !== 'Résolu').length;
+  const pendingAmount  = ownerPayments.filter(p => p.status !== 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+  const openTickets    = ownerTickets.filter(t => t.status !== 'Résolu').length;
+
+  // For chart: show expected revenue as a baseline when no payment records
+  const hasPaymentData = ownerPayments.length > 0;
 
   /* ─── Owner selector ─────────────────────────────────────────── */
   if (!selectedId) {
@@ -328,14 +347,28 @@ export default function OwnerPortal() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-md">
-        <KpiCard label="Biens" value={ownerProperties.length} icon="apartment" color="bg-primary/10 text-primary" />
-        <KpiCard label="Occupation" value={`${occupancyRate}%`} sub={`${occupiedCount} loué(s)`} icon="group" color="bg-tertiary/10 text-tertiary" />
-        <KpiCard label="Revenu/mois" value={fmtK(totalRevenue) + 'k'} icon="trending_up" color="bg-green-100 text-green-700" />
-        <KpiCard label="Total encaissé" value={fmtK(collectedTotal) + 'k'} icon="check_circle" color="bg-primary/10 text-primary" />
-        <KpiCard label="Impayés" value={fmtK(pendingAmount) + 'k'} icon="warning" color={pendingAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700'} />
-        <KpiCard label="Tickets ouverts" value={openTickets} icon="engineering" color={openTickets > 0 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-md">
+        <KpiCard label="Total biens" value={ownerProperties.length} sub={`${occupiedCount} occupé(s) · ${freeCount} libre(s)`} icon="apartment" color="bg-primary/10 text-primary" />
+        <KpiCard label="Taux occupation" value={`${occupancyRate}%`} sub={`${activeContractsCount} contrat(s) actif(s)`} icon="donut_large" color={occupancyRate >= 80 ? 'bg-green-100 text-green-700' : occupancyRate >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-error/10 text-error'} />
+        <KpiCard label="Revenu attendu/mois" value={fmtK(expectedMonthly) + 'k'} sub={`Annuel : ${fmtK(expectedAnnual)}k`} icon="trending_up" color="bg-green-100 text-green-700" />
+        <KpiCard label="Encaissé" value={fmtK(collectedTotal) + 'k'} sub={hasPaymentData ? `${ownerPayments.filter(p=>p.status==='Payé').length} paiement(s)` : 'Aucun paiement enregistré'} icon="check_circle" color="bg-primary/10 text-primary" />
+        <KpiCard label="Impayés" value={fmtK(pendingAmount) + 'k'} sub={pendingAmount > 0 ? `${ownerPayments.filter(p=>p.status!=='Payé').length} en attente` : 'À jour'} icon="warning" color={pendingAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700'} />
+        <KpiCard label="Tickets ouverts" value={openTickets} sub={`${ownerTickets.length} total`} icon="engineering" color={openTickets > 0 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} />
       </div>
+
+      {/* Warning: no properties linked */}
+      {ownerProperties.length === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-md flex items-start gap-3">
+          <Icon name="link_off" size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold text-amber-800 text-body-sm">Aucun bien lié à ce propriétaire</p>
+            <p className="text-[12px] text-amber-700 mt-0.5">
+              Allez dans <strong>Gestion Locative → Propriétaires</strong>, modifiez ce propriétaire et cochez ses biens dans la liste.
+              Ou ouvrez chaque bien dans <strong>Patrimoine</strong> et renseignez le champ Propriétaire.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 bg-surface-container rounded-xl p-1 w-full overflow-x-auto">
@@ -360,21 +393,35 @@ export default function OwnerPortal() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
           {/* Monthly revenue bar chart */}
           <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20">
-            <h3 className="font-h3 text-h3 text-on-surface mb-1">Revenus Mensuels</h3>
-            <p className="text-body-sm text-on-surface-variant mb-lg">Encaissements sur 12 mois</p>
-            <div className="h-56">
+            <div className="flex items-start justify-between mb-1">
+              <div>
+                <h3 className="font-h3 text-h3 text-on-surface">Revenus Mensuels</h3>
+                <p className="text-body-sm text-on-surface-variant">Encaissements · 12 mois glissants</p>
+              </div>
+              {!hasPaymentData && (
+                <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">
+                  Revenus attendus estimés
+                </span>
+              )}
+            </div>
+            <div className="h-56 mt-lg">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={monthlyRevData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="4" stroke="#d2c5ae" strokeOpacity={0.3} vertical={false} />
                   <XAxis dataKey="mois" tick={{ fill: '#817662', fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: '#817662', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={36} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="revenus" name="Revenus" fill="#785a00" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="attendu" name="Attendu" fill="#d2c5ae" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="revenus" name="Encaissé" fill="#785a00" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="impayés" name="Impayés" fill="#ba1a1a" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <div className="flex gap-lg mt-sm pt-sm border-t border-outline-variant/20">
+            <div className="flex flex-wrap gap-md mt-sm pt-sm border-t border-outline-variant/20">
+              <div className="flex items-center gap-xs">
+                <div className="w-3 h-3 rounded-full bg-[#d2c5ae]" />
+                <span className="text-label-sm text-on-surface-variant">Attendu</span>
+              </div>
               <div className="flex items-center gap-xs">
                 <div className="w-3 h-3 rounded-full bg-primary" />
                 <span className="text-label-sm text-on-surface-variant">Encaissé</span>
@@ -423,6 +470,66 @@ export default function OwnerPortal() {
             <div className="mt-sm pt-sm border-t border-outline-variant/20 text-center">
               <p className="font-black text-h1 text-primary">{occupancyRate}%</p>
               <p className="text-label-sm text-on-surface-variant">taux d'occupation</p>
+            </div>
+          </div>
+
+          {/* Contrats actifs + résumé financier */}
+          <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md">
+            {/* Résumé financier */}
+            <div className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20">
+              <h4 className="font-bold text-on-surface mb-md flex items-center gap-2">
+                <Icon name="account_balance_wallet" size={16} className="text-primary" />
+                Résumé financier
+              </h4>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-body-sm text-on-surface-variant">Loyer attendu/mois</span>
+                  <span className="font-bold text-on-surface">{fmt(expectedMonthly)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-body-sm text-on-surface-variant">Encaissé (total)</span>
+                  <span className="font-bold text-green-700">{fmt(collectedTotal)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-body-sm text-on-surface-variant">Impayés</span>
+                  <span className={`font-bold ${pendingAmount > 0 ? 'text-error' : 'text-green-700'}`}>{fmt(pendingAmount)}</span>
+                </div>
+                <div className="border-t border-outline-variant/20 pt-2 flex justify-between items-center">
+                  <span className="text-body-sm text-on-surface-variant font-semibold">Revenu annuel estimé</span>
+                  <span className="font-black text-primary">{fmt(expectedAnnual)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Contrats actifs */}
+            <div className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 sm:col-span-1 lg:col-span-2">
+              <h4 className="font-bold text-on-surface mb-md flex items-center gap-2">
+                <Icon name="contract" size={16} className="text-primary" />
+                Contrats actifs ({activeContractsCount})
+              </h4>
+              {ownerContracts.filter(isActiveContract).length === 0 ? (
+                <div className="text-center py-4 text-on-surface-variant">
+                  <Icon name="contract" size={32} className="opacity-20 mb-2" />
+                  <p className="text-body-sm">Aucun contrat actif</p>
+                  {ownerProperties.length > 0 && (
+                    <p className="text-[11px] text-on-surface-variant mt-1">
+                      {occupiedCount} bien(s) marqué(s) "Loué" sans contrat enregistré
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {ownerContracts.filter(isActiveContract).map(c => (
+                    <div key={c.id} className="flex items-center justify-between py-2 border-b border-outline-variant/10 last:border-0">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-on-surface text-body-sm truncate">{c.propertyName || c.bien || '—'}</p>
+                        <p className="text-[11px] text-on-surface-variant truncate">{c.tenant} · Bail : {c.endDate || '—'}</p>
+                      </div>
+                      <span className="font-bold text-primary text-body-sm flex-shrink-0 ml-2">{fmtK(c.rent)}k</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

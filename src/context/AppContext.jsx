@@ -433,9 +433,11 @@ function reducer(state, action) {
       const incoming = payload;
       if (!incoming || !incoming.users?.length) return state;
       // Refuse to overwrite rich local data with sparse incoming data (prevents accidental wipe)
+      // Exception: if local state is demo data (props have small integer ids like 1–8), always accept real incoming
+      const localIsDemo = (state.properties || []).some(p => typeof p.id === 'number' && p.id < 100);
       const localCount  = (state.properties?.length  || 0) + (state.contracts?.length  || 0) + (state.owners?.length  || 0);
       const incomingCount = (incoming.properties?.length || 0) + (incoming.contracts?.length || 0) + (incoming.owners?.length || 0);
-      if (localCount > 0 && incomingCount < localCount * 0.5) {
+      if (!localIsDemo && localCount > 0 && incomingCount < localCount * 0.5) {
         // Incoming has less than half our data — only sync users, keep local entities
         const safeMergeUsers = (incoming.users || []).map(u => {
           const local = (state.users || []).find(lu => lu.email === u.email);

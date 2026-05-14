@@ -107,21 +107,21 @@ export default function Rental() {
     setModal(null);
   };
 
-  const offerCreateAccount = (name, email, role) => {
+  const offerCreateAccount = (name, email, role, personId = null) => {
     if (!email || !email.trim()) return;
     const emailLow = email.trim().toLowerCase();
     const alreadyExists = (state.users || []).some(u => u.email.toLowerCase() === emailLow);
     if (alreadyExists) return;
     const tmpPw = 'Bienv' + Math.random().toString(36).slice(2, 7);
-    setCreateAccountPrompt({ name, email: emailLow, role, tmpPw });
+    setCreateAccountPrompt({ name, email: emailLow, role, tmpPw, personId });
   };
 
   const confirmCreateAccount = () => {
     if (!createAccountPrompt) return;
-    const { name, email, role, tmpPw } = createAccountPrompt;
+    const { name, email, role, tmpPw, personId } = createAccountPrompt;
     const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     const colorMap = { TENANT: 'bg-secondary-container text-on-secondary-container', OWNER: 'bg-tertiary-container text-on-tertiary-container' };
-    dispatch({ type: 'ADD_USER', payload: { name, email, password: tmpPw, role, initials, color: colorMap[role] || 'bg-primary-container text-on-primary-container', firstLogin: true } });
+    dispatch({ type: 'ADD_USER', payload: { name, email, password: tmpPw, role, initials, color: colorMap[role] || 'bg-primary-container text-on-primary-container', firstLogin: true, personId: personId ?? null } });
     alert(`Compte créé pour ${name}\n\nEmail : ${email}\nMot de passe temporaire : ${tmpPw}\n\nCommuniquez ces identifiants à l'utilisateur.`);
     setCreateAccountPrompt(null);
   };
@@ -153,11 +153,12 @@ export default function Rental() {
     if (target) {
       dispatch({ type: 'UPDATE_OWNER', payload: { ...payload, id: target.id } });
       ids.forEach(pid => { const prop = properties.find(p => p.id === pid); if (prop) dispatch({ type: 'UPDATE_PROPERTY', payload: { ...prop, owner: oForm.name, ownerInitials: initials, ownerId: target.id } }); });
+      if (oForm.email) offerCreateAccount(oForm.name, oForm.email, 'OWNER', target.id);
     } else {
       const newOwnerId = Date.now();
       dispatch({ type: 'ADD_OWNER', payload: { ...payload, id: newOwnerId } });
       ids.forEach(pid => { const prop = properties.find(p => p.id === pid); if (prop) dispatch({ type: 'UPDATE_PROPERTY', payload: { ...prop, owner: oForm.name, ownerInitials: initials, ownerId: newOwnerId } }); });
-      if (oForm.email) offerCreateAccount(oForm.name, oForm.email, 'OWNER');
+      if (oForm.email) offerCreateAccount(oForm.name, oForm.email, 'OWNER', newOwnerId);
     }
     setModal(null);
   };
