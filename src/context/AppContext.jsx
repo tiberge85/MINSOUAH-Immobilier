@@ -647,7 +647,15 @@ export function AppProvider({ children }) {
     }
   );
 
-  const fbSyncRef = useRef({ isSyncing: false, saveTimer: null, pollInterval: null, configKey: '', lastSavedAt: 0 });
+  const fbSyncRef = useRef({
+    isSyncing: false,
+    saveTimer: null,
+    pollInterval: null,
+    eventSource: null,
+    configKey: '',
+    // Pre-seed from localStorage so SSE initial payload doesn't spuriously overwrite newer local data
+    lastSavedAt: (() => { try { return JSON.parse(localStorage.getItem('minsouah_v1') || '{}')._savedAt || 0; } catch { return 0; } })(),
+  });
 
   // ── On startup from localStorage: immediately push to Firebase before poll runs
   useEffect(() => {
@@ -716,7 +724,9 @@ export function AppProvider({ children }) {
     }
   }, [state]);
 
-  // ── Poll Firebase for remote changes ────────────────────────────────────────
+  // ── Real-time Firebase RTDB listener (SSE) + polling fallback ───────────────
+  // Firebase RTDB exposes Server-Sent Events at {url}.json — no SDK needed.
+  // SSE fires immediately on any change; polling is the fallback if SSE fails.
   useEffect(() => {
     const refs = fbSyncRef.current;
     const fb = state.systemSettings?.firebase;
@@ -724,25 +734,44 @@ export function AppProvider({ children }) {
     if (refs.configKey === newKey) return;
     refs.configKey = newKey;
 
+    if (refs.eventSource) { refs.eventSource.close(); refs.eventSource = null; }
     clearInterval(refs.pollInterval);
     if (!fb?.enabled || !fb?.databaseURL || !fb?.workspaceId) return;
 
-    const poll = async () => {
-      try {
-        const data = await fbFetch(fb.databaseURL, fb.workspaceId);
-        if (!data || !data.users?.length) return;
-        // Use refs.lastSavedAt instead of stale state._savedAt (closure capture)
-        if ((data._savedAt || 0) > refs.lastSavedAt) {
-          refs.lastSavedAt = data._savedAt || Date.now();
-          refs.isSyncing = true;
-          dispatch({ type: 'CLOUD_SYNC', payload: data });
-        }
-      } catch { /* network error — ignore */ }
+    const processIncoming = (data) => {
+      if (!data?.users?.length) return;
+      if ((data._savedAt || 0) > (refs.lastSavedAt || 0)) {
+        refs.lastSavedAt = data._savedAt;
+        refs.isSyncing = true;
+        dispatch({ type: 'CLOUD_SYNC', payload: data });
+      }
     };
 
-    poll();
-    refs.pollInterval = setInterval(poll, 5000);
-    return () => clearInterval(refs.pollInterval);
+    const startPollingFallback = () => {
+      refs.pollInterval = setInterval(
+        () => fbFetch(fb.databaseURL, fb.workspaceId).then(d => d && processIncoming(d)).catch(() => {}),
+        8000
+      );
+    };
+
+    const url = `${fb.databaseURL.replace(/\/$/, '')}/minsouah/${fb.workspaceId}.json`;
+    try {
+      const es = new EventSource(url);
+      refs.eventSource = es;
+      es.addEventListener('put', (e) => {
+        try { processIncoming(JSON.parse(e.data)?.data); } catch { /* ignore malformed */ }
+      });
+      es.onerror = () => {
+        if (refs.eventSource !== es) return; // already replaced
+        es.close(); refs.eventSource = null;
+        startPollingFallback(); // SSE unavailable → fall back to 8s polling
+      };
+    } catch { startPollingFallback(); }
+
+    return () => {
+      if (refs.eventSource) { refs.eventSource.close(); refs.eventSource = null; }
+      clearInterval(refs.pollInterval);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [`${state.systemSettings?.firebase?.enabled}-${state.systemSettings?.firebase?.databaseURL}-${state.systemSettings?.firebase?.workspaceId}`]);
 

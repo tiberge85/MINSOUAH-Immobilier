@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -74,6 +74,10 @@ export default function OwnerPortal() {
     isOwnerRole && currentUser?.personId ? currentUser.personId : null
   );
   const [activeTab, setActiveTab] = useState('overview');
+  const [lastSync, setLastSync] = useState(() => new Date());
+
+  // Update timestamp whenever any data changes (payments, contracts, properties, tickets)
+  useEffect(() => { setLastSync(new Date()); }, [payments, contracts, properties, tickets]);
 
   // Type-safe lookup: handle number/string mismatch from JSON storage or Firebase
   const owner = owners.find(o =>
@@ -242,16 +246,16 @@ export default function OwnerPortal() {
   if (!selectedId) {
     return (
       <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl max-w-5xl mx-auto">
-        <div className="flex items-center gap-md mb-lg">
+        <div className="flex items-center gap-3 mb-lg">
           <button
             onClick={() => navigate(-1)}
-            className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-surface-container border border-outline-variant text-on-surface-variant transition-colors"
+            className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-surface-container border border-outline-variant text-on-surface-variant transition-colors flex-shrink-0"
           >
             <Icon name="arrow_back" size={18} />
           </button>
           <div>
             <h1 className="font-h2 text-h2 text-on-surface font-bold">Portail Propriétaires</h1>
-            <p className="text-body-sm text-on-surface-variant">Tableau de bord analytique par propriétaire</p>
+            <p className="text-body-sm text-on-surface-variant">Sélectionnez un propriétaire</p>
           </div>
         </div>
 
@@ -335,34 +339,42 @@ export default function OwnerPortal() {
   return (
     <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl max-w-6xl mx-auto flex flex-col gap-gutter">
       {/* Header */}
-      <div className="flex items-center gap-md flex-wrap">
+      <div className="flex items-center gap-3 flex-wrap">
         {!isOwnerRole && (
           <button
             onClick={() => setSelectedId(null)}
-            className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-surface-container border border-outline-variant text-on-surface-variant transition-colors"
+            className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-surface-container border border-outline-variant text-on-surface-variant transition-colors flex-shrink-0"
           >
             <Icon name="arrow_back" size={18} />
           </button>
         )}
         {owner.avatar
-          ? <img src={owner.avatar} alt="" className="w-12 h-12 rounded-full object-cover flex-shrink-0" />
-          : <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold flex-shrink-0 ${owner.color || 'bg-primary-container text-on-primary-container'}`}>{owner.initials || owner.name?.[0]}</div>
+          ? <img src={owner.avatar} alt="" className="w-11 h-11 sm:w-14 sm:h-14 rounded-full object-cover flex-shrink-0" />
+          : <div className={`w-11 h-11 sm:w-14 sm:h-14 rounded-full flex items-center justify-center font-bold text-base sm:text-lg flex-shrink-0 ${owner.color || 'bg-primary-container text-on-primary-container'}`}>{owner.initials || owner.name?.[0]}</div>
         }
         <div className="flex-1 min-w-0">
-          <h1 className="font-h2 text-h2 text-on-surface font-bold truncate">{owner.name}</h1>
-          <p className="text-body-sm text-on-surface-variant">{ownerProperties.length} bien(s) — Taux d'occupation {occupancyRate}%</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-lg sm:font-h2 sm:text-h2 text-on-surface font-bold truncate leading-tight">{owner.name}</h1>
+            <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-semibold bg-green-50 border border-green-200 px-2 py-0.5 rounded-full flex-shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              Live
+            </span>
+          </div>
+          <p className="text-[11px] sm:text-body-sm text-on-surface-variant truncate">
+            {ownerProperties.length} bien(s) · {occupancyRate}% occupation · màj {lastSync.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </p>
         </div>
-        <Badge label={owner.status || 'Actif'} className="ml-auto" />
+        <Badge label={owner.status || 'Actif'} />
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-md">
-        <KpiCard label="Total biens" value={ownerProperties.length} sub={`${occupiedCount} occupé(s) · ${freeCount} libre(s)`} icon="apartment" color="bg-primary/10 text-primary" />
-        <KpiCard label="Taux occupation" value={`${occupancyRate}%`} sub={`${activeContractsCount} contrat(s) actif(s)`} icon="donut_large" color={occupancyRate >= 80 ? 'bg-green-100 text-green-700' : occupancyRate >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-error/10 text-error'} />
-        <KpiCard label="Revenu attendu/mois" value={fmtK(expectedMonthly) + 'k'} sub={`Annuel : ${fmtK(expectedAnnual)}k`} icon="trending_up" color="bg-green-100 text-green-700" />
-        <KpiCard label="Encaissé" value={fmtK(collectedTotal) + 'k'} sub={hasPaymentData ? `${ownerPayments.filter(p=>p.status==='Payé').length} paiement(s)` : 'Aucun paiement enregistré'} icon="check_circle" color="bg-primary/10 text-primary" />
-        <KpiCard label="Impayés" value={fmtK(pendingAmount) + 'k'} sub={pendingAmount > 0 ? `${ownerPayments.filter(p=>p.status!=='Payé').length} en attente` : 'À jour'} icon="warning" color={pendingAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700'} />
-        <KpiCard label="Tickets ouverts" value={openTickets} sub={`${ownerTickets.length} total`} icon="engineering" color={openTickets > 0 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} />
+      {/* KPIs — 3 cols on mobile, 6 on desktop */}
+      <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-md">
+        <KpiCard label="Biens" value={ownerProperties.length} sub={`${occupiedCount} occ · ${freeCount} libre`} icon="apartment" color="bg-primary/10 text-primary" />
+        <KpiCard label="Occupation" value={`${occupancyRate}%`} sub={`${activeContractsCount} contrat(s)`} icon="donut_large" color={occupancyRate >= 80 ? 'bg-green-100 text-green-700' : occupancyRate >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-error/10 text-error'} />
+        <KpiCard label="Loyer/mois" value={fmtK(expectedMonthly)+'k'} sub={`An: ${fmtK(expectedAnnual)}k`} icon="trending_up" color="bg-green-100 text-green-700" />
+        <KpiCard label="Encaissé" value={fmtK(collectedTotal)+'k'} sub={hasPaymentData ? `${ownerPayments.filter(p=>p.status==='Payé').length} paiem.` : 'Aucun'} icon="check_circle" color="bg-primary/10 text-primary" />
+        <KpiCard label="Impayés" value={fmtK(pendingAmount)+'k'} sub={pendingAmount > 0 ? `${ownerPayments.filter(p=>p.status!=='Payé').length} en att.` : 'À jour'} icon="warning" color={pendingAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700'} />
+        <KpiCard label="Tickets" value={openTickets} sub={`${ownerTickets.length} total`} icon="engineering" color={openTickets > 0 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} />
       </div>
 
       {/* Warning: no properties linked */}
@@ -379,22 +391,24 @@ export default function OwnerPortal() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-surface-container rounded-xl p-1 w-full overflow-x-auto">
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 whitespace-nowrap py-2 px-4 rounded-lg text-label-sm font-bold transition-all flex-1 justify-center ${
-              activeTab === tab.id
-                ? 'bg-surface-container-lowest shadow-sm text-primary'
-                : 'text-on-surface-variant hover:text-on-surface'
-            }`}
-          >
-            <Icon name={tab.icon} size={16} filled={activeTab === tab.id} />
-            <span className="hidden sm:inline">{tab.label}</span>
-          </button>
-        ))}
+      {/* Tabs — scrollable on mobile so all labels always visible */}
+      <div className="overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0 no-scrollbar">
+        <div className="flex gap-1 bg-surface-container rounded-xl p-1 min-w-max sm:min-w-0 sm:w-full">
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 whitespace-nowrap py-2 px-3 sm:px-4 rounded-lg text-[11px] sm:text-label-sm font-bold transition-all sm:flex-1 justify-center ${
+                activeTab === tab.id
+                  ? 'bg-surface-container-lowest shadow-sm text-primary'
+                  : 'text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              <Icon name={tab.icon} size={14} filled={activeTab === tab.id} />
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── OVERVIEW ─────────────────────────────────────────────── */}
@@ -413,7 +427,7 @@ export default function OwnerPortal() {
                 </span>
               )}
             </div>
-            <div className="h-56 mt-lg">
+            <div className="h-44 sm:h-56 mt-lg">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={monthlyRevData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="4" stroke="#d2c5ae" strokeOpacity={0.3} vertical={false} />
@@ -648,7 +662,7 @@ export default function OwnerPortal() {
           <div className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20">
             <h3 className="font-h3 text-h3 text-on-surface mb-1">Cashflow cumulatif</h3>
             <p className="text-body-sm text-on-surface-variant mb-lg">Revenus encaissés sur l'année</p>
-            <div className="h-56">
+            <div className="h-40 sm:h-56">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={monthlyRevData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="4" stroke="#d2c5ae" strokeOpacity={0.3} vertical={false} />
