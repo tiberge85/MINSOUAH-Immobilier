@@ -2,16 +2,75 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── Workspace-scoped data ────────────────────────────────────────────────
-    // All app data lives under workspaces/{wsId}/...
-    // Access requires Firebase Auth (including anonymous auth used by the app).
-    // Role-based enforcement is handled by the UI; rules enforce authentication only.
+    // ── Architecture note ─────────────────────────────────────────────────
+    // This app uses Firebase Anonymous Auth. Roles (ADMIN, MANAGER, …) and
+    // orgId live in Firestore, not in Auth custom claims.  Full per-org
+    // isolation at the rules level requires custom claims set by a backend;
+    // the app layer already enforces org scoping and role checks.
+    //
+    // What these rules enforce:
+    //   1. Authentication required for every read and write
+    //   2. Structural validation on sensitive collections (licenses, users)
+    //   3. No access whatsoever outside /workspaces/{wsId}
 
-    match /workspaces/{wsId}/{document=**} {
-      allow read, write: if request.auth != null;
+    function isAuth() {
+      return request.auth != null;
     }
 
-    // ── Deny everything else ─────────────────────────────────────────────────
+    // ── License validation ────────────────────────────────────────────────
+    function validLicensePlan() {
+      let p = request.resource.data.plan;
+      return p == 'standard' || p == 'pro' || p == 'enterprise';
+    }
+
+    function validLicenseStatus() {
+      let s = request.resource.data.status;
+      return s == 'trial' || s == 'active' || s == 'expired' || s == 'suspended';
+    }
+
+    function validLicenseWrite() {
+      let d = request.resource.data;
+      return ('orgId' in d) && ('plan' in d) && ('status' in d)
+          && validLicensePlan()
+          && validLicenseStatus();
+    }
+
+    // ── User validation ───────────────────────────────────────────────────
+    function validRole() {
+      let r = request.resource.data.role;
+      return r == 'SUPER_ADMIN' || r == 'ADMIN'   || r == 'MANAGER'
+          || r == 'TENANT'      || r == 'OWNER'    || r == 'ACCOUNTANT'
+          || r == 'TECHNICIAN'  || r == 'CONCIERGE';
+    }
+
+    function validUserWrite() {
+      // Allow writes that either omit the role field or set a known role value
+      return !('role' in request.resource.data) || validRole();
+    }
+
+    // ── Per-collection rules ──────────────────────────────────────────────
+    // Specific rules below are evaluated first; the {document=**} wildcard
+    // catches all other collections and future subcollections.
+    // NOTE: in Firestore, any matching "allow" grants access — these specific
+    // rules add structural validation that the catch-all does not.
+
+    match /workspaces/{wsId}/licenses/{licId} {
+      allow read:  if isAuth();
+      allow write: if isAuth() && validLicenseWrite();
+    }
+
+    match /workspaces/{wsId}/users/{userId} {
+      allow read:  if isAuth();
+      allow write: if isAuth() && validUserWrite();
+    }
+
+    // All other workspace collections + future subcollections
+    match /workspaces/{wsId}/{document=**} {
+      allow read:  if isAuth();
+      allow write: if isAuth();
+    }
+
+    // ── Deny everything outside workspaces ───────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }

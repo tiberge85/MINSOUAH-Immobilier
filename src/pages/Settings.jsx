@@ -6,11 +6,14 @@ import * as XLSX from 'xlsx';
 import { hashPwd, verifyPwd } from '../lib/auth';
 import { auth } from '../lib/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { getPlan } from '../lib/planLimits';
+import { getDaysRemaining, getLicenseStatusInfo } from '../lib/licenses';
 
 const ALL_TABS = [
   { key: 'profile',       label: 'Mon Profil',      icon: 'account_circle',  roles: null },
   { key: 'org',           label: 'Organisation',    icon: 'business',        roles: ['ADMIN', 'MANAGER'] },
   { key: 'organizations', label: 'Organisations',   icon: 'corporate_fare',  roles: ['ADMIN'] },
+  { key: 'plan',          label: 'Plan & Licence',  icon: 'verified',        roles: ['ADMIN'] },
   { key: 'users',         label: 'Utilisateurs',    icon: 'group',           roles: ['ADMIN'] },
   { key: 'notif',         label: 'Notifications',   icon: 'notifications',   roles: null },
   { key: 'data',          label: 'Données',         icon: 'database',        roles: ['ADMIN', 'MANAGER'] },
@@ -485,6 +488,11 @@ export default function Settings() {
           {/* ══════════ ORGANISATIONS ══════════ */}
           {tab === 'organizations' && (
             <OrganizationsTab state={state} dispatch={dispatch} showToast={showToast} />
+          )}
+
+          {/* ══════════ PLAN & LICENCE ══════════ */}
+          {tab === 'plan' && (
+            <PlanLicenceTab state={state} />
           )}
 
           {/* ══════════ UTILISATEURS ══════════ */}
@@ -1777,6 +1785,176 @@ function OrganizationsTab({ state, dispatch, showToast }) {
               <button onClick={() => setConfirmDeletion(null)} className="flex-1 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors">Annuler</button>
               <button onClick={confirmDel} className="flex-1 py-2.5 text-sm font-bold text-white bg-error rounded-xl hover:bg-error/90 transition-colors">Supprimer</button>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── PlanLicenceTab ─────────────────────────────────────────────────────────── */
+const PLAN_COLORS = {
+  standard:   { bg: 'bg-blue-50',   border: 'border-blue-200',   text: 'text-blue-700',   badge: 'bg-blue-100 text-blue-800' },
+  pro:        { bg: 'bg-amber-50',  border: 'border-amber-200',  text: 'text-amber-700',  badge: 'bg-amber-100 text-amber-800' },
+  enterprise: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700', badge: 'bg-purple-100 text-purple-800' },
+};
+
+const FEATURE_LIST = [
+  { key: 'advancedExport',   icon: 'picture_as_pdf',    label: 'Export PDF avancé' },
+  { key: 'apiAccess',        icon: 'api',               label: 'Accès API' },
+  { key: 'multiOrg',         icon: 'corporate_fare',    label: 'Multi-organisations' },
+  { key: 'prioritySupport',  icon: 'support_agent',     label: 'Support prioritaire' },
+];
+
+function UsageGauge({ label, icon, current, max }) {
+  const isUnlimited = max === Infinity || max == null;
+  const pct = isUnlimited ? 0 : Math.min(100, Math.round((current / max) * 100));
+  const critical = !isUnlimited && pct >= 90;
+  const warn = !isUnlimited && pct >= 70;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between text-sm">
+        <span className="flex items-center gap-1.5 font-medium text-on-surface">
+          <Icon name={icon} size={15} className="text-on-surface-variant" />
+          {label}
+        </span>
+        <span className={`font-bold text-xs ${critical ? 'text-error' : warn ? 'text-amber-600' : 'text-on-surface-variant'}`}>
+          {current} / {isUnlimited ? '∞' : max}
+        </span>
+      </div>
+      {!isUnlimited && (
+        <div className="h-2 rounded-full bg-surface-container-high overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${critical ? 'bg-error' : warn ? 'bg-amber-400' : 'bg-primary'}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+      {isUnlimited && (
+        <div className="h-2 rounded-full bg-green-100 overflow-hidden">
+          <div className="h-full w-full bg-green-400 opacity-40 rounded-full" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PlanLicenceTab({ state }) {
+  const orgId = state.currentUser?.orgId || 'default';
+  const license = (state.licenses || []).find(l =>
+    l.orgId === orgId && (l.status === 'trial' || l.status === 'active')
+  ) || (state.licenses || []).find(l => l.orgId === orgId);
+
+  const planId = license?.plan || 'pro';
+  const plan = getPlan(planId);
+  const statusInfo = getLicenseStatusInfo(license);
+  const daysLeft = getDaysRemaining(license);
+  const pc = PLAN_COLORS[planId] || PLAN_COLORS.pro;
+
+  const userCount   = (state.users       || []).filter(u => u.orgId === orgId && u.role !== 'SUPER_ADMIN').length;
+  const propCount   = (state.properties  || []).filter(p => p.orgId === orgId).length;
+  const tenantCount = (state.tenants     || []).filter(t => t.orgId === orgId).length;
+
+  return (
+    <div className="flex flex-col gap-4">
+
+      {/* ── Licence card ── */}
+      <div className={`rounded-2xl border p-5 ${pc.bg} ${pc.border}`}>
+        <div className="flex items-start justify-between flex-wrap gap-3 mb-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Plan actuel</p>
+            <h3 className={`text-2xl font-black capitalize ${pc.text}`}>{planId}</h3>
+            <p className="text-sm text-on-surface-variant mt-0.5">
+              {plan.monthlyPrice
+                ? `${plan.monthlyPrice.toLocaleString('fr-FR')} XOF / mois`
+                : 'Sur devis'}
+            </p>
+          </div>
+          <span className={`px-3 py-1.5 rounded-full text-sm font-bold flex items-center gap-1.5 ${statusInfo.color}`}>
+            <Icon name={statusInfo.icon} size={14} />
+            {statusInfo.label}
+          </span>
+        </div>
+
+        {license?.key && (
+          <div className="flex items-center gap-2 bg-white/60 rounded-xl px-3 py-2 mb-2">
+            <Icon name="key" size={14} className="text-on-surface-variant flex-shrink-0" />
+            <code className="text-xs font-mono text-on-surface flex-1 select-all break-all">{license.key}</code>
+          </div>
+        )}
+
+        {daysLeft !== null && (
+          <div className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+            <Icon name="schedule" size={13} />
+            {license?.status === 'trial' ? "Essai · " : "Expire dans "}
+            <strong className={daysLeft <= 7 ? 'text-error' : daysLeft <= 30 ? 'text-amber-600' : 'text-on-surface'}>
+              {daysLeft} jour{daysLeft !== 1 ? 's' : ''}
+            </strong>
+            {license?.expiresAt && (
+              <span className="ml-1">· {new Date(license.expiresAt).toLocaleDateString('fr-FR')}</span>
+            )}
+          </div>
+        )}
+
+        {!license && (
+          <p className="text-sm text-on-surface-variant italic">Aucune licence trouvée pour cette organisation.</p>
+        )}
+      </div>
+
+      {/* ── Usage gauges ── */}
+      <div className="bg-surface rounded-2xl border border-outline-variant/20 p-5">
+        <h3 className="font-bold text-on-surface mb-4 flex items-center gap-2">
+          <Icon name="bar_chart" size={18} /> Utilisation des ressources
+        </h3>
+        <div className="flex flex-col gap-4">
+          <UsageGauge label="Utilisateurs"       icon="group"  current={userCount}   max={plan.maxUsers} />
+          <UsageGauge label="Biens immobiliers"  icon="domain" current={propCount}   max={plan.maxProperties} />
+          <UsageGauge label="Locataires"         icon="person" current={tenantCount} max={plan.maxTenants} />
+        </div>
+      </div>
+
+      {/* ── Features ── */}
+      <div className="bg-surface rounded-2xl border border-outline-variant/20 p-5">
+        <h3 className="font-bold text-on-surface mb-3 flex items-center gap-2">
+          <Icon name="star" size={18} /> Fonctionnalités du plan
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {FEATURE_LIST.map(({ key, icon, label }) => {
+            const included = plan.features?.[key];
+            return (
+              <div key={key} className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium ${
+                included
+                  ? 'bg-green-50 text-green-700'
+                  : 'bg-surface-container text-on-surface-variant/50'
+              }`}>
+                <Icon name={included ? 'check_circle' : 'cancel'} size={16} filled={included} className={included ? 'text-green-600' : 'text-on-surface-variant/40'} />
+                {label}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Upgrade CTA ── */}
+      {planId !== 'enterprise' && (
+        <div className="bg-gradient-to-br from-primary/5 to-secondary/10 border border-primary/20 rounded-2xl p-5">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div>
+              <p className="font-bold text-on-surface mb-1">
+                {planId === 'standard' ? 'Passer au plan Pro' : 'Passer au plan Enterprise'}
+              </p>
+              <p className="text-sm text-on-surface-variant">
+                {planId === 'standard'
+                  ? '5 utilisateurs · 150 biens · 1 000 locataires · Export PDF avancé'
+                  : 'Ressources illimitées · API · Support prioritaire dédié'}
+              </p>
+            </div>
+            <a
+              href="mailto:contact@minsouah.ci?subject=Demande upgrade plan Minsouah"
+              className="px-4 py-2 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors flex items-center gap-2 flex-shrink-0"
+            >
+              <Icon name="upgrade" size={15} /> Mettre à niveau
+            </a>
           </div>
         </div>
       )}
