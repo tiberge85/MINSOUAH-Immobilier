@@ -176,6 +176,31 @@ export default function OwnerPortal() {
 
   const isActiveContract = c => c.status === 'Actif' || c.status === 'Expirant';
 
+  /* ─── Period filter ──────────────────────────────────────────── */
+  const [period, setPeriod] = useState({ from: '', to: '' });
+  const hasPeriod = period.from || period.to;
+
+  const periodPayments = useMemo(() => {
+    if (!hasPeriod) return ownerPayments;
+    const from = period.from ? new Date(period.from) : null;
+    const to   = period.to   ? new Date(period.to + 'T23:59:59') : null;
+    return ownerPayments.filter(p => {
+      const ref = p.paidDate || p.dueDate || p.createdAt;
+      if (!ref) return true;
+      let d;
+      if (ref.includes('/')) {
+        const [dd, mm, yyyy] = ref.split('/').map(Number);
+        d = new Date(yyyy, mm - 1, dd);
+      } else {
+        d = new Date(ref);
+      }
+      if (isNaN(d)) return true;
+      if (from && d < from) return false;
+      if (to   && d > to  ) return false;
+      return true;
+    });
+  }, [ownerPayments, period, hasPeriod]);
+
   /* ─── KPIs ─────────────────────────────────────────────────────── */
   const occupiedCount = ownerProperties.filter(p =>
     p.status === 'Loué' ||
@@ -241,10 +266,14 @@ export default function OwnerPortal() {
     ].filter(d => d.value > 0);
   }, [ownerProperties, ownerContracts]);
 
-  // Collected: from payment records; fallback to expected if no records yet
-  const collectedTotal = ownerPayments.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
-  const pendingAmount  = ownerPayments.filter(p => p.status !== 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+  // Collected: filtered by period when set
+  const collectedTotal = periodPayments.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+  const pendingAmount  = periodPayments.filter(p => p.status !== 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
   const openTickets    = ownerTickets.filter(t => t.status !== 'Résolu').length;
+
+  // Taux de recouvrement: collected / (collected + pending) * 100
+  const totalBilled = collectedTotal + pendingAmount;
+  const recoveryRate = totalBilled > 0 ? Math.round((collectedTotal / totalBilled) * 100) : null;
 
   // For chart: show expected revenue as a baseline when no payment records
   const hasPaymentData = ownerPayments.length > 0;
@@ -374,13 +403,43 @@ export default function OwnerPortal() {
         <Badge label={owner.status || 'Actif'} />
       </div>
 
-      {/* KPIs — 3 cols on mobile, 6 on desktop */}
-      <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-md">
+      {/* Period filter */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 bg-surface-container rounded-xl px-3 py-2 border border-outline-variant/30">
+          <Icon name="date_range" size={14} className="text-on-surface-variant flex-shrink-0" />
+          <input type="date" value={period.from} onChange={e => setPeriod(p => ({ ...p, from: e.target.value }))}
+            className="text-xs bg-transparent outline-none text-on-surface w-32" />
+          <span className="text-on-surface-variant text-xs">→</span>
+          <input type="date" value={period.to} onChange={e => setPeriod(p => ({ ...p, to: e.target.value }))}
+            className="text-xs bg-transparent outline-none text-on-surface w-32" />
+        </div>
+        {hasPeriod && (
+          <button onClick={() => setPeriod({ from: '', to: '' })}
+            className="flex items-center gap-1 text-xs text-primary hover:text-primary/70 bg-primary/10 rounded-xl px-3 py-2 font-semibold transition-colors">
+            <Icon name="close" size={12} />Effacer la période
+          </button>
+        )}
+        {hasPeriod && (
+          <span className="text-xs text-on-surface-variant bg-amber-50 border border-amber-200 rounded-xl px-2 py-1">
+            Filtré · {periodPayments.length} paiements
+          </span>
+        )}
+      </div>
+
+      {/* KPIs — 3 cols on mobile, 4 on lg then 7 */}
+      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-md">
         <KpiCard label="Biens" value={ownerProperties.length} sub={`${occupiedCount} occ · ${freeCount} libre`} icon="apartment" color="bg-primary/10 text-primary" />
         <KpiCard label="Occupation" value={`${occupancyRate}%`} sub={`${activeContractsCount} contrat(s)`} icon="donut_large" color={occupancyRate >= 80 ? 'bg-green-100 text-green-700' : occupancyRate >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-error/10 text-error'} />
         <KpiCard label="Loyer/mois" value={fmtK(expectedMonthly)+'k'} sub={`An: ${fmtK(expectedAnnual)}k`} icon="trending_up" color="bg-green-100 text-green-700" />
-        <KpiCard label="Encaissé" value={fmtK(collectedTotal)+'k'} sub={hasPaymentData ? `${ownerPayments.filter(p=>p.status==='Payé').length} paiem.` : 'Aucun'} icon="check_circle" color="bg-primary/10 text-primary" />
-        <KpiCard label="Impayés" value={fmtK(pendingAmount)+'k'} sub={pendingAmount > 0 ? `${ownerPayments.filter(p=>p.status!=='Payé').length} en att.` : 'À jour'} icon="warning" color={pendingAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700'} />
+        <KpiCard label="Encaissé" value={fmtK(collectedTotal)+'k'} sub={`${periodPayments.filter(p=>p.status==='Payé').length} paiem.`} icon="check_circle" color="bg-primary/10 text-primary" />
+        <KpiCard label="Impayés" value={fmtK(pendingAmount)+'k'} sub={pendingAmount > 0 ? `${periodPayments.filter(p=>p.status!=='Payé').length} en att.` : 'À jour'} icon="warning" color={pendingAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700'} />
+        <KpiCard
+          label="Recouvrement"
+          value={recoveryRate !== null ? `${recoveryRate}%` : '—'}
+          sub={recoveryRate !== null ? (recoveryRate >= 80 ? 'Excellent' : recoveryRate >= 60 ? 'Moyen' : 'Faible') : 'Aucune donnée'}
+          icon="percent"
+          color={recoveryRate === null ? 'bg-surface-container text-on-surface-variant' : recoveryRate >= 80 ? 'bg-green-100 text-green-700' : recoveryRate >= 60 ? 'bg-amber-100 text-amber-700' : 'bg-error/10 text-error'}
+        />
         <KpiCard label="Tickets" value={openTickets} sub={`${ownerTickets.length} total`} icon="engineering" color={openTickets > 0 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} />
       </div>
 

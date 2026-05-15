@@ -17,9 +17,11 @@ const UNIT_STATUS_COLORS = {
 };
 const FLOOR_OPTIONS = ['RDC', '1er étage', '2ème étage', '3ème étage', '4ème étage', '5ème étage', '6ème étage+'];
 const EMPTY_UNIT = { number: '', floor: 'RDC', surface: '', rooms: '', rent: '', status: 'Disponible' };
+const PROPERTY_STATES = ['Bon état', 'À rénover', 'Neuf', 'En travaux'];
 const EMPTY_FORM = {
   name: '', address: '', type: 'Appartement', status: 'Disponible',
-  rent: '', surface: '', rooms: '', owner: '', ownerInitials: '', image: '',
+  rent: '', deposit: '', surface: '', rooms: '', owner: '', ownerInitials: '', image: '',
+  propertyState: 'Bon état', description: '',
   isBuilding: false, units: [],
 };
 
@@ -160,7 +162,7 @@ export default function Assets() {
   // ── Gestion formulaire ─────────────────────────────────────────────────────
   const openAdd = () => { setForm(EMPTY_FORM); setStep(1); setAddingUnit(false); setModal('add'); };
   const openEdit = (p) => {
-    setForm({ ...p, rent: String(p.rent), surface: String(p.surface), rooms: String(p.rooms), units: p.units ? [...p.units] : [] });
+    setForm({ ...p, rent: String(p.rent), deposit: String(p.deposit || ''), surface: String(p.surface), rooms: String(p.rooms), units: p.units ? [...p.units] : [] });
     setStep(1); setAddingUnit(false); setTarget(p); setModal('edit');
   };
 
@@ -215,6 +217,7 @@ export default function Assets() {
     const payload = {
       ...form,
       rent: form.isBuilding ? 0 : (Number(form.rent) || 0),
+      deposit: Number(form.deposit) || 0,
       surface: Number(form.surface) || 0,
       rooms: Number(form.rooms) || 0,
       ownerId: preOwnerId,
@@ -416,11 +419,31 @@ export default function Assets() {
                         className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
                     </div>
                     {!form.isBuilding && (
-                      <div>
-                        <label className="text-sm font-medium text-on-surface-variant mb-1 block">Loyer mensuel (FCFA) *</label>
-                        <input name="rent" type="number" value={form.rent} onChange={handleChange} placeholder="150000"
-                          className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                      </div>
+                      <>
+                        <div>
+                          <label className="text-sm font-medium text-on-surface-variant mb-1 block">Loyer mensuel (FCFA) *</label>
+                          <input name="rent" type="number" value={form.rent} onChange={handleChange} placeholder="150000"
+                            className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium text-on-surface-variant mb-1 block">Dépôt de garantie / Caution (FCFA)</label>
+                          <input name="deposit" type="number" value={form.deposit} onChange={handleChange} placeholder="300000"
+                            className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          {form.rent && !form.deposit && (
+                            <button type="button" onClick={() => setForm(f => ({ ...f, deposit: String(2 * Number(f.rent)) }))}
+                              className="mt-1 text-xs text-primary hover:underline">
+                              Suggérer 2 mois = {(2 * Number(form.rent || 0)).toLocaleString('fr-CI')} FCFA
+                            </button>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium text-on-surface-variant mb-1 block">État du bien</label>
+                          <select name="propertyState" value={form.propertyState || 'Bon état'} onChange={handleChange}
+                            className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30">
+                            {PROPERTY_STATES.map(s => <option key={s}>{s}</option>)}
+                          </select>
+                        </div>
+                      </>
                     )}
                     <div>
                       <label className="text-sm font-medium text-on-surface-variant mb-1 block">Photo du bien</label>
@@ -470,11 +493,20 @@ export default function Assets() {
                         className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
                     </div>
                   </div>
+                  <div>
+                    <label className="text-sm font-medium text-on-surface-variant mb-1 block">Description (optionnel)</label>
+                    <textarea name="description" value={form.description || ''} onChange={handleChange} rows={2} placeholder="Vue sur mer, parking inclus…"
+                      className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none text-sm" />
+                  </div>
                   {form.name && (
                     <div className="bg-surface-container rounded-xl p-4 text-sm">
-                      <p className="font-bold text-on-surface mb-2">{form.name}</p>
-                      <p className="text-on-surface-variant">{form.address}</p>
-                      <p className="text-primary font-bold mt-1">{fmt(form.rent)}/mois</p>
+                      <p className="font-bold text-on-surface mb-1">{form.name}</p>
+                      <p className="text-on-surface-variant text-xs">{form.address}</p>
+                      <div className="flex gap-4 mt-2">
+                        <span className="text-primary font-bold">{fmt(form.rent)}/mois</span>
+                        {form.deposit && <span className="text-on-surface-variant">Caution : {fmt(form.deposit)}</span>}
+                        {form.propertyState && <span className="text-xs bg-surface-container-high px-2 py-0.5 rounded-full">{form.propertyState}</span>}
+                      </div>
                     </div>
                   )}
                 </div>

@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc,
-  writeBatch, getDocs,
+  writeBatch, getDocs, query, where,
 } from 'firebase/firestore';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
@@ -32,6 +32,7 @@ export const DEFAULT_ADMIN = {
   email: 'admin@minsouah.ci',
   password: 'admin123',
   role: 'ADMIN',
+  orgId: 'default',
   name: 'Administrateur',
   initials: 'AD',
   color: 'bg-primary text-on-primary',
@@ -42,6 +43,14 @@ export const DEFAULT_ADMIN = {
   lastLogin: null,
   failedAttempts: 0,
   lockedUntil: null,
+};
+
+export const DEFAULT_ORGANIZATION = {
+  id: 'default',
+  name: 'Minsouah Immobilier',
+  createdAt: new Date().toISOString(),
+  plan: 'standard',
+  active: true,
 };
 
 // ── Default settings ───────────────────────────────────────────────────────────
@@ -104,7 +113,7 @@ export function AppProvider({ children }) {
   const [state, setState] = useState({
     properties: [], contracts: [], tenants: [], owners: [],
     payments: [], transactions: [], tickets: [], inspections: [],
-    conversations: [], users: [], activityLog: [], revenueData: [],
+    conversations: [], users: [], organizations: [], activityLog: [], revenueData: [],
     currentUser: null,
     orgSettings: DEFAULT_ORG,
     systemSettings: DEFAULT_SYSTEM,
@@ -118,7 +127,7 @@ export function AppProvider({ children }) {
 
   // Track which essential collections have received their first snapshot
   const loadedRef = useRef(new Set());
-  const ESSENTIAL = ['users', 'properties', 'contracts', 'tenants', 'payments', 'owners'];
+  const ESSENTIAL = ['users', 'organizations', 'properties', 'contracts', 'tenants', 'payments', 'owners'];
 
   const checkBootstrap = useCallback(() => {
     if (ESSENTIAL.every((c) => loadedRef.current.has(c))) {
@@ -154,10 +163,23 @@ export function AppProvider({ children }) {
         // Auth is ready — open all Firestore listeners
         const unsubs = [];
 
-        const sub = (colName) => {
+        // Derive orgId from session for non-admin filtering
+        let sessionOrgId = null;
+        try {
+          const saved = localStorage.getItem(SESSION_KEY);
+          if (saved) {
+            const u = JSON.parse(saved);
+            if (u?.role !== 'ADMIN') sessionOrgId = u?.orgId || null;
+          }
+        } catch { /* ignore */ }
+
+        const sub = (colName, orgFiltered = false) => {
+          const q = (orgFiltered && sessionOrgId)
+            ? query(wsCol(colName), where('orgId', '==', sessionOrgId))
+            : wsCol(colName);
           unsubs.push(
             onSnapshot(
-              wsCol(colName),
+              q,
               (snap) => {
                 const docs = snap.docs.map((d) => d.data());
                 setState((s) => ({ ...s, [colName]: docs }));
@@ -177,8 +199,12 @@ export function AppProvider({ children }) {
           );
         };
 
+        // organizations: always unfiltered (admins manage all orgs)
+        sub('organizations');
+        sub('users');
+        // entity collections: filtered by orgId for non-admin users
         ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
-          'tickets', 'inspections', 'conversations', 'users'].forEach(sub);
+          'tickets', 'inspections', 'conversations'].forEach(c => sub(c, true));
 
         // Activity log
         unsubs.push(
@@ -224,7 +250,7 @@ export function AppProvider({ children }) {
     };
   }, [checkBootstrap]);
 
-  // ── 5. Seed default admin on first run (empty users collection) ────────────
+  // ── 5. Seed default admin + organization on first run ────────────────────
   useEffect(() => {
     if (state._bootstrapping) return;
     if (state.users.length === 0) {
@@ -232,12 +258,16 @@ export function AppProvider({ children }) {
         setDoc(wsDoc('users', DEFAULT_ADMIN.id), { ...DEFAULT_ADMIN, password: hashed }).catch(console.error);
       });
     }
-  }, [state._bootstrapping, state.users.length]);
+    if (state.organizations.length === 0) {
+      setDoc(wsDoc('organizations', DEFAULT_ORGANIZATION.id), DEFAULT_ORGANIZATION).catch(console.error);
+    }
+  }, [state._bootstrapping, state.users.length, state.organizations.length]);
 
   // ── 6. dispatch → Firestore writes ────────────────────────────────────────
   const dispatch = useCallback(async (action) => {
     const { type, payload } = action;
     const st = stateRef.current;
+    const orgId = st.currentUser?.orgId || 'default';
 
     const logActivity = async (details, actionType = 'ACTION') => {
       const id = Date.now();
@@ -258,6 +288,7 @@ export function AppProvider({ children }) {
             id: u.id, role: u.role, name: u.name, initials: u.initials,
             email: u.email, color: u.color, avatar: u.avatar || null,
             personId: u.personId || null, firstLogin: u.firstLogin || false,
+            orgId: u.orgId || 'default',
           };
           try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch { /* quota */ }
           setState((s) => ({ ...s, currentUser: session }));
@@ -272,7 +303,7 @@ export function AppProvider({ children }) {
         // ── PROPERTIES ────────────────────────────────────────────────────────
         case 'ADD_PROPERTY': {
           const id = Date.now();
-          await setDoc(wsDoc('properties', id), { ...payload, id, createdAt: new Date().toISOString() });
+          await setDoc(wsDoc('properties', id), { ...payload, id, orgId, createdAt: new Date().toISOString() });
           break;
         }
         case 'UPDATE_PROPERTY':
@@ -285,7 +316,7 @@ export function AppProvider({ children }) {
         // ── CONTRACTS ─────────────────────────────────────────────────────────
         case 'ADD_CONTRACT': {
           const id = Date.now();
-          const contract = { ...payload, id, createdAt: new Date().toISOString() };
+          const contract = { ...payload, id, orgId, createdAt: new Date().toISOString() };
           await setDoc(wsDoc('contracts', id), contract);
           await pushPropertyStatus(contract, st.properties);
           break;
@@ -305,7 +336,7 @@ export function AppProvider({ children }) {
         // ── TENANTS ───────────────────────────────────────────────────────────
         case 'ADD_TENANT': {
           const id = Date.now();
-          await setDoc(wsDoc('tenants', id), { ...payload, id, createdAt: new Date().toISOString() });
+          await setDoc(wsDoc('tenants', id), { ...payload, id, orgId, createdAt: new Date().toISOString() });
           break;
         }
         case 'UPDATE_TENANT':
@@ -318,7 +349,7 @@ export function AppProvider({ children }) {
         // ── OWNERS ────────────────────────────────────────────────────────────
         case 'ADD_OWNER': {
           const id = Date.now();
-          await setDoc(wsDoc('owners', id), { ...payload, id, createdAt: new Date().toISOString() });
+          await setDoc(wsDoc('owners', id), { ...payload, id, orgId, createdAt: new Date().toISOString() });
           break;
         }
         case 'UPDATE_OWNER':
@@ -331,7 +362,7 @@ export function AppProvider({ children }) {
         // ── TRANSACTIONS ──────────────────────────────────────────────────────
         case 'ADD_TRANSACTION': {
           const id = Date.now();
-          await setDoc(wsDoc('transactions', id), { ...payload, id });
+          await setDoc(wsDoc('transactions', id), { ...payload, id, orgId });
           break;
         }
         case 'DELETE_TRANSACTION':
@@ -341,7 +372,7 @@ export function AppProvider({ children }) {
         // ── PAYMENTS ──────────────────────────────────────────────────────────
         case 'ADD_PAYMENT': {
           const id = Date.now();
-          await setDoc(wsDoc('payments', id), { ...payload, id, createdAt: new Date().toISOString() });
+          await setDoc(wsDoc('payments', id), { ...payload, id, orgId, createdAt: new Date().toISOString() });
           break;
         }
         case 'UPDATE_PAYMENT':
@@ -368,7 +399,7 @@ export function AppProvider({ children }) {
         // ── TICKETS ───────────────────────────────────────────────────────────
         case 'ADD_TICKET': {
           const id = payload.id || Date.now();
-          await setDoc(wsDoc('tickets', id), { ...payload, id });
+          await setDoc(wsDoc('tickets', id), { ...payload, id, orgId });
           break;
         }
         case 'UPDATE_TICKET':
@@ -381,7 +412,7 @@ export function AppProvider({ children }) {
         // ── INSPECTIONS ───────────────────────────────────────────────────────
         case 'ADD_INSPECTION': {
           const id = payload.id || Date.now();
-          await setDoc(wsDoc('inspections', id), { ...payload, id });
+          await setDoc(wsDoc('inspections', id), { ...payload, id, orgId });
           break;
         }
         case 'UPDATE_INSPECTION':
@@ -411,7 +442,7 @@ export function AppProvider({ children }) {
           break;
         case 'ADD_CONVERSATION': {
           const id = payload.id || Date.now();
-          await setDoc(wsDoc('conversations', id), { ...payload, id });
+          await setDoc(wsDoc('conversations', id), { ...payload, id, orgId });
           break;
         }
 
@@ -421,6 +452,7 @@ export function AppProvider({ children }) {
           const id = Date.now();
           const newUser = {
             ...payload, id,
+            orgId: payload.orgId || orgId,
             failedAttempts: 0, lockedUntil: null,
             suspended: false, createdAt: new Date().toISOString(), lastLogin: null,
           };

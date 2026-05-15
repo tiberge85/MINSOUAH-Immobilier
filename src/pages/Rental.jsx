@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
+import SignaturePad from '../components/SignaturePad';
 import { openContractReport } from '../lib/contractReport';
 
 const TABS = ['Contrats', 'Locataires', 'Propriétaires'];
@@ -33,7 +34,9 @@ export default function Rental() {
   const [cForm, setCForm] = useState({});
   const [tForm, setTForm] = useState({});
   const [oForm, setOForm] = useState({});
-  const [createAccountPrompt, setCreateAccountPrompt] = useState(null); // { name, email, role, tmpPw }
+  const [createAccountPrompt, setCreateAccountPrompt] = useState(null);
+  const sigBailleurRef = useRef(null);
+  const sigPreneurRef  = useRef(null);
 
   // Sélection du bien + unité dans le formulaire locataire
   const [selectedPropId, setSelectedPropId] = useState('');
@@ -54,6 +57,19 @@ export default function Rental() {
     return opts;
   }, [properties]);
 
+  // Biens déjà loués (contrat Actif ou Expirant)
+  const rentedPropIds = useMemo(() => new Set(
+    contracts
+      .filter(c => c.status === 'Actif' || c.status === 'Expirant')
+      .map(c => String(c.propertyId))
+      .filter(Boolean)
+  ), [contracts]);
+
+  // Pour les nouveaux contrats : seulement les biens disponibles
+  const availablePropertyOptions = useMemo(() =>
+    target ? allPropertyOptions : allPropertyOptions.filter(o => !rentedPropIds.has(String(o.buildingId))),
+  [allPropertyOptions, rentedPropIds, target]);
+
   // ── Données filtrées ───────────────────────────────────────────────────────
   const q = search.toLowerCase();
   const filteredContracts = contracts.filter(c =>
@@ -65,8 +81,9 @@ export default function Rental() {
 
   // ── Ouvrir les modales ─────────────────────────────────────────────────────
   const openAddContract = () => {
-    setCForm({ propertyName: '', tenant: '', rent: '', endDate: '', status: 'Brouillon', propertyType: 'Résidentiel', propertyIcon: 'apartment' });
+    setCForm({ propertyName: '', tenant: '', rent: '', endDate: '', status: 'Brouillon', propertyType: 'Résidentiel', propertyIcon: 'apartment', sigBailleur: null, sigPreneur: null });
     setModal('contract'); setTarget(null); setStep(1);
+    setTimeout(() => { sigBailleurRef.current?.clear(); sigPreneurRef.current?.clear(); }, 50);
   };
   const openEditContract = (c) => { setCForm({ ...c, rent: String(c.rent) }); setModal('contract'); setTarget(c); setStep(1); };
 
@@ -94,12 +111,17 @@ export default function Rental() {
   const saveContract = () => {
     const prop = properties.find(p => p.id === cForm.propertyId) ||
                  properties.find(p => p.name?.trim().toLowerCase() === cForm.propertyName?.trim().toLowerCase());
+    const sigB = sigBailleurRef.current?.getDataURL() || cForm.sigBailleur || null;
+    const sigP = sigPreneurRef.current?.getDataURL()  || cForm.sigPreneur  || null;
     const payload = {
       ...cForm,
-      rent:       Number(cForm.rent) || 0,
-      propertyId: prop?.id           || cForm.propertyId || null,
-      ownerName:  prop?.owner        || cForm.ownerName  || null,
-      ownerId:    prop?.ownerId      || cForm.ownerId    || null,
+      rent:        Number(cForm.rent) || 0,
+      propertyId:  prop?.id           || cForm.propertyId || null,
+      ownerName:   prop?.owner        || cForm.ownerName  || null,
+      ownerId:     prop?.ownerId      || cForm.ownerId    || null,
+      sigBailleur: sigB,
+      sigPreneur:  sigP,
+      signedAt:    (sigB || sigP) ? new Date().toISOString() : (cForm.signedAt || null),
     };
     const normN = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
     const isActC = c => c.status === 'Actif' || c.status === 'Expirant';
@@ -284,11 +306,11 @@ export default function Rental() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 justify-end">
-                          <IconBtn icon="picture_as_pdf" color="text-on-surface-variant" title="Générer le bail PDF"
+                          <IconBtn icon="picture_as_pdf" color="text-on-surface-variant" title="Générer l'avenant PDF"
                             onClick={() => {
                               const prop = properties.find(p => p.id === c.propertyId || p.name === c.propertyName);
                               const org = state.orgSettings || {};
-                              openContractReport(c, prop, org);
+                              openContractReport(c, prop, org, { sigBailleur: c.sigBailleur, sigPreneur: c.sigPreneur });
                             }} />
                           <IconBtn icon="edit" color="text-primary" onClick={() => openEditContract(c)} />
                           <IconBtn icon="delete" color="text-error" onClick={() => setDeleteTarget({ type: 'contract', data: c })} />
@@ -390,43 +412,90 @@ export default function Rental() {
       {/* ── Contrat ─────────────────────────────────────────────────────── */}
       {modal === 'contract' && (
         <ModalWrap title={target ? 'Modifier le Contrat' : 'Nouveau Contrat'} onClose={() => setModal(null)}>
-          <div className="flex flex-col gap-4">
-            <div>
-              <label className="form-label">Propriété *</label>
-              <select value={allPropertyOptions.find(o => o.label === cForm.propertyName)?.value || ''}
-                onChange={onContractPropChange}
-                className="form-input">
-                <option value="">— Sélectionner un bien —</option>
-                {allPropertyOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="form-label">Locataire *</label>
-              <select value={tenants.find(t => t.name === cForm.tenant)?.id || ''}
-                onChange={e => { const t = tenants.find(x => x.id === Number(e.target.value)); if (t) setCForm(f => ({ ...f, tenant: t.name })); }}
-                className="form-input">
-                <option value="">— Sélectionner un locataire —</option>
-                {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="form-label">Loyer mensuel (FCFA) *</label>
-                <input type="number" value={cForm.rent} onChange={e => setCForm(f => ({ ...f, rent: e.target.value }))} className="form-input" placeholder="150000" />
+          {/* Steps */}
+          <div className="flex gap-4 mb-5">
+            {[{ n: 1, l: 'Informations' }, { n: 2, l: 'Signatures' }].map((s, i) => (
+              <div key={s.n} className="flex items-center gap-2">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${step >= s.n ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'}`}>{s.n}</div>
+                <span className={`text-sm ${step >= s.n ? 'text-primary font-semibold' : 'text-on-surface-variant'}`}>{s.l}</span>
+                {i < 1 && <Icon name="chevron_right" size={14} className="text-outline-variant" />}
               </div>
-              <div>
-                <label className="form-label">Fin de bail</label>
-                <input type="date" value={cForm.endDate} onChange={e => setCForm(f => ({ ...f, endDate: e.target.value }))} className="form-input" />
-              </div>
-            </div>
-            <div>
-              <label className="form-label">Statut</label>
-              <select value={cForm.status} onChange={e => setCForm(f => ({ ...f, status: e.target.value }))} className="form-input">
-                {['Actif', 'Expirant', 'Brouillon', 'Résilié'].map(s => <option key={s}>{s}</option>)}
-              </select>
-            </div>
+            ))}
           </div>
-          <ModalFooter onCancel={() => setModal(null)} onSave={saveContract} disabled={!cForm.propertyName || !cForm.tenant} />
+
+          {step === 1 && (
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="form-label">
+                  Propriété *
+                  {!target && availablePropertyOptions.length < allPropertyOptions.length && (
+                    <span className="text-xs text-green-600 ml-2 font-normal">— Biens disponibles uniquement</span>
+                  )}
+                </label>
+                <select value={availablePropertyOptions.find(o => o.label === cForm.propertyName)?.value || allPropertyOptions.find(o => o.label === cForm.propertyName)?.value || ''}
+                  onChange={onContractPropChange} className="form-input">
+                  <option value="">— Sélectionner un bien —</option>
+                  {availablePropertyOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="form-label">Locataire *</label>
+                <select value={tenants.find(t => t.name === cForm.tenant)?.id || ''}
+                  onChange={e => { const t = tenants.find(x => x.id === Number(e.target.value)); if (t) setCForm(f => ({ ...f, tenant: t.name })); }}
+                  className="form-input">
+                  <option value="">— Sélectionner un locataire —</option>
+                  {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="form-label">Loyer mensuel (FCFA) *</label>
+                  <input type="number" value={cForm.rent} onChange={e => setCForm(f => ({ ...f, rent: e.target.value }))} className="form-input" placeholder="150000" />
+                </div>
+                <div>
+                  <label className="form-label">Fin de bail</label>
+                  <input type="date" value={cForm.endDate} onChange={e => setCForm(f => ({ ...f, endDate: e.target.value }))} className="form-input" />
+                </div>
+              </div>
+              <div>
+                <label className="form-label">Statut</label>
+                <select value={cForm.status} onChange={e => setCForm(f => ({ ...f, status: e.target.value }))} className="form-input">
+                  {['Actif', 'Expirant', 'Brouillon', 'Résilié'].map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="flex justify-between mt-2">
+                <button onClick={() => setModal(null)} className="px-4 py-2 text-sm text-on-surface-variant hover:bg-surface-container-high rounded-xl">Annuler</button>
+                <button onClick={() => setStep(2)} disabled={!cForm.propertyName || !cForm.tenant}
+                  className="px-5 py-2 text-sm bg-primary text-on-primary rounded-xl font-bold disabled:opacity-40">
+                  Signatures →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="flex flex-col gap-5">
+              <div className="bg-primary-container/20 rounded-xl p-3 text-sm">
+                <p className="font-semibold text-on-surface">{cForm.propertyName} — {cForm.tenant}</p>
+                <p className="text-xs text-on-surface-variant mt-0.5">Loyer : {Number(cForm.rent || 0).toLocaleString('fr-CI')} FCFA/mois</p>
+              </div>
+              <SignaturePad ref={sigBailleurRef} label="Signature du Bailleur" subtitle="Propriétaire ou mandataire" />
+              <SignaturePad ref={sigPreneurRef} label="Signature du Preneur (Locataire)" subtitle='Précédée de « Lu et approuvé »' />
+              {(cForm.sigBailleur || cForm.sigPreneur) && (
+                <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 rounded-xl px-3 py-2">
+                  <Icon name="check_circle" size={14} />
+                  Signatures précédentes enregistrées sur ce contrat
+                </div>
+              )}
+              <p className="text-xs text-on-surface-variant">Les signatures sont optionnelles — tu pourras générer l'avenant PDF et signer ultérieurement.</p>
+              <div className="flex justify-between mt-2">
+                <button onClick={() => setStep(1)} className="px-4 py-2 text-sm bg-surface-container rounded-xl">← Précédent</button>
+                <button onClick={saveContract} className="px-5 py-2 text-sm bg-primary text-on-primary rounded-xl font-bold">
+                  Enregistrer le contrat
+                </button>
+              </div>
+            </div>
+          )}
         </ModalWrap>
       )}
 
@@ -474,13 +543,13 @@ export default function Rental() {
               <div>
                 <label className="form-label">Bien / Immeuble *</label>
                 <select value={selectedPropId} onChange={onTenantPropChange} className="form-input">
-                  <option value="">— Sélectionner un bien —</option>
-                  {properties.filter(p => !p.isBuilding).map(p => (
+                  <option value="">— Sélectionner un bien disponible —</option>
+                  {properties.filter(p => !p.isBuilding && p.status === 'Disponible').map(p => (
                     <option key={p.id} value={`${p.id}::`}>{p.name} — {p.address}</option>
                   ))}
                   {properties.filter(p => p.isBuilding).map(p => (
                     <optgroup key={p.id} label={`🏢 ${p.name}`}>
-                      {(p.units || []).map(u => (
+                      {(p.units || []).filter(u => u.status === 'Disponible').map(u => (
                         <option key={u.id} value={`${p.id}::${u.id}`}>{u.number} ({u.floor}) — {Number(u.rent).toLocaleString('fr-CI')} FCFA</option>
                       ))}
                     </optgroup>
