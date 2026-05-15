@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { getPlan, PLANS, fmtLimit } from '../lib/planLimits';
-import { getLicenseStatusInfo, getDaysRemaining, generateLicenseKey, createLicensePayload } from '../lib/licenses';
+import { getLicenseStatusInfo, getDaysRemaining, createLicensePayload } from '../lib/licenses';
+import { hashPwd } from '../lib/auth';
 import Icon from '../components/Icon';
 
 const fmt = n => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
@@ -33,6 +34,10 @@ export default function SuperAdmin() {
   const [toast, setToast] = useState('');
   const [licSearch, setLicSearch] = useState('');
   const [orgSearch, setOrgSearch] = useState('');
+  const [showCreateOrg, setShowCreateOrg] = useState(false);
+  const [createOrgForm, setCreateOrgForm] = useState({ orgName: '', plan: 'pro', adminName: '', adminEmail: '', adminPassword: '' });
+  const [createOrgLoading, setCreateOrgLoading] = useState(false);
+  const [newLicenseOrgId, setNewLicenseOrgId] = useState('');
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
@@ -87,10 +92,11 @@ export default function SuperAdmin() {
       await dispatch({ type: 'UPDATE_LICENSE', payload: { ...license, status: 'active', expiresAt: newExpiry.toISOString() } });
       showToast(`Licence prolongée de ${extendDays} jours`);
     } else if (action === 'new') {
-      const payload = createLicensePayload({ orgId: license.orgId, plan: newLicensePlan, trialDays: 365 });
+      const targetOrgId = license.orgId || newLicenseOrgId;
+      if (!targetOrgId) { showToast('Sélectionnez une organisation'); return; }
+      const payload = createLicensePayload({ orgId: targetOrgId, plan: newLicensePlan, trialDays: 365 });
       await dispatch({ type: 'ADD_LICENSE', payload: { ...payload, id: payload.key, status: 'active' } });
-      // Update org plan
-      const org = organizations.find(o => o.id === license.orgId);
+      const org = organizations.find(o => o.id === targetOrgId);
       if (org) await dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...org, plan: newLicensePlan, licenseKey: payload.key } });
       showToast('Nouvelle licence créée');
     }
@@ -102,6 +108,35 @@ export default function SuperAdmin() {
     await dispatch({ type: 'DELETE_ORGANIZATION', payload: orgDeleteConfirm.id });
     showToast('Organisation supprimée');
     setOrgDeleteConfirm(null);
+  };
+
+  const handleCreateOrg = async () => {
+    const { orgName, plan, adminName, adminEmail, adminPassword } = createOrgForm;
+    if (!orgName.trim()) { showToast("Nom d'organisation requis"); return; }
+    if (!adminName.trim() || !adminEmail.trim()) { showToast('Nom et email admin requis'); return; }
+    if (adminPassword.length < 8) { showToast('Mot de passe : 8 caractères minimum'); return; }
+    if (users.some(u => u.email === adminEmail.trim().toLowerCase())) { showToast('Cet email est déjà utilisé'); return; }
+    setCreateOrgLoading(true);
+    try {
+      const orgId = `org_${Date.now()}`;
+      const initials = adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+      const hashedPwd = await hashPwd(adminPassword);
+      const license = createLicensePayload({ orgId, plan, trialDays: 365 });
+      await dispatch({ type: 'ADD_ORGANIZATION', payload: { id: orgId, name: orgName.trim(), plan, active: true, licenseKey: license.key } });
+      await dispatch({ type: 'ADD_LICENSE', payload: { ...license, id: license.key, status: 'active' } });
+      await dispatch({ type: 'ADD_USER', payload: {
+        name: adminName.trim(), email: adminEmail.trim().toLowerCase(),
+        password: hashedPwd, role: 'ADMIN', orgId, initials,
+        color: 'bg-primary-container text-on-primary-container', firstLogin: false,
+      }});
+      showToast(`Organisation "${orgName.trim()}" créée`);
+      setShowCreateOrg(false);
+      setCreateOrgForm({ orgName: '', plan: 'pro', adminName: '', adminEmail: '', adminPassword: '' });
+    } catch (err) {
+      showToast('Erreur : ' + (err.message || 'Réessayez'));
+    } finally {
+      setCreateOrgLoading(false);
+    }
   };
 
   const TABS = [
@@ -131,7 +166,7 @@ export default function SuperAdmin() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => navigate('/register')}
+          <button onClick={() => setShowCreateOrg(true)}
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold hover:bg-primary/90 transition-colors">
             <Icon name="add_business" size={14} /> Nouvelle organisation
           </button>
@@ -270,9 +305,9 @@ export default function SuperAdmin() {
                 <input value={orgSearch} onChange={e => setOrgSearch(e.target.value)} placeholder="Rechercher..."
                   className="w-full pl-9 pr-4 py-2 rounded-xl border border-outline-variant/30 bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
-              <button onClick={() => navigate('/register')}
+              <button onClick={() => setShowCreateOrg(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors">
-                <Icon name="add_business" size={16} /> Nouvelle
+                <Icon name="add_business" size={16} /> Nouvelle org
               </button>
             </div>
             <div className="bg-surface rounded-xl border border-outline-variant/20 overflow-hidden">
@@ -352,10 +387,21 @@ export default function SuperAdmin() {
         {/* ── LICENCES ── */}
         {tab === 'licenses' && (
           <div className="flex flex-col gap-4">
-            <div className="relative max-w-xs">
-              <Icon name="search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-outline" />
-              <input value={licSearch} onChange={e => setLicSearch(e.target.value)} placeholder="Clé ou organisation..."
-                className="w-full pl-9 pr-4 py-2 rounded-xl border border-outline-variant/30 bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-48">
+                <Icon name="search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-outline" />
+                <input value={licSearch} onChange={e => setLicSearch(e.target.value)} placeholder="Clé ou organisation..."
+                  className="w-full pl-9 pr-4 py-2 rounded-xl border border-outline-variant/30 bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+              <button
+                onClick={() => {
+                  const firstOrgId = organizations[0]?.id || '';
+                  setNewLicenseOrgId(firstOrgId);
+                  setLicenseModal({ license: { orgId: '' }, action: 'new' });
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors">
+                <Icon name="add_card" size={16} /> Nouvelle licence
+              </button>
             </div>
             <div className="bg-surface rounded-xl border border-outline-variant/20 overflow-hidden">
               <div className="overflow-x-auto">
@@ -488,7 +534,21 @@ export default function SuperAdmin() {
               <>
                 <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center mb-4"><Icon name="add_card" size={24} className="text-primary" /></div>
                 <h3 className="font-bold text-lg text-on-surface mb-4">Nouvelle licence</h3>
-                <p className="text-xs text-on-surface-variant mb-3">Organisation : <strong>{organizations.find(o => o.id === licenseModal.license?.orgId)?.name || licenseModal.license?.orgId}</strong></p>
+                {licenseModal.license?.orgId ? (
+                  <p className="text-xs text-on-surface-variant mb-3">Organisation : <strong>{organizations.find(o => o.id === licenseModal.license?.orgId)?.name || licenseModal.license?.orgId}</strong></p>
+                ) : (
+                  <div className="mb-3">
+                    <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Organisation *</label>
+                    <select
+                      value={newLicenseOrgId}
+                      onChange={e => setNewLicenseOrgId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-outline-variant/40 bg-surface-container text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface"
+                    >
+                      <option value="">— Choisir —</option>
+                      {organizations.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                    </select>
+                  </div>
+                )}
                 <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-2 block">Plan</label>
                 <div className="flex gap-2 mb-5">
                   {Object.keys(PLANS).map(p => (
@@ -502,6 +562,98 @@ export default function SuperAdmin() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Create Org Modal ── */}
+      {showCreateOrg && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4 my-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-on-surface text-lg flex items-center gap-2">
+                <Icon name="add_business" size={20} className="text-primary" /> Nouvelle organisation
+              </h3>
+              <button onClick={() => setShowCreateOrg(false)} className="text-on-surface-variant hover:text-on-surface">
+                <Icon name="close" size={20} />
+              </button>
+            </div>
+
+            {/* Plan */}
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-2 block">Plan</label>
+              <div className="flex gap-2">
+                {Object.keys(PLANS).map(p => (
+                  <button key={p} onClick={() => setCreateOrgForm(f => ({ ...f, plan: p }))}
+                    className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${createOrgForm.plan === p ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}>
+                    {getPlan(p).name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Org name */}
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Nom de l'organisation *</label>
+              <input
+                value={createOrgForm.orgName}
+                onChange={e => setCreateOrgForm(f => ({ ...f, orgName: e.target.value }))}
+                className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface text-sm"
+                placeholder="Ex: Agence Cocody Immobilier"
+              />
+            </div>
+
+            <div className="border-t border-outline-variant/20 pt-3">
+              <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-3">Compte administrateur</p>
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Nom complet *</label>
+                  <input
+                    value={createOrgForm.adminName}
+                    onChange={e => setCreateOrgForm(f => ({ ...f, adminName: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface text-sm"
+                    placeholder="Prénom Nom"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Email *</label>
+                  <input
+                    type="email"
+                    value={createOrgForm.adminEmail}
+                    onChange={e => setCreateOrgForm(f => ({ ...f, adminEmail: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface text-sm"
+                    placeholder="admin@agence.ci"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Mot de passe * (min. 8 caractères)</label>
+                  <input
+                    type="password"
+                    value={createOrgForm.adminPassword}
+                    onChange={e => setCreateOrgForm(f => ({ ...f, adminPassword: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface text-sm"
+                    placeholder="••••••••"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-on-surface-variant bg-surface-container rounded-xl px-3 py-2">
+              Une licence <strong>Active 1 an</strong> sera automatiquement générée pour cette organisation.
+            </p>
+
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setShowCreateOrg(false)}
+                className="flex-1 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors">
+                Annuler
+              </button>
+              <button onClick={handleCreateOrg} disabled={createOrgLoading}
+                className="flex-1 py-2.5 text-sm font-bold text-on-primary bg-primary rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
+                {createOrgLoading
+                  ? <><Icon name="progress_activity" size={16} className="animate-spin" /> Création…</>
+                  : <><Icon name="add_business" size={16} /> Créer</>}
+              </button>
+            </div>
           </div>
         </div>
       )}
