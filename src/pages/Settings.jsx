@@ -998,7 +998,10 @@ const ALL_ROLES = [
 const ROLE_MAP = Object.fromEntries(ALL_ROLES.map(r => [r.value, r]));
 
 function UserManagementTab({ state, dispatch, currentUser, showToast }) {
-  const users = state.users || [];
+  // Only show users from the same org (state.users is unfiltered for cross-org login to work)
+  const users = (state.users || []).filter(u =>
+    u.orgId === currentUser?.orgId && u.role !== 'SUPER_ADMIN'
+  );
   const [showCreate, setShowCreate] = useState(false);
   const [editUser, setEditUser] = useState(null);
   const [editForm, setEditForm] = useState(null);

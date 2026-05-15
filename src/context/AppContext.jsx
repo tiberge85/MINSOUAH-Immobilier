@@ -203,7 +203,8 @@ export function AppProvider({ children }) {
           const saved = localStorage.getItem(SESSION_KEY);
           if (saved) {
             const u = JSON.parse(saved);
-            if (u?.role !== 'ADMIN') sessionOrgId = u?.orgId || null;
+            // SUPER_ADMIN sees all orgs; everyone else is scoped to their orgId
+            if (u?.role !== 'SUPER_ADMIN') sessionOrgId = u?.orgId || null;
           }
         } catch { /* ignore */ }
 
@@ -347,12 +348,14 @@ export function AppProvider({ children }) {
             orgId: u.orgId || 'default',
           };
           try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch { /* quota */ }
-          setState((s) => ({ ...s, currentUser: session }));
+          // Reload so Firestore subscriptions restart with the correct orgId filter
+          window.location.reload();
           break;
         }
         case 'LOGOUT': {
           localStorage.removeItem(SESSION_KEY);
-          setState((s) => ({ ...s, currentUser: null }));
+          // Reload to clear all org-filtered subscriptions
+          window.location.reload();
           break;
         }
 
