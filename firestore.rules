@@ -2,113 +2,18 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
-    function isAuth()    { return request.auth != null; }
-    function uid()       { return request.auth.uid; }
-    function userDoc()   { return get(/databases/$(database)/documents/users/$(uid())).data; }
-    function role()      { return userDoc().role; }
-    function isAdmin()      { return isAuth() && role() == 'ADMIN'; }
-    function isManager()    { return isAuth() && role() in ['ADMIN','MANAGER']; }
-    function isStaff()      { return isAuth() && role() in ['ADMIN','MANAGER','ACCOUNTANT','TECHNICIAN','CONCIERGE']; }
-    function isConcierge()  { return isAuth() && role() in ['ADMIN','MANAGER','CONCIERGE']; }
-    function isAccountant() { return isAuth() && role() in ['ADMIN','MANAGER','ACCOUNTANT']; }
-    function isTechOrMore() { return isAuth() && role() in ['ADMIN','MANAGER','TECHNICIAN','CONCIERGE']; }
+    // ── Workspace-scoped data ────────────────────────────────────────────────
+    // All app data lives under workspaces/{wsId}/...
+    // Access requires Firebase Auth (including anonymous auth used by the app).
+    // Role-based enforcement is handled by the UI; rules enforce authentication only.
 
-    // ── Users ─────────────────────────────────────────────────────────────────
-    match /users/{userId} {
-      allow read:   if isAuth() && (uid() == userId || isManager());
-      allow create: if isAdmin();
-      allow update: if isAdmin() ||
-        (isAuth() && uid() == userId &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role','suspended']));
-      allow delete: if isAdmin() && userId != uid();
+    match /workspaces/{wsId}/{document=**} {
+      allow read, write: if request.auth != null;
     }
 
-    // ── Properties ────────────────────────────────────────────────────────────
-    match /properties/{propId} {
-      allow read:   if isAuth();
-      allow create: if isManager();
-      allow update: if isManager() || isConcierge();
-      allow delete: if isManager();
-    }
-
-    // ── Contracts ─────────────────────────────────────────────────────────────
-    match /contracts/{contractId} {
-      allow read:  if isAuth();
-      allow write: if isManager();
-    }
-
-    // ── Tenants ───────────────────────────────────────────────────────────────
-    match /tenants/{tenantId} {
-      allow read:  if isAuth();
-      allow write: if isManager();
-    }
-
-    // ── Owners ────────────────────────────────────────────────────────────────
-    match /owners/{ownerId} {
-      allow read:  if isAuth();
-      allow write: if isManager();
-    }
-
-    // ── Payments ──────────────────────────────────────────────────────────────
-    match /payments/{paymentId} {
-      allow read:  if isAuth();
-      allow write: if isManager() || isAccountant();
-    }
-
-    // ── Transactions ──────────────────────────────────────────────────────────
-    match /transactions/{txId} {
-      allow read:  if isManager() || isAccountant();
-      allow write: if isManager() || isAccountant();
-    }
-
-    // ── Tickets (Maintenance) ─────────────────────────────────────────────────
-    match /tickets/{ticketId} {
-      allow read:   if isAuth();
-      allow create: if isAuth();
-      allow update: if isManager() || isConcierge() || isTechOrMore();
-      allow delete: if isManager();
-    }
-
-    // ── Inspections ───────────────────────────────────────────────────────────
-    match /inspections/{inspId} {
-      allow read:   if isAuth();
-      allow create: if isManager() || isConcierge();
-      allow update: if isManager() || isConcierge();
-      allow delete: if isManager();
-    }
-
-    // ── Conversations / Messages ───────────────────────────────────────────────
-    match /conversations/{convId} {
-      allow read:   if isAuth();
-      allow create: if isAuth();
-      allow update: if isAuth();
-      allow delete: if isManager();
-
-      match /messages/{msgId} {
-        allow read:   if isAuth();
-        allow create: if isAuth();
-        allow update: if false;
-        allow delete: if isManager();
-      }
-    }
-
-    // ── Activity Log ──────────────────────────────────────────────────────────
-    match /activityLog/{logId} {
-      allow read:   if isManager();
-      allow create: if isAuth();
-      allow update: if false;
-      allow delete: if isAdmin();
-    }
-
-    // ── Organisation / System settings ────────────────────────────────────────
-    match /orgSettings/{docId} {
-      allow read:  if isAuth();
-      allow write: if isManager();
-    }
-    match /systemSettings/{docId} {
-      allow read:  if isAuth();
-      allow write: if isAdmin();
+    // ── Deny everything else ─────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

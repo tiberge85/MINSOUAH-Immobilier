@@ -1,4 +1,13 @@
-import { createContext, useContext, useReducer, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import {
+  collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc,
+  writeBatch, getDocs,
+} from 'firebase/firestore';
+import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { auth, db } from '../lib/firebase';
+import { hashPwd } from '../lib/auth';
+
+// Mock data — only used by RESET_DEMO action
 import {
   properties as mockProperties,
   contracts as mockContracts,
@@ -7,12 +16,17 @@ import {
   transactions as mockTransactions,
   tickets as mockTickets,
   conversations as mockConversations,
-  revenueData as mockRevenueData,
-  alerts as mockAlerts,
   payments as mockPayments,
 } from '../data/mockData';
 
-// ─── Default admin account (always preserved) ─────────────────────────────────
+// ── Workspace ──────────────────────────────────────────────────────────────────
+const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
+const SESSION_KEY = 'minsouah_user_v2';
+
+const wsCol = (name) => collection(db, 'workspaces', WS, name);
+const wsDoc = (col, id) => doc(db, 'workspaces', WS, col, String(id));
+
+// ── Default accounts ───────────────────────────────────────────────────────────
 export const DEFAULT_ADMIN = {
   id: 1,
   email: 'admin@minsouah.ci',
@@ -30,30 +44,11 @@ export const DEFAULT_ADMIN = {
   lockedUntil: null,
 };
 
-export const DEFAULT_CONCIERGE = {
-  id: 2,
-  email: 'concierge@minsouah.ci',
-  password: 'concierge123',
-  role: 'CONCIERGE',
-  name: 'Concierge Demo',
-  initials: 'CD',
-  color: 'bg-secondary-container text-on-secondary-container',
-  personId: null,
-  firstLogin: false,
-  suspended: false,
-  createdAt: new Date().toISOString(),
-  lastLogin: null,
-  failedAttempts: 0,
-  lockedUntil: null,
-};
-
+// ── Default settings ───────────────────────────────────────────────────────────
 const DEFAULT_ORG = {
   companyName: 'Minsouah Immobilier',
   address: "Abidjan, Côte d'Ivoire",
-  phone: '',
-  email: '',
-  currency: 'XOF',
-  language: 'fr',
+  phone: '', email: '', currency: 'XOF', language: 'fr',
   notif: {
     whatsapp: true, email: true,
     rentReminder: true, paymentConfirm: true,
@@ -74,719 +69,559 @@ export const DEFAULT_SYSTEM = {
   platform: { timezone: 'Africa/Abidjan', dateFormat: 'dd/MM/yyyy' },
   sessionTimeout: 30,
   firebase: {
-    databaseURL: import.meta.env.VITE_FIREBASE_URL || 'https://minsouah-7d698-default-rtdb.europe-west1.firebasedatabase.app',
-    workspaceId: import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah',
+    databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || '',
+    workspaceId: WS,
     enabled: true,
   },
 };
 
-// Bump this whenever mockData changes to force auto-refresh of stale localStorage
-const DEMO_VERSION = '3';
+// ── Helpers ────────────────────────────────────────────────────────────────────
+const norm = (s) => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-// ─── EMPTY state — used by full reset (no demo data) ──────────────────────────
-const EMPTY_STATE = {
-  properties:     [],
-  contracts:      [],
-  tenants:        [],
-  owners:         [],
-  transactions:   [],
-  tickets:        [],
-  conversations:  [],
-  revenueData:    mockRevenueData,
-  alerts:         [],
-  payments:       [],
-  inspections:    [],
-  currentUser:    null,
-  users:          [DEFAULT_ADMIN, DEFAULT_CONCIERGE],
-  orgSettings:    DEFAULT_ORG,
-  systemSettings: DEFAULT_SYSTEM,
-  activityLog:    [],
-};
+// After a contract change, sync the linked property's status in Firestore
+async function pushPropertyStatus(updatedContract, properties) {
+  if (!updatedContract) return;
+  const propId = updatedContract.propertyId;
+  const propName = norm(updatedContract.propertyName || updatedContract.bien || '');
 
-// ─── DEMO state — used by demo reload ─────────────────────────────────────────
-const DEMO_STATE = {
-  ...EMPTY_STATE,
-  properties:    mockProperties,
-  contracts:     mockContracts,
-  tenants:       mockTenants,
-  owners:        mockOwners,
-  transactions:  mockTransactions,
-  tickets:       mockTickets,
-  conversations: mockConversations,
-  alerts:        mockAlerts,
-  payments:      mockPayments,
-};
-
-// ─── Property status sync helper ──────────────────────────────────────────────
-// After a contract add/update/delete, set property.status to 'Loué' or 'Disponible'
-function syncPropertyStatus(properties, updatedContract, previousContract) {
-  const norm = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  const propId = updatedContract?.propertyId;
-  const propName = norm(updatedContract?.propertyName || updatedContract?.bien || '');
-
-  const findProp = p =>
-    (propId != null && (p.id === propId || String(p.id) === String(propId) || Number(p.id) === Number(propId))) ||
-    (propName && norm(p.name) === propName);
-
-  return properties.map(p => {
-    if (p.isBuilding) return p;
-    if (!findProp(p)) return p;
-    const isActive = updatedContract?.status === 'Actif' || updatedContract?.statut === 'Actif' || updatedContract?.status === 'Expirant';
-    return { ...p, status: isActive ? 'Loué' : 'Disponible' };
+  const prop = (properties || []).find((p) => {
+    if (p.isBuilding) return false;
+    if (propId != null && (String(p.id) === String(propId) || Number(p.id) === Number(propId))) return true;
+    if (propName && norm(p.name) === propName) return true;
+    return false;
   });
+  if (!prop) return;
+
+  const isActive =
+    updatedContract.status === 'Actif' || updatedContract.status === 'Expirant';
+  await setDoc(wsDoc('properties', prop.id), { status: isActive ? 'Loué' : 'Disponible' }, { merge: true });
 }
 
-// ─── Reducer ───────────────────────────────────────────────────────────────────
-function reducer(state, action) {
-  const { type, payload } = action;
-
-  switch (type) {
-    // ── Properties ──────────────────────────────────────────────────────────
-    case 'ADD_PROPERTY':
-      return { ...state, properties: [{ ...payload, id: Date.now() }, ...(state.properties || [])] };
-    case 'UPDATE_PROPERTY':
-      return { ...state, properties: (state.properties || []).map(p => p.id === payload.id ? payload : p) };
-    case 'DELETE_PROPERTY':
-      return { ...state, properties: (state.properties || []).filter(p => p.id !== payload) };
-
-    // ── Contracts ────────────────────────────────────────────────────────────
-    case 'ADD_CONTRACT': {
-      const newContract = { ...payload, id: Date.now() };
-      const syncedProps = syncPropertyStatus(state.properties || [], newContract, null);
-      return { ...state, contracts: [newContract, ...(state.contracts || [])], properties: syncedProps };
-    }
-    case 'UPDATE_CONTRACT': {
-      const old = (state.contracts || []).find(c => c.id === payload.id);
-      const syncedProps = syncPropertyStatus(state.properties || [], payload, old);
-      return { ...state, contracts: (state.contracts || []).map(c => c.id === payload.id ? payload : c), properties: syncedProps };
-    }
-    case 'DELETE_CONTRACT': {
-      const deleted = (state.contracts || []).find(c => c.id === payload);
-      const syncedProps = deleted ? syncPropertyStatus(state.properties || [], { ...deleted, status: 'Résilié' }, deleted) : state.properties || [];
-      return { ...state, contracts: (state.contracts || []).filter(c => c.id !== payload), properties: syncedProps };
-    }
-
-    // ── Tenants ──────────────────────────────────────────────────────────────
-    case 'ADD_TENANT':
-      return { ...state, tenants: [{ ...payload, id: Date.now() }, ...(state.tenants || [])] };
-    case 'UPDATE_TENANT':
-      return { ...state, tenants: (state.tenants || []).map(t => t.id === payload.id ? payload : t) };
-    case 'DELETE_TENANT':
-      return { ...state, tenants: (state.tenants || []).filter(t => t.id !== payload) };
-
-    // ── Owners ───────────────────────────────────────────────────────────────
-    case 'ADD_OWNER':
-      return { ...state, owners: [{ id: Date.now(), ...payload }, ...(state.owners || [])] };
-    case 'UPDATE_OWNER':
-      return { ...state, owners: (state.owners || []).map(o => o.id === payload.id ? payload : o) };
-    case 'DELETE_OWNER':
-      return { ...state, owners: (state.owners || []).filter(o => o.id !== payload) };
-
-    // ── Transactions ─────────────────────────────────────────────────────────
-    case 'ADD_TRANSACTION':
-      return { ...state, transactions: [{ ...payload, id: Date.now() }, ...(state.transactions || [])] };
-    case 'DELETE_TRANSACTION':
-      return { ...state, transactions: (state.transactions || []).filter(t => t.id !== payload) };
-
-    // ── Payments ─────────────────────────────────────────────────────────────
-    case 'ADD_PAYMENT':
-      return { ...state, payments: [{ ...payload, id: Date.now() }, ...(state.payments || [])] };
-    case 'UPDATE_PAYMENT':
-      return { ...state, payments: (state.payments || []).map(p => p.id === payload.id ? payload : p) };
-    case 'MARK_PAYMENT_PAID':
-      return {
-        ...state,
-        payments: (state.payments || []).map(p =>
-          p.id === payload
-            ? { ...p, status: 'Payé', paidDate: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) }
-            : p
-        ),
-      };
-    case 'SEND_REMINDER':
-      return {
-        ...state,
-        payments: (state.payments || []).map(p =>
-          p.id === payload
-            ? { ...p, reminderSent: true, reminderCount: (p.reminderCount || 0) + 1, status: p.status === 'Impayé' ? 'En retard' : p.status }
-            : p
-        ),
-      };
-
-    // ── Tickets ──────────────────────────────────────────────────────────────
-    case 'ADD_TICKET':
-      return { ...state, tickets: [payload, ...(state.tickets || [])] };
-    case 'UPDATE_TICKET':
-      return { ...state, tickets: (state.tickets || []).map(t => t.id === payload.id ? payload : t) };
-    case 'DELETE_TICKET':
-      return { ...state, tickets: (state.tickets || []).filter(t => t.id !== payload) };
-
-    // ── Inspections ──────────────────────────────────────────────────────────
-    case 'ADD_INSPECTION':
-      return { ...state, inspections: [payload, ...(state.inspections || [])] };
-    case 'UPDATE_INSPECTION':
-      return { ...state, inspections: (state.inspections || []).map(i => i.id === payload.id ? payload : i) };
-    case 'DELETE_INSPECTION':
-      return { ...state, inspections: (state.inspections || []).filter(i => i.id !== payload) };
-
-    // ── Conversations ─────────────────────────────────────────────────────────
-    case 'SEND_MESSAGE': {
-      const { convId, message } = payload;
-      return {
-        ...state,
-        conversations: (state.conversations || []).map(c => {
-          if (c.id !== convId) return c;
-          return { ...c, lastMessage: message.text, time: message.time, unread: 0, messages: [...(c.messages || []), message] };
-        }),
-      };
-    }
-    case 'MARK_READ':
-      return { ...state, conversations: (state.conversations || []).map(c => c.id === payload ? { ...c, unread: 0 } : c) };
-    case 'ADD_CONVERSATION':
-      return { ...state, conversations: [payload, ...(state.conversations || [])] };
-
-    // ── User accounts ─────────────────────────────────────────────────────────
-    case 'ADD_USER': {
-      const users = state.users || [DEFAULT_ADMIN];
-      if (users.some(u => u.email === payload.email)) return state;
-      const newUser = { ...payload, id: Date.now(), failedAttempts: 0, lockedUntil: null, suspended: false, createdAt: new Date().toISOString(), lastLogin: null };
-      const logEntry = { id: Date.now() + 1, action: 'ADD_USER', details: `Compte créé : ${payload.name} (${payload.role})`, timestamp: new Date().toISOString() };
-      return { ...state, users: [...users, newUser], activityLog: [logEntry, ...(state.activityLog || [])].slice(0, 500) };
-    }
-    case 'UPDATE_USER':
-      return { ...state, users: (state.users || [DEFAULT_ADMIN]).map(u => u.id === payload.id ? { ...u, ...payload } : u) };
-    case 'DELETE_USER': {
-      const target = (state.users || []).find(u => u.id === payload);
-      const logEntry = { id: Date.now(), action: 'DELETE_USER', details: `Compte supprimé : ${target?.name || payload}`, timestamp: new Date().toISOString() };
-      return { ...state, users: (state.users || [DEFAULT_ADMIN]).filter(u => u.id !== payload && u.id !== 1), activityLog: [logEntry, ...(state.activityLog || [])].slice(0, 500) };
-    }
-    case 'SUSPEND_USER': {
-      const target = (state.users || []).find(u => u.id === payload);
-      const willSuspend = !target?.suspended;
-      const logEntry = { id: Date.now(), action: 'SUSPEND_USER', details: `${target?.name || payload} ${willSuspend ? 'suspendu' : 'réactivé'}`, timestamp: new Date().toISOString() };
-      return { ...state, users: (state.users || [DEFAULT_ADMIN]).map(u => u.id === payload ? { ...u, suspended: !u.suspended } : u), activityLog: [logEntry, ...(state.activityLog || [])].slice(0, 500) };
-    }
-    case 'CHANGE_PASSWORD':
-      return {
-        ...state,
-        users: (state.users || [DEFAULT_ADMIN]).map(u =>
-          u.email === payload.email
-            ? { ...u, password: payload.newPassword, firstLogin: false, failedAttempts: 0, lockedUntil: null }
-            : u
-        ),
-        currentUser: state.currentUser?.email === payload.email
-          ? { ...state.currentUser, firstLogin: false }
-          : state.currentUser,
-      };
-    case 'LOGIN_ATTEMPT': {
-      const { email, success } = payload;
-      const now = new Date().toISOString();
-      if (success) {
-        const u = (state.users || [DEFAULT_ADMIN]).find(u => u.email === email);
-        const logEntry = { id: Date.now(), userId: u?.id, userEmail: email, userName: u?.name, action: 'LOGIN', details: 'Connexion réussie', timestamp: now };
-        return {
-          ...state,
-          users: (state.users || [DEFAULT_ADMIN]).map(u =>
-            u.email === email ? { ...u, failedAttempts: 0, lockedUntil: null, lastLogin: now } : u
-          ),
-          activityLog: [logEntry, ...(state.activityLog || [])].slice(0, 500),
-        };
-      }
-      const logEntry = { id: Date.now(), userEmail: email, action: 'LOGIN_FAIL', details: 'Tentative de connexion échouée', timestamp: now };
-      return {
-        ...state,
-        users: (state.users || [DEFAULT_ADMIN]).map(u => {
-          if (u.email !== email) return u;
-          const attempts = (u.failedAttempts || 0) + 1;
-          const lockedUntil = attempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : null;
-          return { ...u, failedAttempts: attempts, lockedUntil };
-        }),
-        activityLog: [logEntry, ...(state.activityLog || [])].slice(0, 500),
-      };
-    }
-
-    // ── Auth ─────────────────────────────────────────────────────────────────
-    case 'UPGRADE_PASSWORD': {
-      const { email, hashedPassword } = payload;
-      return {
-        ...state,
-        users: (state.users || [DEFAULT_ADMIN]).map(u =>
-          u.email === email ? { ...u, password: hashedPassword } : u
-        ),
-      };
-    }
-    case 'LOGIN':
-      return { ...state, currentUser: payload };
-    case 'LOGOUT':
-      return { ...state, currentUser: null };
-    case 'UPDATE_SETTINGS': {
-      const { type: sType, data } = payload;
-      if (sType === 'profile') {
-        const initials = data.name
-          ? data.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-          : state.currentUser?.initials;
-        const updatedUser = { ...state.currentUser, ...data, initials };
-        // Also persist to the users[] array so avatar/name survive logout+login
-        const updatedUsers = (state.users || [DEFAULT_ADMIN]).map(u =>
-          u.email === state.currentUser?.email ? { ...u, ...data, initials, name: data.name || u.name } : u
-        );
-        return { ...state, currentUser: updatedUser, users: updatedUsers };
-      }
-      if (sType === 'notif') {
-        return { ...state, orgSettings: { ...state.orgSettings, notif: data } };
-      }
-      return { ...state, orgSettings: { ...state.orgSettings, ...data } };
-    }
-
-    // ── System settings ──────────────────────────────────────────────────────
-    case 'UPDATE_SYSTEM_SETTINGS':
-      return { ...state, systemSettings: { ...(state.systemSettings || DEFAULT_SYSTEM), ...payload } };
-
-    // ── Activity log ─────────────────────────────────────────────────────────
-    case 'LOG_ACTIVITY': {
-      const entry = { id: Date.now(), ...payload, timestamp: new Date().toISOString() };
-      const log = [entry, ...(state.activityLog || [])].slice(0, 500);
-      return { ...state, activityLog: log };
-    }
-
-    // ── Reset ────────────────────────────────────────────────────────────────
-    case 'RESET':
-      return {
-        ...EMPTY_STATE,
-        users:          (state.users || [DEFAULT_ADMIN]).filter(u => u.id === 1),
-        systemSettings: state.systemSettings || DEFAULT_SYSTEM,
-        activityLog:    state.activityLog || [],
-      };
-    case 'RESET_DEMO':
-      return {
-        ...DEMO_STATE,
-        demoVersion:    DEMO_VERSION,
-        users:          state.users || [DEFAULT_ADMIN],
-        systemSettings: state.systemSettings || DEFAULT_SYSTEM,
-        activityLog:    state.activityLog || [],
-      };
-
-    // ── Bootstrap: first load from Firebase (no localStorage) ───────────────
-    case 'BOOTSTRAP_DONE': {
-      const data = payload || DEMO_STATE;
-      let { properties: props = [], contracts: ctrs = [], ...rest } = data;
-      const normB = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-      const bOwners = data.owners || [];
-      // Migration: backfill ownerId on properties missing it (owner name lookup)
-      props = props.map(p => {
-        if (p.ownerId != null) return p;
-        const o = bOwners.find(ow => normB(ow.name) === normB(p.owner || ''));
-        return o ? { ...p, ownerId: o.id } : p;
-      });
-      // Migration: enrich contracts with propertyId/ownerName/ownerId
-      if (props.length && ctrs.length) {
-        ctrs = ctrs.map(c => {
-          const prop = props.find(p =>
-            (c.propertyId != null && (p.id === c.propertyId || Number(p.id) === Number(c.propertyId))) ||
-            (normB(p.name) === normB(c.propertyName || ''))
-          );
-          if (!prop) return c;
-          const ownerForProp = bOwners.find(o => normB(o.name) === normB(prop.owner || ''));
-          return {
-            ...c,
-            propertyId: c.propertyId ?? prop.id,
-            ownerName:  c.ownerName  ?? prop.owner  ?? null,
-            ownerId:    c.ownerId    ?? prop.ownerId ?? ownerForProp?.id ?? null,
-          };
-        });
-        const activeCtrs = ctrs.filter(c => c.status === 'Actif' || c.status === 'Expirant');
-        const activePropNames = new Set(activeCtrs.map(c => normB(c.propertyName || c.bien || '')).filter(Boolean));
-        const activePropIds   = new Set(activeCtrs.map(c => c.propertyId).filter(v => v != null));
-        props = props.map(p => {
-          if (p.isBuilding) return p;
-          const isActive = activePropNames.has(normB(p.name)) ||
-            activePropIds.has(p.id) || activePropIds.has(String(p.id)) || activePropIds.has(Number(p.id));
-          if (isActive) return { ...p, status: 'Loué' };
-          return p; // never force-reset — trust the stored status
-        });
-      }
-      const bUsers = [...(data.users || [DEFAULT_ADMIN, DEFAULT_CONCIERGE])];
-      if (!bUsers.some(u => u.id === 1)) bUsers.unshift({ ...DEFAULT_ADMIN });
-      if (!bUsers.some(u => u.id === 2)) bUsers.push({ ...DEFAULT_CONCIERGE });
-      return {
-        ...DEMO_STATE, ...rest,
-        properties: props, contracts: ctrs, users: bUsers,
-        currentUser: null, _bootstrapping: false, demoVersion: DEMO_VERSION,
-        systemSettings: { ...DEFAULT_SYSTEM, ...(data.systemSettings || {}), firebase: { ...DEFAULT_SYSTEM.firebase, ...(data.systemSettings?.firebase || {}), enabled: true } },
-      };
-    }
-
-    // ── Import full state (multi-browser sync) ───────────────────────────────
-    case 'IMPORT_STATE': {
-      const imported = payload;
-      if (!imported || !imported.users) return state;
-      return {
-        ...imported,
-        currentUser: null,
-        activityLog: [
-          { id: Date.now(), action: 'IMPORT', details: 'État importé depuis un autre appareil', timestamp: new Date().toISOString() },
-          ...(imported.activityLog || []),
-        ],
-      };
-    }
-    // ── Cloud sync (Firebase REST) ────────────────────────────────────────────
-    case 'CLOUD_SYNC': {
-      const incoming = payload;
-      if (!incoming || !incoming.users?.length) return state;
-      // Refuse to overwrite rich local data with sparse incoming data (prevents accidental wipe)
-      // Exception: if local state is demo data (props have small integer ids like 1–8), always accept real incoming
-      const localIsDemo = (state.properties || []).some(p => typeof p.id === 'number' && p.id < 100);
-      const localCount  = (state.properties?.length  || 0) + (state.contracts?.length  || 0) + (state.owners?.length  || 0);
-      const incomingCount = (incoming.properties?.length || 0) + (incoming.contracts?.length || 0) + (incoming.owners?.length || 0);
-      if (!localIsDemo && localCount > 0 && incomingCount < localCount * 0.5) {
-        // Incoming has less than half our data — only sync users, keep local entities
-        const safeMergeUsers = (incoming.users || []).map(u => {
-          const local = (state.users || []).find(lu => lu.email === u.email);
-          if (local?.password?.startsWith('sha256:') && !u.password?.startsWith('sha256:')) return { ...u, password: local.password };
-          if (local?.avatar && !u.avatar) return { ...u, avatar: local.avatar };
-          return u;
-        });
-        if (!safeMergeUsers.some(u => u.id === 1)) safeMergeUsers.unshift({ ...DEFAULT_ADMIN });
-        if (!safeMergeUsers.some(u => u.id === 2)) safeMergeUsers.push({ ...DEFAULT_CONCIERGE });
-        return { ...state, users: safeMergeUsers };
-      }
-      // If Firebase has stale demo data (older/missing demoVersion), only sync users — keep local entity data
-      if (state.demoVersion === DEMO_VERSION && incoming.demoVersion !== DEMO_VERSION) {
-        const mergedUsersOnly = (incoming.users || []).map(u => {
-          const local = (state.users || []).find(lu => lu.email === u.email);
-          if (local?.password?.startsWith('sha256:') && !u.password?.startsWith('sha256:')) return { ...u, password: local.password };
-          if (local?.avatar && !u.avatar) return { ...u, avatar: local.avatar };
-          return u;
-        });
-        if (!mergedUsersOnly.some(u => u.id === 1)) mergedUsersOnly.unshift({ ...DEFAULT_ADMIN });
-        if (!mergedUsersOnly.some(u => u.id === 2)) mergedUsersOnly.push({ ...DEFAULT_CONCIERGE });
-        return { ...state, users: mergedUsersOnly, currentUser: state.currentUser };
-      }
-      // Preserve locally hashed passwords — don't let Firebase plain-text override them
-      const mergedUsers = (incoming.users || []).map(incomingUser => {
-        const localUser = (state.users || []).find(u => u.email === incomingUser.email);
-        const merged = { ...incomingUser };
-        // Preserve locally hashed password if Firebase still has plain-text
-        if (localUser?.password?.startsWith('sha256:') && !incomingUser.password?.startsWith('sha256:')) {
-          merged.password = localUser.password;
-        }
-        // Preserve local avatar — base64 images may be stripped in Firebase if too large
-        if (localUser?.avatar && !incomingUser.avatar) {
-          merged.avatar = localUser.avatar;
-        }
-        return merged;
-      });
-      // Always guarantee default accounts exist so login never breaks
-      const hasAdmin = mergedUsers.some(u => u.id === 1);
-      if (!hasAdmin) mergedUsers.unshift({ ...DEFAULT_ADMIN });
-      const hasConcierge = mergedUsers.some(u => u.id === 2);
-      if (!hasConcierge) mergedUsers.push({ ...DEFAULT_CONCIERGE });
-
-      // Reconcile + migrate: enrich contracts/properties with ownerId, then reconcile status
-      const normS = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-      const syncOwners = incoming.owners || state.owners || [];
-      let syncedProps = (incoming.properties || state.properties || []).map(p => {
-        if (p.ownerId != null) return p;
-        const o = syncOwners.find(ow => normS(ow.name) === normS(p.owner || ''));
-        return o ? { ...p, ownerId: o.id } : p;
-      });
-      let incomingContracts = (incoming.contracts || state.contracts || []).map(c => {
-        const prop = syncedProps.find(p =>
-          (c.propertyId != null && (p.id === c.propertyId || Number(p.id) === Number(c.propertyId))) ||
-          (normS(p.name) === normS(c.propertyName || ''))
-        );
-        if (!prop) return c;
-        const ownerForProp = syncOwners.find(o => normS(o.name) === normS(prop.owner || ''));
-        return {
-          ...c,
-          propertyId: c.propertyId ?? prop.id,
-          ownerName:  c.ownerName  ?? prop.owner  ?? null,
-          ownerId:    c.ownerId    ?? prop.ownerId ?? ownerForProp?.id ?? null,
-        };
-      });
-      const activeSyncContracts = incomingContracts.filter(c => c.status === 'Actif' || c.status === 'Expirant');
-      const activeSyncNames = new Set(activeSyncContracts.map(c => normS(c.propertyName || c.bien || '')).filter(Boolean));
-      const activeSyncIds   = new Set(activeSyncContracts.map(c => c.propertyId).filter(v => v != null));
-      const syncedProperties = syncedProps.map(p => {
-        if (p.isBuilding) return p;
-        const isActive = activeSyncNames.has(normS(p.name)) ||
-          activeSyncIds.has(p.id) || activeSyncIds.has(String(p.id)) || activeSyncIds.has(Number(p.id));
-        if (isActive) return { ...p, status: 'Loué' };
-        return p; // never force-reset — trust the stored status
-      });
-
-      // Merge payments: keep local payments whose id isn't in Firebase yet (prevents loss of recent local adds)
-      const fbPayIds = new Set((incoming.payments || []).map(p => p.id));
-      const localOnlyPayments = (state.payments || []).filter(p => !fbPayIds.has(p.id));
-      const mergedPayments = [...(incoming.payments || state.payments || []), ...localOnlyPayments];
-
-      return {
-        ...incoming,
-        properties:    syncedProperties,
-        contracts:     incomingContracts.length ? incomingContracts : (state.contracts || []),
-        tenants:       incoming.tenants?.length  ? incoming.tenants  : (state.tenants  || []),
-        owners:        incoming.owners?.length   ? incoming.owners   : (state.owners   || []),
-        payments:      mergedPayments,
-        tickets:       incoming.tickets?.length      ? incoming.tickets      : (state.tickets      || []),
-        transactions:  incoming.transactions?.length ? incoming.transactions : (state.transactions || []),
-        conversations: incoming.conversations?.length ? incoming.conversations : (state.conversations || []),
-        inspections:   incoming.inspections?.length  ? incoming.inspections  : (state.inspections  || []),
-        alerts:        incoming.alerts?.length        ? incoming.alerts       : (state.alerts       || []),
-        revenueData:   incoming.revenueData           || state.revenueData    || [],
-        users: mergedUsers,
-        currentUser: state.currentUser,
-        systemSettings: state.systemSettings,
-      };
-    }
-
-    default:
-      return state;
-  }
-}
-
-// ─── Firebase REST helpers ─────────────────────────────────────────────────────
-async function fbSave(databaseURL, workspaceId, data) {
-  const savedAt = Date.now();
-  const url = `${databaseURL.replace(/\/$/, '')}/minsouah/${workspaceId}.json`;
-  await fetch(url, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...data, _savedAt: savedAt }),
-  });
-  return savedAt;
-}
-async function fbFetch(databaseURL, workspaceId) {
-  const url = `${databaseURL.replace(/\/$/, '')}/minsouah/${workspaceId}.json`;
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  return res.json();
-}
-
-// ─── Context ───────────────────────────────────────────────────────────────────
+// ── Context ────────────────────────────────────────────────────────────────────
 const AppContext = createContext(null);
 
 export function AppProvider({ children }) {
-  const [state, dispatch] = useReducer(
-    reducer,
-    EMPTY_STATE,
-    () => {
-      try {
-        const saved = localStorage.getItem('minsouah_v1');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-
-          if (!parsed.users?.length) parsed.users = [DEFAULT_ADMIN, DEFAULT_CONCIERGE];
-          // Guarantee demo accounts always exist
-          if (!parsed.users.some(u => u.id === 1)) parsed.users.unshift({ ...DEFAULT_ADMIN });
-          if (!parsed.users.some(u => u.id === 2)) parsed.users.push({ ...DEFAULT_CONCIERGE });
-          if (!parsed.activityLog) parsed.activityLog = [];
-          // Enrich contracts with propertyId/ownerName/ownerId if missing (migration)
-          if (parsed.properties?.length) {
-            const norm = s => (s || '').trim().toLowerCase()
-              .normalize('NFD').replace(/[̀-ͯ]/g, '');
-            const lsOwners = parsed.owners || [];
-            // Backfill ownerId on properties missing it (owner name lookup)
-            parsed.properties = parsed.properties.map(p => {
-              if (p.ownerId != null) return p;
-              const o = lsOwners.find(ow => norm(ow.name) === norm(p.owner || ''));
-              return o ? { ...p, ownerId: o.id } : p;
-            });
-            if (parsed.contracts?.length) {
-              parsed.contracts = parsed.contracts.map(c => {
-                // Look up property by id first, then by normalised name
-                const prop = parsed.properties.find(p =>
-                  (c.propertyId != null && (p.id === c.propertyId || Number(p.id) === Number(c.propertyId))) ||
-                  (norm(p.name) === norm(c.propertyName || ''))
-                );
-                if (!prop) return c;
-                const ownerForProp = lsOwners.find(o => norm(o.name) === norm(prop.owner || ''));
-                return {
-                  ...c,
-                  propertyId: c.propertyId ?? prop.id,
-                  ownerName:  c.ownerName  ?? prop.owner  ?? null,
-                  ownerId:    c.ownerId    ?? prop.ownerId ?? ownerForProp?.id ?? null,
-                };
-              });
-            }
-          }
-          // Reconcile property statuses: SET to Loué when active contract found, never force-reset
-          if (parsed.properties?.length && parsed.contracts?.length) {
-            const normR = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-            const activeContracts = parsed.contracts.filter(c => c.status === 'Actif' || c.status === 'Expirant');
-            const activePropNames = new Set(activeContracts.map(c => normR(c.propertyName || c.bien || '')).filter(Boolean));
-            const activePropIds   = new Set(activeContracts.map(c => c.propertyId).filter(v => v != null));
-            parsed.properties = parsed.properties.map(p => {
-              if (p.isBuilding) return p;
-              const isActive = activePropNames.has(normR(p.name)) ||
-                activePropIds.has(p.id) || activePropIds.has(String(p.id)) || activePropIds.has(Number(p.id));
-              if (isActive) return { ...p, status: 'Loué' };
-              return p; // never force-reset — trust the stored status
-            });
-          }
-          if (!parsed.systemSettings) {
-            parsed.systemSettings = DEFAULT_SYSTEM;
-          } else {
-            // Merge new DEFAULT_SYSTEM keys into old saves
-            parsed.systemSettings = { ...DEFAULT_SYSTEM, ...parsed.systemSettings };
-            // Toujours forcer la config Firebase à jour (URL réelle + enabled:true)
-            parsed.systemSettings.firebase = {
-              ...DEFAULT_SYSTEM.firebase,
-              // Garde l'URL customisée si elle est valide, sinon utilise le fallback
-              databaseURL: (parsed.systemSettings.firebase?.databaseURL || '').startsWith('https://')
-                ? parsed.systemSettings.firebase.databaseURL
-                : DEFAULT_SYSTEM.firebase.databaseURL,
-              enabled: true,
-            };
-          }
-          return { ...parsed, demoVersion: DEMO_VERSION };
-        }
-        // No localStorage → start empty; bootstrap effect will pull from Firebase
-        return { ...EMPTY_STATE, _bootstrapping: true, demoVersion: DEMO_VERSION };
-      } catch {
-        return { ...EMPTY_STATE, _bootstrapping: true };
-      }
-    }
-  );
-
-  const fbSyncRef = useRef({
-    isSyncing: false,
-    saveTimer: null,
-    pollInterval: null,
-    eventSource: null,
-    configKey: '',
-    // Pre-seed from localStorage so SSE initial payload doesn't spuriously overwrite newer local data
-    lastSavedAt: (() => { try { return JSON.parse(localStorage.getItem('minsouah_v1') || '{}')._savedAt || 0; } catch { return 0; } })(),
+  const [state, setState] = useState({
+    properties: [], contracts: [], tenants: [], owners: [],
+    payments: [], transactions: [], tickets: [], inspections: [],
+    conversations: [], users: [], activityLog: [], revenueData: [],
+    currentUser: null,
+    orgSettings: DEFAULT_ORG,
+    systemSettings: DEFAULT_SYSTEM,
+    _bootstrapping: true,
+    _networkError: false,
   });
 
-  // ── On startup from localStorage: immediately push to Firebase before poll runs
-  useEffect(() => {
-    if (state._bootstrapping) return; // handled by bootstrap effect below
-    const fb = state.systemSettings?.firebase;
-    if (!fb?.enabled || !fb?.databaseURL || !fb?.workspaceId) return;
-    const { currentUser, ...toSync } = state;
-    fbSave(fb.databaseURL, fb.workspaceId, toSync)
-      .then(savedAt => { fbSyncRef.current.lastSavedAt = savedAt; })
-      .catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Always-current reference to state for dispatch closure
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
-  // ── Bootstrap: first load without localStorage → pull from Firebase ──────────
-  useEffect(() => {
-    if (!state._bootstrapping) return;
-    const fb = state.systemSettings?.firebase;
-    if (!fb?.enabled || !fb?.databaseURL || !fb?.workspaceId) {
-      dispatch({ type: 'BOOTSTRAP_DONE', payload: DEMO_STATE });
-      return;
+  // Track which essential collections have received their first snapshot
+  const loadedRef = useRef(new Set());
+  const ESSENTIAL = ['users', 'properties', 'contracts', 'tenants', 'payments', 'owners'];
+
+  const checkBootstrap = useCallback(() => {
+    if (ESSENTIAL.every((c) => loadedRef.current.has(c))) {
+      setState((s) => (s._bootstrapping ? { ...s, _bootstrapping: false } : s));
     }
-    fbFetch(fb.databaseURL, fb.workspaceId)
-      .then(data => {
-        dispatch({ type: 'BOOTSTRAP_DONE', payload: (data && data.users?.length) ? data : DEMO_STATE });
-      })
-      .catch(() => dispatch({ type: 'BOOTSTRAP_DONE', payload: DEMO_STATE }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 1. Restore logged-in user from localStorage (instant, no network) ───────
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SESSION_KEY);
+      if (saved) setState((s) => ({ ...s, currentUser: JSON.parse(saved) }));
+    } catch { /* ignore */ }
   }, []);
 
-  // ── Persist to localStorage + push to Firebase ──────────────────────────────
+  // ── 2. Bootstrap timeout — never hang forever ─────────────────────────────
   useEffect(() => {
-    if (state._bootstrapping) return; // don't overwrite Firebase while loading
-    const refs = fbSyncRef.current;
-    // isSyncing = true means this state change came from CLOUD_SYNC:
-    //   - Always save to localStorage (so synced data survives refresh)
-    //   - Skip Firebase re-save (avoid circular: we'd re-save data we just read)
-    const skipFirebase = refs.isSyncing;
-    if (skipFirebase) refs.isSyncing = false;
+    const timer = setTimeout(() => {
+      setState((s) => (s._bootstrapping ? { ...s, _bootstrapping: false } : s));
+    }, 12_000);
+    return () => clearTimeout(timer);
+  }, []);
 
-    try {
-      localStorage.setItem('minsouah_v1', JSON.stringify(state));
-    } catch {
-      // Quota exceeded — strip avatars and retry
-      try {
-        const slim = {
-          ...state,
-          currentUser: state.currentUser ? { ...state.currentUser, avatar: null } : null,
-          users: (state.users || []).map(u => ({ ...u, avatar: null })),
-          tenants: (state.tenants || []).map(t => ({ ...t, avatar: null })),
+  // ── 3. Auth → then Firestore subscriptions (no race condition) ────────────
+  // onAuthStateChanged fires immediately if already signed in (e.g. page reload),
+  // or after signInAnonymously completes. Firestore subscriptions are only opened
+  // once we have a valid auth token — avoids PERMISSION_DENIED on first load.
+  const unsubFirestoreRef = useRef([]);
+
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        // Auth is ready — open all Firestore listeners
+        const unsubs = [];
+
+        const sub = (colName) => {
+          unsubs.push(
+            onSnapshot(
+              wsCol(colName),
+              (snap) => {
+                const docs = snap.docs.map((d) => d.data());
+                setState((s) => ({ ...s, [colName]: docs }));
+                if (!loadedRef.current.has(colName)) {
+                  loadedRef.current.add(colName);
+                  checkBootstrap();
+                }
+              },
+              (err) => {
+                console.error(`[onSnapshot:${colName}]`, err.code, err.message);
+                if (!loadedRef.current.has(colName)) {
+                  loadedRef.current.add(colName);
+                  checkBootstrap();
+                }
+              }
+            )
+          );
         };
-        localStorage.setItem('minsouah_v1', JSON.stringify(slim));
-      } catch { /* still too large — skip */ }
-    }
 
-    if (skipFirebase) return; // don't re-push what we just pulled from Firebase
+        ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
+          'tickets', 'inspections', 'conversations', 'users'].forEach(sub);
 
-    const fb = state.systemSettings?.firebase;
-    if (fb?.enabled && fb?.databaseURL && fb?.workspaceId) {
-      clearTimeout(refs.saveTimer);
-      refs.saveTimer = setTimeout(() => {
-        const { currentUser, ...toSync } = state;
-        fbSave(fb.databaseURL, fb.workspaceId, toSync)
-          .then((savedAt) => { refs.lastSavedAt = savedAt; })
-          .catch(() => {});
-      }, 3000);
-    }
-  }, [state]);
+        // Activity log
+        unsubs.push(
+          onSnapshot(wsCol('activityLog'),
+            (snap) => setState((s) => ({
+              ...s,
+              activityLog: snap.docs
+                .map((d) => d.data())
+                .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+                .slice(0, 500),
+            })),
+            () => {}
+          )
+        );
 
-  // ── Real-time Firebase RTDB listener (SSE) + polling fallback ───────────────
-  // Firebase RTDB exposes Server-Sent Events at {url}.json — no SDK needed.
-  // SSE fires immediately on any change; polling is the fallback if SSE fails.
-  useEffect(() => {
-    const refs = fbSyncRef.current;
-    const fb = state.systemSettings?.firebase;
-    const newKey = `${fb?.enabled}-${fb?.databaseURL}-${fb?.workspaceId}`;
-    if (refs.configKey === newKey) return;
-    refs.configKey = newKey;
+        // Settings docs
+        unsubs.push(
+          onSnapshot(wsDoc('settings', 'org'),
+            (snap) => { if (snap.exists()) setState((s) => ({ ...s, orgSettings: { ...DEFAULT_ORG, ...snap.data() } })); },
+            () => {}
+          ),
+          onSnapshot(wsDoc('settings', 'system'),
+            (snap) => { if (snap.exists()) setState((s) => ({ ...s, systemSettings: { ...DEFAULT_SYSTEM, ...snap.data() } })); },
+            () => {}
+          )
+        );
 
-    if (refs.eventSource) { refs.eventSource.close(); refs.eventSource = null; }
-    clearInterval(refs.pollInterval);
-    if (!fb?.enabled || !fb?.databaseURL || !fb?.workspaceId) return;
-
-    const processIncoming = (data) => {
-      if (!data?.users?.length) return;
-      if ((data._savedAt || 0) > (refs.lastSavedAt || 0)) {
-        refs.lastSavedAt = data._savedAt;
-        refs.isSyncing = true;
-        dispatch({ type: 'CLOUD_SYNC', payload: data });
+        // Store for cleanup
+        unsubFirestoreRef.current.forEach((u) => u());
+        unsubFirestoreRef.current = unsubs;
+      } else {
+        // Not signed in — try anonymous
+        signInAnonymously(auth).catch((err) => {
+          console.error('[Firebase anon auth]', err);
+          setState((s) => ({ ...s, _networkError: true, _bootstrapping: false }));
+        });
       }
-    };
-
-    const startPollingFallback = () => {
-      refs.pollInterval = setInterval(
-        () => fbFetch(fb.databaseURL, fb.workspaceId).then(d => d && processIncoming(d)).catch(() => {}),
-        8000
-      );
-    };
-
-    const url = `${fb.databaseURL.replace(/\/$/, '')}/minsouah/${fb.workspaceId}.json`;
-    try {
-      const es = new EventSource(url);
-      refs.eventSource = es;
-      es.addEventListener('put', (e) => {
-        try { processIncoming(JSON.parse(e.data)?.data); } catch { /* ignore malformed */ }
-      });
-      es.onerror = () => {
-        if (refs.eventSource !== es) return; // already replaced
-        es.close(); refs.eventSource = null;
-        startPollingFallback(); // SSE unavailable → fall back to 8s polling
-      };
-    } catch { startPollingFallback(); }
+    });
 
     return () => {
-      if (refs.eventSource) { refs.eventSource.close(); refs.eventSource = null; }
-      clearInterval(refs.pollInterval);
+      unsubAuth();
+      unsubFirestoreRef.current.forEach((u) => u());
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [`${state.systemSettings?.firebase?.enabled}-${state.systemSettings?.firebase?.databaseURL}-${state.systemSettings?.firebase?.workspaceId}`]);
+  }, [checkBootstrap]);
 
-  if (state._bootstrapping) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fdf8f0' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 56, height: 56, border: '4px solid #785a00', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
-          <h1 style={{ fontWeight: 900, fontSize: 24, color: '#785a00', marginBottom: 6 }}>Minsouah</h1>
-          <p style={{ color: '#817662', fontSize: 14 }}>Chargement en cours…</p>
-        </div>
-        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      </div>
-    );
-  }
+  // ── 5. Seed default admin on first run (empty users collection) ────────────
+  useEffect(() => {
+    if (state._bootstrapping) return;
+    if (state.users.length === 0) {
+      hashPwd(DEFAULT_ADMIN.password).then((hashed) => {
+        setDoc(wsDoc('users', DEFAULT_ADMIN.id), { ...DEFAULT_ADMIN, password: hashed }).catch(console.error);
+      });
+    }
+  }, [state._bootstrapping, state.users.length]);
+
+  // ── 6. dispatch → Firestore writes ────────────────────────────────────────
+  const dispatch = useCallback(async (action) => {
+    const { type, payload } = action;
+    const st = stateRef.current;
+
+    const logActivity = async (details, actionType = 'ACTION') => {
+      const id = Date.now();
+      setDoc(wsDoc('activityLog', id), {
+        id, action: actionType, details,
+        userId: st.currentUser?.id || null,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
+    };
+
+    try {
+      switch (type) {
+
+        // ── AUTH ───────────────────────────────────────────────────────────────
+        case 'LOGIN': {
+          const u = payload;
+          const session = {
+            id: u.id, role: u.role, name: u.name, initials: u.initials,
+            email: u.email, color: u.color, avatar: u.avatar || null,
+            personId: u.personId || null, firstLogin: u.firstLogin || false,
+          };
+          try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch { /* quota */ }
+          setState((s) => ({ ...s, currentUser: session }));
+          break;
+        }
+        case 'LOGOUT': {
+          localStorage.removeItem(SESSION_KEY);
+          setState((s) => ({ ...s, currentUser: null }));
+          break;
+        }
+
+        // ── PROPERTIES ────────────────────────────────────────────────────────
+        case 'ADD_PROPERTY': {
+          const id = Date.now();
+          await setDoc(wsDoc('properties', id), { ...payload, id, createdAt: new Date().toISOString() });
+          break;
+        }
+        case 'UPDATE_PROPERTY':
+          await setDoc(wsDoc('properties', payload.id), payload);
+          break;
+        case 'DELETE_PROPERTY':
+          await deleteDoc(wsDoc('properties', payload));
+          break;
+
+        // ── CONTRACTS ─────────────────────────────────────────────────────────
+        case 'ADD_CONTRACT': {
+          const id = Date.now();
+          const contract = { ...payload, id, createdAt: new Date().toISOString() };
+          await setDoc(wsDoc('contracts', id), contract);
+          await pushPropertyStatus(contract, st.properties);
+          break;
+        }
+        case 'UPDATE_CONTRACT': {
+          await setDoc(wsDoc('contracts', payload.id), payload);
+          await pushPropertyStatus(payload, st.properties);
+          break;
+        }
+        case 'DELETE_CONTRACT': {
+          const deleted = st.contracts.find((c) => c.id === payload);
+          await deleteDoc(wsDoc('contracts', payload));
+          if (deleted) await pushPropertyStatus({ ...deleted, status: 'Résilié' }, st.properties);
+          break;
+        }
+
+        // ── TENANTS ───────────────────────────────────────────────────────────
+        case 'ADD_TENANT': {
+          const id = Date.now();
+          await setDoc(wsDoc('tenants', id), { ...payload, id, createdAt: new Date().toISOString() });
+          break;
+        }
+        case 'UPDATE_TENANT':
+          await setDoc(wsDoc('tenants', payload.id), payload);
+          break;
+        case 'DELETE_TENANT':
+          await deleteDoc(wsDoc('tenants', payload));
+          break;
+
+        // ── OWNERS ────────────────────────────────────────────────────────────
+        case 'ADD_OWNER': {
+          const id = Date.now();
+          await setDoc(wsDoc('owners', id), { ...payload, id, createdAt: new Date().toISOString() });
+          break;
+        }
+        case 'UPDATE_OWNER':
+          await setDoc(wsDoc('owners', payload.id), payload);
+          break;
+        case 'DELETE_OWNER':
+          await deleteDoc(wsDoc('owners', payload));
+          break;
+
+        // ── TRANSACTIONS ──────────────────────────────────────────────────────
+        case 'ADD_TRANSACTION': {
+          const id = Date.now();
+          await setDoc(wsDoc('transactions', id), { ...payload, id });
+          break;
+        }
+        case 'DELETE_TRANSACTION':
+          await deleteDoc(wsDoc('transactions', payload));
+          break;
+
+        // ── PAYMENTS ──────────────────────────────────────────────────────────
+        case 'ADD_PAYMENT': {
+          const id = Date.now();
+          await setDoc(wsDoc('payments', id), { ...payload, id, createdAt: new Date().toISOString() });
+          break;
+        }
+        case 'UPDATE_PAYMENT':
+          await setDoc(wsDoc('payments', payload.id), payload);
+          break;
+        case 'MARK_PAYMENT_PAID':
+          await updateDoc(wsDoc('payments', payload), {
+            status: 'Payé',
+            paidDate: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
+          });
+          break;
+        case 'SEND_REMINDER': {
+          const p = st.payments.find((p) => p.id === payload);
+          if (p) {
+            await updateDoc(wsDoc('payments', payload), {
+              reminderSent: true,
+              reminderCount: (p.reminderCount || 0) + 1,
+              status: p.status === 'Impayé' ? 'En retard' : p.status,
+            });
+          }
+          break;
+        }
+
+        // ── TICKETS ───────────────────────────────────────────────────────────
+        case 'ADD_TICKET': {
+          const id = payload.id || Date.now();
+          await setDoc(wsDoc('tickets', id), { ...payload, id });
+          break;
+        }
+        case 'UPDATE_TICKET':
+          await setDoc(wsDoc('tickets', payload.id), payload);
+          break;
+        case 'DELETE_TICKET':
+          await deleteDoc(wsDoc('tickets', payload));
+          break;
+
+        // ── INSPECTIONS ───────────────────────────────────────────────────────
+        case 'ADD_INSPECTION': {
+          const id = payload.id || Date.now();
+          await setDoc(wsDoc('inspections', id), { ...payload, id });
+          break;
+        }
+        case 'UPDATE_INSPECTION':
+          await setDoc(wsDoc('inspections', payload.id), payload);
+          break;
+        case 'DELETE_INSPECTION':
+          await deleteDoc(wsDoc('inspections', payload));
+          break;
+
+        // ── CONVERSATIONS ─────────────────────────────────────────────────────
+        case 'SEND_MESSAGE': {
+          const { convId, message } = payload;
+          const conv = st.conversations.find((c) => c.id === convId);
+          if (conv) {
+            await setDoc(wsDoc('conversations', convId), {
+              ...conv,
+              lastMessage: message.text,
+              time: message.time,
+              unread: 0,
+              messages: [...(conv.messages || []), message],
+            });
+          }
+          break;
+        }
+        case 'MARK_READ':
+          await updateDoc(wsDoc('conversations', payload), { unread: 0 });
+          break;
+        case 'ADD_CONVERSATION': {
+          const id = payload.id || Date.now();
+          await setDoc(wsDoc('conversations', id), { ...payload, id });
+          break;
+        }
+
+        // ── USERS ─────────────────────────────────────────────────────────────
+        case 'ADD_USER': {
+          if (st.users.some((u) => u.email === payload.email)) break;
+          const id = Date.now();
+          const newUser = {
+            ...payload, id,
+            failedAttempts: 0, lockedUntil: null,
+            suspended: false, createdAt: new Date().toISOString(), lastLogin: null,
+          };
+          await setDoc(wsDoc('users', id), newUser);
+          await logActivity(`Compte créé : ${payload.name} (${payload.role})`, 'ADD_USER');
+          break;
+        }
+        case 'UPDATE_USER': {
+          await setDoc(wsDoc('users', payload.id), payload, { merge: true });
+          if (st.currentUser?.id === payload.id) {
+            const updated = { ...st.currentUser, ...payload };
+            try { localStorage.setItem(SESSION_KEY, JSON.stringify(updated)); } catch { /* quota */ }
+            setState((s) => ({ ...s, currentUser: updated }));
+          }
+          break;
+        }
+        case 'DELETE_USER': {
+          if (payload === 1) break; // Never delete admin id=1
+          const target = st.users.find((u) => u.id === payload);
+          await deleteDoc(wsDoc('users', payload));
+          await logActivity(`Compte supprimé : ${target?.name || payload}`, 'DELETE_USER');
+          break;
+        }
+        case 'SUSPEND_USER': {
+          const target = st.users.find((u) => u.id === payload);
+          const willSuspend = !target?.suspended;
+          await updateDoc(wsDoc('users', payload), { suspended: willSuspend });
+          await logActivity(`${target?.name || payload} ${willSuspend ? 'suspendu' : 'réactivé'}`, 'SUSPEND_USER');
+          break;
+        }
+        case 'CHANGE_PASSWORD': {
+          const { email, newPassword } = payload;
+          const targetUser = st.users.find((u) => u.email === email);
+          if (targetUser) {
+            await updateDoc(wsDoc('users', targetUser.id), {
+              password: newPassword, firstLogin: false, failedAttempts: 0, lockedUntil: null,
+            });
+            if (st.currentUser?.email === email) {
+              const updated = { ...st.currentUser, firstLogin: false };
+              try { localStorage.setItem(SESSION_KEY, JSON.stringify(updated)); } catch { /* quota */ }
+              setState((s) => ({ ...s, currentUser: updated }));
+            }
+          }
+          break;
+        }
+        case 'UPGRADE_PASSWORD': {
+          const { email, hashedPassword } = payload;
+          const targetUser = st.users.find((u) => u.email === email);
+          if (targetUser) {
+            await updateDoc(wsDoc('users', targetUser.id), { password: hashedPassword }).catch(() => {});
+          }
+          break;
+        }
+        case 'LOGIN_ATTEMPT': {
+          const { email, success } = payload;
+          const now = new Date().toISOString();
+          const u = st.users.find((u) => u.email === email);
+          if (!u) break;
+          if (success) {
+            await updateDoc(wsDoc('users', u.id), { failedAttempts: 0, lockedUntil: null, lastLogin: now }).catch(() => {});
+          } else {
+            const attempts = (u.failedAttempts || 0) + 1;
+            const lockedUntil = attempts >= 5
+              ? new Date(Date.now() + 15 * 60 * 1000).toISOString()
+              : null;
+            await updateDoc(wsDoc('users', u.id), {
+              failedAttempts: attempts,
+              ...(lockedUntil ? { lockedUntil } : {}),
+            }).catch(() => {});
+          }
+          break;
+        }
+
+        // ── SETTINGS ──────────────────────────────────────────────────────────
+        case 'UPDATE_SETTINGS': {
+          const { type: sType, data } = payload;
+          if (sType === 'profile') {
+            const initials = data.name
+              ? data.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
+              : st.currentUser?.initials;
+            const profileData = { ...data, initials };
+            if (st.currentUser?.id) {
+              await setDoc(wsDoc('users', st.currentUser.id), profileData, { merge: true });
+            }
+            const updated = { ...st.currentUser, ...profileData };
+            try { localStorage.setItem(SESSION_KEY, JSON.stringify(updated)); } catch { /* quota */ }
+            setState((s) => ({ ...s, currentUser: updated }));
+          } else if (sType === 'notif') {
+            const orgData = { ...st.orgSettings, notif: data };
+            await setDoc(wsDoc('settings', 'org'), orgData);
+            setState((s) => ({ ...s, orgSettings: orgData }));
+          } else {
+            const orgData = { ...st.orgSettings, ...(data || payload) };
+            await setDoc(wsDoc('settings', 'org'), orgData);
+            setState((s) => ({ ...s, orgSettings: orgData }));
+          }
+          break;
+        }
+        case 'UPDATE_SYSTEM_SETTINGS': {
+          const sysData = { ...st.systemSettings, ...payload };
+          await setDoc(wsDoc('settings', 'system'), sysData);
+          setState((s) => ({ ...s, systemSettings: sysData }));
+          break;
+        }
+
+        // ── ACTIVITY LOG ──────────────────────────────────────────────────────
+        case 'LOG_ACTIVITY':
+          await logActivity(payload.details || String(payload), payload.action || 'ACTION');
+          break;
+
+        // ── RESET (delete all entity data, keep users+settings) ───────────────
+        case 'RESET': {
+          const toDelete = ['properties', 'contracts', 'tenants', 'owners', 'payments',
+            'transactions', 'tickets', 'inspections', 'conversations'];
+          for (const col of toDelete) {
+            const snap = await getDocs(wsCol(col));
+            // Delete in batches of 400
+            for (let i = 0; i < snap.docs.length; i += 400) {
+              const batch = writeBatch(db);
+              snap.docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+              await batch.commit();
+            }
+          }
+          break;
+        }
+
+        // ── RESET_DEMO (write demo data to Firestore) ─────────────────────────
+        case 'RESET_DEMO': {
+          const collections = [
+            ['properties', mockProperties],
+            ['contracts', mockContracts],
+            ['tenants', mockTenants],
+            ['owners', mockOwners],
+            ['transactions', mockTransactions],
+            ['tickets', mockTickets],
+            ['conversations', mockConversations],
+            ['payments', mockPayments],
+          ];
+          for (const [col, items] of collections) {
+            // Clear existing
+            const existing = await getDocs(wsCol(col));
+            for (let i = 0; i < existing.docs.length; i += 400) {
+              const batch = writeBatch(db);
+              existing.docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+              await batch.commit();
+            }
+            // Write demo items
+            for (let i = 0; i < items.length; i += 400) {
+              const batch = writeBatch(db);
+              items.slice(i, i + 400).forEach((item) => {
+                if (item?.id != null) batch.set(wsDoc(col, item.id), item);
+              });
+              await batch.commit();
+            }
+          }
+          break;
+        }
+
+        // ── IMPORT_STATE (migrate old localStorage data into Firestore) ────────
+        case 'IMPORT_STATE': {
+          const data = payload;
+          if (!data) break;
+          const cols = ['properties', 'contracts', 'tenants', 'owners', 'payments',
+            'transactions', 'tickets', 'inspections', 'conversations'];
+          for (const col of cols) {
+            const items = data[col];
+            if (!items?.length) continue;
+            for (let i = 0; i < items.length; i += 400) {
+              const batch = writeBatch(db);
+              items.slice(i, i + 400).forEach((item) => {
+                if (item?.id != null) batch.set(wsDoc(col, item.id), item, { merge: true });
+              });
+              await batch.commit();
+            }
+          }
+          if (data.users?.length) {
+            for (let i = 0; i < data.users.length; i += 400) {
+              const batch = writeBatch(db);
+              data.users.slice(i, i + 400).forEach((u) => {
+                if (u?.id != null) batch.set(wsDoc('users', u.id), u, { merge: true });
+              });
+              await batch.commit();
+            }
+          }
+          break;
+        }
+
+        // ── LEGACY / NO-OP ────────────────────────────────────────────────────
+        case 'BOOTSTRAP_DONE':
+        case 'CLOUD_SYNC':
+          // These actions are no longer needed — Firestore onSnapshot handles real-time sync
+          break;
+
+        default:
+          console.warn('[AppContext] Unknown action type:', type);
+      }
+    } catch (err) {
+      console.error('[AppContext dispatch]', type, err);
+      throw err;
+    }
+  }, []); // stateRef is always current — no deps needed
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>
@@ -797,6 +632,6 @@ export function AppProvider({ children }) {
 
 export function useApp() {
   const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useApp must be used inside AppProvider');
+  if (!ctx) throw new Error('useApp must be used within AppProvider');
   return ctx;
 }

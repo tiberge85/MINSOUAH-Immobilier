@@ -105,24 +105,31 @@ export default function OwnerPortal() {
   const ownerContracts = useMemo(() => {
     if (!owner) return [];
     const ownerN = norm(owner.name);
-    const ownerPropIds2 = new Set((owner.propertyIds || []).map(Number));
-    const ownerProps = properties.filter(p =>
-      norm(p.owner) === ownerN ||
-      (p.ownerId != null && (p.ownerId === owner.id || Number(p.ownerId) === owner.id)) ||
-      ownerPropIds2.has(Number(p.id))
-    );
-    const propNameSet = new Set(ownerProps.map(p => norm(p.name)));
-    const propIdSet   = new Set(ownerProps.map(p => p.id));
+    const propNameSet = new Set(ownerProperties.map(p => norm(p.name)));
+    // Accept all forms: original id, number, string
+    const propIds = new Set([
+      ...ownerProperties.map(p => p.id),
+      ...ownerProperties.map(p => Number(p.id)),
+      ...ownerProperties.map(p => String(p.id)),
+    ]);
+    // Strip composite key suffix "12345::" or "12345::67" → 12345
+    const cleanId = id => {
+      if (id == null) return null;
+      if (typeof id === 'string' && id.includes('::')) { const n = Number(id.split('::')[0]); return isNaN(n) ? null : n; }
+      return id;
+    };
     return contracts.filter(c => {
       const cName = norm(c.propertyName || c.bien || '');
-      return (
-        (cName && propNameSet.has(cName)) ||
-        (c.propertyId != null && (propIdSet.has(c.propertyId) || propIdSet.has(Number(c.propertyId)))) ||
-        (c.ownerId != null && (c.ownerId === owner.id || Number(c.ownerId) === owner.id)) ||
-        (c.ownerName && norm(c.ownerName) === ownerN)
-      );
+      if (cName && propNameSet.has(cName)) return true;
+      // Also match "Building — Unit" names by prefix
+      if (cName && [...propNameSet].some(pn => cName.startsWith(pn + ' '))) return true;
+      const cleanedId = cleanId(c.propertyId);
+      if (cleanedId != null && propIds.has(cleanedId)) return true;
+      if (c.ownerId != null && (c.ownerId === owner.id || Number(c.ownerId) === owner.id)) return true;
+      if (c.ownerName && norm(c.ownerName) === ownerN) return true;
+      return false;
     });
-  }, [owner, properties, contracts]);
+  }, [owner, ownerProperties, contracts]);
 
   const ownerPayments = useMemo(() => {
     if (!owner) return [];

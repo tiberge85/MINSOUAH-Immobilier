@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -46,11 +46,40 @@ function KpiCard({ label, value, sub, subIcon, subColor, icon, iconBg }) {
   );
 }
 
+// Parse a payment's date into { month (0-11), year }
+function paymentMonth(p) {
+  // Try ISO createdAt first (most reliable for new data)
+  if (p.createdAt) {
+    try { const d = new Date(p.createdAt); if (!isNaN(d.getTime())) return { m: d.getMonth(), y: d.getFullYear() }; } catch {}
+  }
+  // dueDate "dd/mm/yyyy"
+  if (p.dueDate) {
+    const pts = String(p.dueDate).split('/');
+    if (pts.length === 3) {
+      const m = parseInt(pts[1], 10) - 1; const y = parseInt(pts[2], 10);
+      if (!isNaN(m) && !isNaN(y)) return { m, y };
+    }
+  }
+  // month string: "Janvier 2025", "Jan 2025", "01/2025"
+  if (p.month) {
+    const s = String(p.month).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const MONTHS = ['jan', 'fev', 'mar', 'avr', 'mai', 'jun', 'jul', 'aou', 'sep', 'oct', 'nov', 'dec'];
+    for (let i = 0; i < MONTHS.length; i++) {
+      if (s.includes(MONTHS[i])) {
+        const yr = s.match(/\d{4}/); return { m: i, y: yr ? parseInt(yr[0], 10) : new Date().getFullYear() };
+      }
+    }
+    // "01/2025" format
+    const slash = s.match(/^(\d{1,2})\/(\d{4})$/);
+    if (slash) return { m: parseInt(slash[1], 10) - 1, y: parseInt(slash[2], 10) };
+  }
+  return null;
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const { state } = useApp();
   const {
-    revenueData = [],
     contracts = [],
     tickets = [],
     properties = [],
@@ -58,6 +87,21 @@ export default function Dashboard() {
     owners = [],
     payments = [],
   } = state;
+
+  // Compute monthly revenue chart data from real payments
+  const revenueData = useMemo(() => {
+    const LABELS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+    const year = new Date().getFullYear();
+    const currentMonth = new Date().getMonth();
+    return LABELS.map((mois, idx) => {
+      if (idx > currentMonth) return null; // don't show future months
+      const month = payments.filter((p) => { const pm = paymentMonth(p); return pm && pm.m === idx && pm.y === year; });
+      const revenus = month.filter((p) => p.status === 'Payé').reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      const attendu  = month.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      const impayés  = month.filter((p) => p.status !== 'Payé').reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      return { mois, revenus, attendu, depenses: impayés };
+    }).filter(Boolean);
+  }, [payments]);
 
   // Auto-generate alerts from live data (replaces static state.alerts)
   const alerts = [

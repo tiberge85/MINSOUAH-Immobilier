@@ -167,14 +167,14 @@ export default function Layout() {
   if (isPortalOnly) {
     return (
       <div className="min-h-screen bg-background">
-        <header className="sticky top-0 z-30 bg-surface shadow-topbar border-b border-outline-variant/10 h-16 flex items-center justify-between px-6">
-          <div className="flex items-center gap-3">
-            <h1 className="font-black text-xl text-primary tracking-tight">Minsouah</h1>
+        <header className="sticky top-0 z-30 bg-surface shadow-topbar border-b border-outline-variant/10 h-14 sm:h-16 flex items-center justify-between px-4 sm:px-6">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <h1 className="font-black text-lg sm:text-xl text-primary tracking-tight">Minsouah</h1>
             <span className="text-label-sm text-on-surface-variant hidden sm:block">
               {currentUser.role === 'TENANT' ? 'Espace Locataire' : 'Espace Propriétaire'}
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             <button
               onClick={toggleDark}
               className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-surface-container-high text-on-surface-variant transition-colors"
@@ -184,7 +184,7 @@ export default function Layout() {
             </button>
             <button
               onClick={() => navigate('/settings')}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-surface-container-high transition-colors"
+              className="flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-full hover:bg-surface-container-high transition-colors"
             >
               {currentUser?.avatar
                 ? <img src={currentUser.avatar} alt="" className="w-8 h-8 rounded-full object-cover" />
@@ -201,7 +201,7 @@ export default function Layout() {
             </button>
           </div>
         </header>
-        <main className="pb-8">
+        <main className="pb-8 px-0">
           <Outlet />
         </main>
         {idleModal}
@@ -411,7 +411,7 @@ export default function Layout() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 pb-20 md:pb-8">
+        <main className="flex-1 pb-24 md:pb-8">
           <Outlet />
         </main>
       </div>
@@ -431,26 +431,40 @@ export default function Layout() {
       )}
 
       {/* ── Mobile bottom nav ─────────────────────────────────────────── */}
-      <nav className="md:hidden fixed bottom-0 w-full z-40 bg-surface border-t border-outline-variant shadow-[0px_-4px_20px_rgba(62,56,54,0.05)] flex justify-around items-center h-16">
-        {visibleNav.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            end={item.path === '/'}
-            className={({ isActive }) =>
-              `flex flex-col items-center justify-center gap-0.5 px-2 transition-transform active:scale-90 duration-150 ${
-                isActive ? 'text-primary' : 'text-on-surface-variant'
-              }`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <Icon name={item.mobileIcon} filled={isActive} size={22} />
-                <span className="text-[10px] font-medium leading-none">{item.label.split(' ')[0]}</span>
-              </>
-            )}
-          </NavLink>
-        ))}
+      <nav className="md:hidden fixed bottom-0 w-full z-40 bg-surface border-t border-outline-variant shadow-[0px_-4px_20px_rgba(62,56,54,0.05)] h-16 overflow-x-auto no-scrollbar">
+        <div className="flex items-center h-full min-w-max px-1 gap-0.5 mx-auto max-w-screen-sm justify-around w-full">
+          {visibleNav.map((item) => (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              end={item.path === '/'}
+              className={({ isActive }) =>
+                `flex flex-col items-center justify-center gap-0.5 px-2.5 py-1 min-w-[56px] transition-transform active:scale-90 duration-150 ${
+                  isActive ? 'text-primary' : 'text-on-surface-variant'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <Icon name={item.mobileIcon} filled={isActive} size={22} />
+                  <span className="text-[9px] font-medium leading-none whitespace-nowrap">
+                    {item.label.split(' ')[0]}
+                  </span>
+                </>
+              )}
+            </NavLink>
+          ))}
+          {/* Quick portal access for ADMIN/MANAGER on mobile */}
+          {['ADMIN', 'MANAGER'].includes(currentUser?.role) && (
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="flex flex-col items-center justify-center gap-0.5 px-2.5 py-1 min-w-[56px] text-on-surface-variant transition-transform active:scale-90"
+            >
+              <Icon name="more_horiz" size={22} />
+              <span className="text-[9px] font-medium leading-none">Plus</span>
+            </button>
+          )}
+        </div>
       </nav>
     </div>
   );

@@ -5,7 +5,7 @@ import Icon from '../components/Icon';
 import * as XLSX from 'xlsx';
 import { hashPwd, verifyPwd } from '../lib/auth';
 import { auth } from '../lib/firebase';
-import { createUserWithEmailAndPassword, updatePassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 
 const ALL_TABS = [
   { key: 'profile',  label: 'Mon Profil',      icon: 'account_circle', roles: null },
@@ -286,10 +286,9 @@ export default function Settings() {
   };
 
   /* ── Full reset (truly empty) ── */
-  const handleFullReset = () => {
-    if (!window.confirm('Effacer TOUTES les données (biens, locataires, contrats, paiements) ?\n\nLes comptes utilisateurs sont conservés.\nCette action est irréversible.')) return;
-    localStorage.removeItem('minsouah_v1');
-    dispatch({ type: 'RESET' });
+  const handleFullReset = async () => {
+    if (!window.confirm('Effacer TOUTES les données dans Firestore (biens, locataires, contrats, paiements) ?\n\nLes comptes utilisateurs sont conservés.\nCette action est irréversible.')) return;
+    await dispatch({ type: 'RESET' });
     navigate('/login');
   };
 
@@ -1103,19 +1102,6 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
     showToast('Sauvegarde complète exportée');
   };
 
-  const handleCopySyncCode = () => {
-    try {
-      const exportData = { ...state, currentUser: null };
-      const json = JSON.stringify(exportData);
-      const code = btoa(unescape(encodeURIComponent(json)));
-      navigator.clipboard.writeText(code)
-        .then(() => showToast('Code copié — collez-le sur l\'autre appareil via la page de connexion'))
-        .catch(() => showToast('Impossible de copier automatiquement', 'error'));
-    } catch {
-      showToast('Erreur lors de la génération du code', 'error');
-    }
-  };
-
   /* Import full state */
   const handleImportState = (e) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -1223,47 +1209,61 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
       {/* ── Sync sub-tab ── */}
       {subTab === 'sync' && (
         <div className="flex flex-col gap-4">
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
-            <Icon name="info" size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          {/* Firebase sync status */}
+          <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-start gap-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse flex-shrink-0 mt-1" />
             <div>
-              <p className="font-semibold text-amber-800 text-sm mb-1">Pourquoi les comptes ne sont pas visibles sur un autre navigateur ?</p>
-              <p className="text-xs text-amber-700">L'application stocke toutes les données en local (localStorage du navigateur). Chaque navigateur/appareil a sa propre copie. Pour partager les données, exportez depuis l'appareil principal et importez sur les autres.</p>
+              <p className="font-semibold text-green-800 text-sm mb-1">Synchronisation temps réel active — Firebase Firestore</p>
+              <p className="text-xs text-green-700">
+                Toutes les données sont stockées dans Firebase et synchronisées automatiquement sur tous les appareils et navigateurs en temps réel.
+                Aucune action manuelle n'est nécessaire.
+              </p>
             </div>
           </div>
+
+          {/* Backup / restore */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-5 border border-outline-variant/30 rounded-2xl flex flex-col gap-3">
-              <p className="font-semibold text-on-surface flex items-center gap-2"><Icon name="upload" size={18} className="text-primary" />Exporter</p>
-              <p className="text-xs text-on-surface-variant">Téléchargez une sauvegarde complète (comptes, biens, contrats, paiements…)</p>
+              <p className="font-semibold text-on-surface flex items-center gap-2">
+                <Icon name="backup" size={18} className="text-primary" />Sauvegarde locale
+              </p>
+              <p className="text-xs text-on-surface-variant">
+                Téléchargez une copie JSON de toutes vos données Firestore (comptes, biens, contrats, paiements…) à titre de sauvegarde.
+              </p>
               <button onClick={handleExportState}
                 className="px-4 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 flex items-center gap-2 transition-colors w-fit">
-                <Icon name="download" size={16} />Exporter la sauvegarde
+                <Icon name="download" size={16} />Télécharger la sauvegarde
               </button>
               <button onClick={handleExportUsers}
                 className="px-4 py-2 bg-surface-container border border-outline-variant/30 text-on-surface rounded-xl text-sm font-semibold hover:bg-surface-container-high flex items-center gap-2 transition-colors w-fit">
                 <Icon name="group" size={15} />Exporter comptes seulement
               </button>
-              <button onClick={handleCopySyncCode}
-                className="px-4 py-2 bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-sm font-semibold hover:bg-amber-200 flex items-center gap-2 transition-colors w-fit">
-                <Icon name="content_copy" size={15} />Copier le code de sync
-              </button>
             </div>
             <div className="p-5 border border-outline-variant/30 rounded-2xl flex flex-col gap-3">
-              <p className="font-semibold text-on-surface flex items-center gap-2"><Icon name="download" size={18} className="text-primary" />Importer</p>
-              <p className="text-xs text-on-surface-variant">Chargez une sauvegarde sur ce navigateur/appareil. <strong className="text-error">Remplace toutes les données actuelles.</strong></p>
+              <p className="font-semibold text-on-surface flex items-center gap-2">
+                <Icon name="restore" size={18} className="text-primary" />Restauration
+              </p>
+              <p className="text-xs text-on-surface-variant">
+                Importez une sauvegarde JSON dans Firestore.{' '}
+                <strong className="text-error">Fusionne avec les données existantes.</strong>
+              </p>
               <label className="px-4 py-2.5 bg-surface-container border border-outline-variant/30 text-on-surface rounded-xl text-sm font-semibold hover:bg-surface-container-high flex items-center gap-2 transition-colors w-fit cursor-pointer">
-                <Icon name="upload_file" size={16} />Importer un fichier JSON
+                <Icon name="upload_file" size={16} />Importer depuis JSON
                 <input ref={importRef2} type="file" accept=".json" className="hidden" onChange={handleImportState} />
               </label>
             </div>
           </div>
+
           <div className="p-4 bg-surface-container-low rounded-xl">
-            <p className="font-semibold text-on-surface text-sm mb-2 flex items-center gap-1"><Icon name="tips_and_updates" size={15} className="text-primary" />Procédure recommandée</p>
-            <ol className="list-decimal list-inside space-y-1 text-xs text-on-surface-variant">
-              <li>Sur l'<strong className="text-on-surface">appareil principal</strong> (là où vous avez créé les comptes), cliquez sur "Exporter la sauvegarde"</li>
-              <li>Envoyez le fichier .json à l'utilisateur par email ou WhatsApp</li>
-              <li>Sur le <strong className="text-on-surface">nouvel appareil</strong>, allez dans Paramètres → Utilisateurs → Sync et cliquez "Importer"</li>
-              <li>L'utilisateur peut ensuite se connecter avec son email et mot de passe temporaire</li>
-            </ol>
+            <p className="font-semibold text-on-surface text-sm mb-2 flex items-center gap-1">
+              <Icon name="info" size={15} className="text-primary" />Comment ça fonctionne
+            </p>
+            <ul className="list-disc list-inside space-y-1 text-xs text-on-surface-variant">
+              <li>Chaque modification est enregistrée <strong className="text-on-surface">instantanément</strong> dans Firebase Firestore</li>
+              <li>Tous les appareils connectés (téléphone, tablette, desktop) reçoivent les mises à jour en temps réel</li>
+              <li>Les données persistent même après fermeture du navigateur ou redémarrage</li>
+              <li>Aucune synchronisation manuelle n'est requise</li>
+            </ul>
           </div>
         </div>
       )}

@@ -3,28 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import { hashPwd, verifyPwd } from '../lib/auth';
-import { auth } from '../lib/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-
-const ROLE_LABELS = {
-  ADMIN: 'Administrateur',
-  MANAGER: 'Manager',
-  ACCOUNTANT: 'Comptable',
-  TECHNICIAN: 'Technicien',
-  CONCIERGE: 'Concierge',
-  OWNER: 'Propriétaire',
-  TENANT: 'Locataire',
-};
-
-const ROLE_ICON = {
-  ADMIN: 'admin_panel_settings',
-  MANAGER: 'manage_history',
-  ACCOUNTANT: 'calculate',
-  TECHNICIAN: 'engineering',
-  CONCIERGE: 'supervised_user_circle',
-  OWNER: 'manage_accounts',
-  TENANT: 'person',
-};
 
 const ROLE_HOME = {
   TENANT:     '/portal/tenant',
@@ -37,30 +15,53 @@ const ROLE_HOME = {
 export default function Login() {
   const { state, dispatch } = useApp();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [showSync, setShowSync] = useState(false);
-  const [syncCode, setSyncCode] = useState('');
-  const [syncError, setSyncError] = useState('');
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
+
+  // Show loading screen while Firestore is bootstrapping
+  if (state._bootstrapping) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+        <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center shadow-lg">
+          <Icon name="domain" size={32} className="text-on-primary" />
+        </div>
+        <h1 className="font-black text-3xl text-primary tracking-tight">Minsouah</h1>
+        <div className="flex items-center gap-2 text-on-surface-variant text-sm">
+          <Icon name="progress_activity" size={18} className="animate-spin text-primary" />
+          Connexion à la base de données…
+        </div>
+      </div>
+    );
+  }
+
+  // Show error if Firebase is unreachable
+  if (state._networkError) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4 p-6">
+        <div className="w-16 h-16 bg-error/10 rounded-2xl flex items-center justify-center">
+          <Icon name="wifi_off" size={32} className="text-error" />
+        </div>
+        <h1 className="font-black text-2xl text-primary tracking-tight">Minsouah</h1>
+        <div className="bg-surface rounded-2xl shadow-lg border border-outline-variant/20 p-6 max-w-sm w-full text-center">
+          <p className="font-bold text-on-surface mb-2">Impossible de contacter Firebase</p>
+          <p className="text-sm text-on-surface-variant mb-4">
+            Vérifiez votre connexion internet et rechargez la page.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full py-3 bg-primary text-on-primary font-bold rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+          >
+            <Icon name="refresh" size={18} /> Réessayer
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const users = state.users || [];
-
-  const handleImportSync = () => {
-    setSyncError('');
-    try {
-      const json = decodeURIComponent(escape(atob(syncCode.trim())));
-      const parsed = JSON.parse(json);
-      if (!parsed.users) { setSyncError('Code invalide — aucun compte trouvé.'); return; }
-      dispatch({ type: 'IMPORT_STATE', payload: parsed });
-      setShowSync(false);
-      setSyncCode('');
-    } catch {
-      setSyncError("Code invalide. Vérifiez qu'il est complet.");
-    }
-  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -69,21 +70,21 @@ export default function Login() {
 
     try {
       const emailLow = email.trim().toLowerCase();
-      const user = users.find(u => u.email.toLowerCase() === emailLow);
+      const user = users.find((u) => u.email.toLowerCase() === emailLow);
 
       if (!user) {
         setError('Aucun compte trouvé avec cet email.');
         return;
       }
 
-      if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
-        const remaining = Math.ceil((new Date(user.lockedUntil) - Date.now()) / 60000);
-        setError(`Compte temporairement bloqué. Réessayez dans ${remaining} min.`);
+      if (user.suspended) {
+        setError("Ce compte a été suspendu. Contactez l'administrateur.");
         return;
       }
 
-      if (user.suspended) {
-        setError('Ce compte a été suspendu. Contactez l\'administrateur.');
+      if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
+        const remaining = Math.ceil((new Date(user.lockedUntil) - Date.now()) / 60000);
+        setError(`Compte temporairement bloqué. Réessayez dans ${remaining} min.`);
         return;
       }
 
@@ -100,28 +101,19 @@ export default function Login() {
         return;
       }
 
-      // Upgrade plain-text password to SHA-256 hash on successful login
+      // Upgrade plain-text password to SHA-256 hash on first successful login
       if (!user.password.startsWith('sha256:')) {
         const hashed = await hashPwd(password);
         dispatch({ type: 'UPGRADE_PASSWORD', payload: { email: user.email, hashedPassword: hashed } });
       }
 
-      // Non-blocking Firebase Auth session sync (for Console tracking)
-      signInWithEmailAndPassword(auth, user.email, password).catch(() => {});
-
       dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: user.email, success: true } });
       dispatch({
         type: 'LOGIN',
         payload: {
-          id: user.id,
-          role: user.role,
-          name: user.name,
-          initials: user.initials,
-          email: user.email,
-          color: user.color,
-          avatar: user.avatar || null,
-          personId: user.personId || null,
-          firstLogin: user.firstLogin || false,
+          id: user.id, role: user.role, name: user.name, initials: user.initials,
+          email: user.email, color: user.color, avatar: user.avatar || null,
+          personId: user.personId || null, firstLogin: user.firstLogin || false,
         },
       });
 
@@ -138,20 +130,23 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
+
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
             <Icon name="domain" size={32} className="text-on-primary" />
           </div>
           <h1 className="font-black text-4xl text-primary tracking-tight">Minsouah</h1>
-          <p className="text-on-surface-variant text-sm mt-1 tracking-widest uppercase">L'immobilier réinventé</p>
+          <p className="text-on-surface-variant text-sm mt-1 tracking-widest uppercase">
+            L'immobilier réinventé
+          </p>
         </div>
 
         <div className="bg-surface rounded-3xl shadow-xl overflow-hidden border border-outline-variant/20">
           <div className="p-6">
             <h2 className="font-bold text-xl text-on-surface mb-1">Connexion</h2>
             <p className="text-sm text-on-surface-variant mb-6">
-              Tous les utilisateurs se connectent avec leur email et mot de passe.
+              Connectez-vous avec votre email et mot de passe.
             </p>
 
             <form onSubmit={handleLogin} className="flex flex-col gap-4">
@@ -161,7 +156,7 @@ export default function Login() {
                   <input
                     type="email"
                     value={email}
-                    onChange={e => setEmail(e.target.value)}
+                    onChange={(e) => setEmail(e.target.value)}
                     placeholder="votre@email.com"
                     className="w-full px-4 py-3 pl-11 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface"
                     required
@@ -177,7 +172,7 @@ export default function Login() {
                   <input
                     type={showPass ? 'text' : 'password'}
                     value={password}
-                    onChange={e => setPassword(e.target.value)}
+                    onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
                     className="w-full px-4 py-3 pl-11 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface pr-12"
                     required
@@ -186,7 +181,7 @@ export default function Login() {
                   <Icon name="lock" size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant" />
                   <button
                     type="button"
-                    onClick={() => setShowPass(v => !v)}
+                    onClick={() => setShowPass((v) => !v)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface transition-colors"
                   >
                     <Icon name={showPass ? 'visibility_off' : 'visibility'} size={20} />
@@ -207,70 +202,23 @@ export default function Login() {
                 className="w-full py-3.5 bg-primary text-on-primary font-bold rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
               >
                 {loading
-                  ? <><Icon name="progress_activity" size={20} className="animate-spin" /> Connexion...</>
+                  ? <><Icon name="progress_activity" size={20} className="animate-spin" /> Connexion…</>
                   : <><Icon name="login" size={20} /> Se connecter</>
                 }
               </button>
             </form>
           </div>
 
-          <div className="border-t border-outline-variant/10">
-            <button
-              type="button"
-              onClick={() => setShowSync(v => !v)}
-              className="w-full py-3 text-sm text-on-surface-variant hover:text-primary flex items-center justify-center gap-2 transition-colors"
-            >
-              <Icon name="sync" size={15} />
-              Synchroniser depuis un autre appareil
-              <Icon name={showSync ? 'expand_less' : 'expand_more'} size={15} />
-            </button>
-            {showSync && (
-              <div className="px-6 pb-5 flex flex-col gap-3">
-                <p className="text-xs text-on-surface-variant text-center">
-                  Collez le code généré depuis <strong>Paramètres → Utilisateurs → Sync</strong>
-                </p>
-                <textarea
-                  value={syncCode}
-                  onChange={e => setSyncCode(e.target.value)}
-                  placeholder="Collez votre code de synchronisation ici..."
-                  rows={3}
-                  className="w-full border border-outline-variant/40 bg-surface-container rounded-xl px-3 py-2 text-xs font-mono resize-none focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface"
-                />
-                {syncError && (
-                  <div className="flex items-center gap-2 text-xs text-error">
-                    <Icon name="error" size={13} /> {syncError}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={handleImportSync}
-                  disabled={!syncCode.trim()}
-                  className="py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
-                >
-                  <Icon name="download" size={16} /> Importer les données
-                </button>
-              </div>
-            )}
+          {/* Live indicator */}
+          <div className="border-t border-outline-variant/10 px-6 py-3 flex items-center justify-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-xs text-on-surface-variant">
+              Synchronisation temps réel — Firebase
+            </span>
           </div>
         </div>
 
-        {/* Bouton de récupération d'urgence */}
-        <div className="text-center mt-4">
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm('Réinitialiser la session locale ? Vos données seront rechargées depuis le serveur.')) {
-                localStorage.removeItem('minsouah_v1');
-                window.location.reload();
-              }
-            }}
-            className="text-xs text-on-surface-variant/50 hover:text-on-surface-variant transition-colors underline underline-offset-2"
-          >
-            Problème de connexion ? Réinitialiser la session
-          </button>
-        </div>
-
-        <p className="text-center text-xs text-on-surface-variant mt-4">
+        <p className="text-center text-xs text-on-surface-variant mt-6">
           © {new Date().getFullYear()} Minsouah — Gestion immobilière Côte d'Ivoire
         </p>
       </div>

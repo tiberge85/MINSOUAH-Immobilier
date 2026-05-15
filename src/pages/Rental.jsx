@@ -179,7 +179,7 @@ export default function Rental() {
   // ── Quand propriété sélectionnée → pré-remplir loyer dans contrat ──────────
   const onContractPropChange = (e) => {
     const opt = allPropertyOptions.find(o => String(o.value) === String(e.target.value));
-    if (opt) setCForm(f => ({ ...f, propertyId: opt.value, propertyName: opt.label, rent: String(opt.rent) }));
+    if (opt) setCForm(f => ({ ...f, propertyId: opt.buildingId, propertyName: opt.label, rent: String(opt.rent) }));
   };
 
   // ── Quand propriété sélectionnée → auto loyer dans tenant form ────────────
