@@ -21,6 +21,8 @@ import OwnerPortal    from './pages/OwnerPortal';
 import Settings       from './pages/Settings';
 import Inspections    from './pages/Inspections';
 import ConciergePortal from './pages/ConciergePortal';
+import SuperAdmin     from './pages/SuperAdmin';
+import OrgRegistration from './pages/OrgRegistration';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,11 +31,12 @@ const queryClient = new QueryClient({
 });
 
 const ROLE_HOME = {
-  TENANT:     '/portal/tenant',
-  OWNER:      '/portal/owner',
-  CONCIERGE:  '/concierge',
-  TECHNICIAN: '/maintenance',
-  ACCOUNTANT: '/finance',
+  SUPER_ADMIN: '/superadmin',
+  TENANT:      '/portal/tenant',
+  OWNER:       '/portal/owner',
+  CONCIERGE:   '/concierge',
+  TECHNICIAN:  '/maintenance',
+  ACCOUNTANT:  '/finance',
 };
 
 function BootstrapScreen() {
@@ -71,6 +74,7 @@ function AppRoutes() {
 
   return (
     <Routes>
+      <Route path="/register" element={user ? <Navigate to={ROLE_HOME[user.role] || '/'} replace /> : <OrgRegistration />} />
       <Route
         path="/login"
         element={user
@@ -98,6 +102,7 @@ function AppRoutes() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
 
+      <Route path="/superadmin" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><SuperAdmin /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );

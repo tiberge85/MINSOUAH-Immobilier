@@ -1,0 +1,137 @@
+export const PLANS = {
+  standard: {
+    id: 'standard',
+    name: 'Standard',
+    monthlyPrice: 5000,
+    yearlyPrice: 50000,
+    colorClass: 'bg-blue-100 text-blue-800 border-blue-200',
+    badgeColor: 'bg-blue-100 text-blue-700',
+    icon: 'home',
+    maxUsers: 2,
+    maxProperties: 10,
+    maxTenants: 30,
+    maxStorageMB: 500,
+    trialDays: 14,
+    description: 'Pour petits propriétaires et petites agences',
+    features: {
+      basicDashboard: true,
+      payments: true,
+      notifications: true,
+      advancedExport: false,
+      advancedAnalytics: false,
+      multiAgency: false,
+      api: false,
+      automations: false,
+      advancedReports: false,
+      cloudBackup: false,
+      activityLogs: false,
+      advancedRoles: false,
+      realtimeDashboard: false,
+      ownerStats: false,
+      maintenance: false,
+      aiAnalytics: false,
+      securityAudit: false,
+      slaGuarantee: false,
+      advancedBackup: false,
+      ipRestrictions: false,
+      prioritySupport: false,
+    },
+  },
+  pro: {
+    id: 'pro',
+    name: 'Pro',
+    monthlyPrice: 25000,
+    yearlyPrice: 250000,
+    colorClass: 'bg-amber-100 text-amber-800 border-amber-200',
+    badgeColor: 'bg-amber-100 text-amber-700',
+    icon: 'business',
+    maxUsers: 5,
+    maxProperties: 150,
+    maxTenants: 1000,
+    maxStorageMB: 5000,
+    trialDays: 14,
+    description: 'Pour agences immobilières et PME',
+    features: {
+      basicDashboard: true,
+      payments: true,
+      notifications: true,
+      advancedExport: true,
+      advancedAnalytics: true,
+      multiAgency: false,
+      api: false,
+      automations: true,
+      advancedReports: true,
+      cloudBackup: true,
+      activityLogs: true,
+      advancedRoles: true,
+      realtimeDashboard: true,
+      ownerStats: true,
+      maintenance: true,
+      aiAnalytics: false,
+      securityAudit: false,
+      slaGuarantee: false,
+      advancedBackup: false,
+      ipRestrictions: false,
+      prioritySupport: false,
+    },
+  },
+  enterprise: {
+    id: 'enterprise',
+    name: 'Enterprise',
+    monthlyPrice: null,
+    yearlyPrice: null,
+    colorClass: 'bg-purple-100 text-purple-800 border-purple-200',
+    badgeColor: 'bg-purple-100 text-purple-700',
+    icon: 'domain',
+    maxUsers: Infinity,
+    maxProperties: Infinity,
+    maxTenants: Infinity,
+    maxStorageMB: Infinity,
+    trialDays: 30,
+    description: 'Pour grands groupes, réseaux et promoteurs',
+    features: {
+      basicDashboard: true,
+      payments: true,
+      notifications: true,
+      advancedExport: true,
+      advancedAnalytics: true,
+      multiAgency: true,
+      api: true,
+      automations: true,
+      advancedReports: true,
+      cloudBackup: true,
+      activityLogs: true,
+      advancedRoles: true,
+      realtimeDashboard: true,
+      ownerStats: true,
+      maintenance: true,
+      aiAnalytics: true,
+      securityAudit: true,
+      slaGuarantee: true,
+      advancedBackup: true,
+      ipRestrictions: true,
+      prioritySupport: true,
+    },
+  },
+};
+
+export function getPlan(planId) {
+  return PLANS[planId] || PLANS.standard;
+}
+
+export function checkLimit(planId, resource, currentCount) {
+  const plan = getPlan(planId);
+  const maxKey = `max${resource.charAt(0).toUpperCase() + resource.slice(1)}`;
+  const max = plan[maxKey];
+  if (max === undefined || max === Infinity) return { ok: true };
+  if (currentCount >= max) return { ok: false, max, current: currentCount, plan: plan.name };
+  return { ok: true, max, current: currentCount, remaining: max - currentCount };
+}
+
+export function canUseFeature(planId, feature) {
+  return PLANS[planId]?.features?.[feature] ?? false;
+}
+
+export function fmtLimit(val) {
+  return val === Infinity ? 'Illimité' : String(val);
+}

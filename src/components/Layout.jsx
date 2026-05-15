@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import Icon from './Icon';
 
-const ROLE_LABELS = { ADMIN: 'Administrateur', MANAGER: 'Manager', TENANT: 'Locataire', OWNER: 'Propriétaire', ACCOUNTANT: 'Comptable', TECHNICIAN: 'Technicien', CONCIERGE: 'Concierge' };
+const ROLE_LABELS = { SUPER_ADMIN: 'Super Admin', ADMIN: 'Administrateur', MANAGER: 'Manager', TENANT: 'Locataire', OWNER: 'Propriétaire', ACCOUNTANT: 'Comptable', TECHNICIAN: 'Technicien', CONCIERGE: 'Concierge' };
 
 const ROLE_NAV = {
   CONCIERGE:  new Set(['/concierge', '/assets', '/rental', '/maintenance', '/inspections', '/inbox']),
@@ -161,6 +161,9 @@ export default function Layout() {
       </div>
     </div>
   ) : null;
+
+  /* ── SUPER_ADMIN has its own dedicated page ─────────────────── */
+  if (currentUser?.role === 'SUPER_ADMIN') return <Navigate to="/superadmin" replace />;
 
   /* ── Minimal layout for TENANT / OWNER accounts ────────────── */
   const isPortalOnly = currentUser?.role === 'TENANT' || currentUser?.role === 'OWNER';

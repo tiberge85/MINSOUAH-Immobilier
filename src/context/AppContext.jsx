@@ -6,6 +6,8 @@ import {
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { hashPwd } from '../lib/auth';
+import { checkLimit } from '../lib/planLimits';
+import { createLicensePayload } from '../lib/licenses';
 
 // Mock data — only used by RESET_DEMO action
 import {
@@ -36,6 +38,24 @@ export const DEFAULT_ADMIN = {
   name: 'Administrateur',
   initials: 'AD',
   color: 'bg-primary text-on-primary',
+  personId: null,
+  firstLogin: false,
+  suspended: false,
+  createdAt: new Date().toISOString(),
+  lastLogin: null,
+  failedAttempts: 0,
+  lockedUntil: null,
+};
+
+export const DEFAULT_SUPER_ADMIN = {
+  id: 'superadmin',
+  email: 'superadmin@minsouah.ci',
+  password: 'Minsouah@SuperAdmin2025',
+  role: 'SUPER_ADMIN',
+  orgId: null,
+  name: 'Super Administrateur',
+  initials: 'SA',
+  color: 'bg-amber-100 text-amber-800',
   personId: null,
   firstLogin: false,
   suspended: false,
@@ -127,7 +147,7 @@ export function AppProvider({ children }) {
   const [state, setState] = useState({
     properties: [], contracts: [], tenants: [], owners: [],
     payments: [], transactions: [], tickets: [], inspections: [],
-    conversations: [], users: [], organizations: [], activityLog: [], revenueData: [],
+    conversations: [], users: [], organizations: [], licenses: [], activityLog: [], revenueData: [],
     currentUser: null,
     orgSettings: DEFAULT_ORG,
     systemSettings: DEFAULT_SYSTEM,
@@ -213,8 +233,9 @@ export function AppProvider({ children }) {
           );
         };
 
-        // organizations: always unfiltered (admins manage all orgs)
+        // organizations + licenses: always unfiltered (super admin sees all)
         sub('organizations');
+        sub('licenses');
         sub('users');
         // entity collections: filtered by orgId for non-admin users
         ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
@@ -264,24 +285,45 @@ export function AppProvider({ children }) {
     };
   }, [checkBootstrap]);
 
-  // ── 5. Seed default admin + organization on first run ────────────────────
+  // ── 5. Seed defaults on first run ─────────────────────────────────────────
   useEffect(() => {
     if (state._bootstrapping) return;
+    // Seed regular admin
     if (state.users.length === 0) {
       hashPwd(DEFAULT_ADMIN.password).then((hashed) => {
         setDoc(wsDoc('users', DEFAULT_ADMIN.id), { ...DEFAULT_ADMIN, password: hashed }).catch(console.error);
       });
     }
+    // Seed super admin (always ensure it exists)
+    if (state.users.length > 0 && !state.users.some(u => u.role === 'SUPER_ADMIN')) {
+      hashPwd(DEFAULT_SUPER_ADMIN.password).then((hashed) => {
+        setDoc(wsDoc('users', DEFAULT_SUPER_ADMIN.id), { ...DEFAULT_SUPER_ADMIN, password: hashed }).catch(console.error);
+      });
+    }
+    // Seed default organization
     if (state.organizations.length === 0) {
       setDoc(wsDoc('organizations', DEFAULT_ORGANIZATION.id), DEFAULT_ORGANIZATION).catch(console.error);
     }
-  }, [state._bootstrapping, state.users.length, state.organizations.length]);
+    // Seed default license (pro trial for default org)
+    if (state.organizations.length > 0 && state.licenses.length === 0) {
+      const payload = createLicensePayload({ orgId: 'default', plan: 'pro', trialDays: 365 });
+      setDoc(wsDoc('licenses', payload.key), { ...payload, id: payload.key, status: 'active' }).catch(console.error);
+    }
+  }, [state._bootstrapping, state.users.length, state.organizations.length, state.licenses.length]);
 
   // ── 6. dispatch → Firestore writes ────────────────────────────────────────
   const dispatch = useCallback(async (action) => {
     const { type, payload } = action;
     const st = stateRef.current;
     const orgId = st.currentUser?.orgId || 'default';
+
+    // Helper: get active plan for current org
+    const getOrgPlan = (targetOrgId) => {
+      const lic = (st.licenses || []).find(l =>
+        l.orgId === targetOrgId && (l.status === 'trial' || l.status === 'active')
+      );
+      return lic?.plan || 'pro'; // default to pro for existing data
+    };
 
     const logActivity = async (details, actionType = 'ACTION') => {
       const id = Date.now();
@@ -316,6 +358,10 @@ export function AppProvider({ children }) {
 
         // ── PROPERTIES ────────────────────────────────────────────────────────
         case 'ADD_PROPERTY': {
+          const planId = getOrgPlan(orgId);
+          const count = st.properties.filter(p => p.orgId === orgId).length;
+          const limit = checkLimit(planId, 'Properties', count);
+          if (!limit.ok) throw new Error(`Limite atteinte : plan ${limit.plan} autorise ${limit.max} biens maximum.`);
           const id = Date.now();
           await setDoc(wsDoc('properties', id), { ...payload, id, orgId, createdAt: new Date().toISOString() });
           break;
@@ -354,6 +400,10 @@ export function AppProvider({ children }) {
 
         // ── TENANTS ───────────────────────────────────────────────────────────
         case 'ADD_TENANT': {
+          const planId = getOrgPlan(orgId);
+          const count = st.tenants.filter(t => t.orgId === orgId).length;
+          const limit = checkLimit(planId, 'Tenants', count);
+          if (!limit.ok) throw new Error(`Limite atteinte : plan ${limit.plan} autorise ${limit.max} locataires maximum.`);
           const id = Date.now();
           await setDoc(wsDoc('tenants', id), { ...payload, id, orgId, createdAt: new Date().toISOString() });
           break;
@@ -465,6 +515,19 @@ export function AppProvider({ children }) {
           break;
         }
 
+        // ── LICENSES ──────────────────────────────────────────────────────────
+        case 'ADD_LICENSE': {
+          const licId = payload.key || payload.id || `LIC-${Date.now()}`;
+          await setDoc(wsDoc('licenses', licId), { ...payload, id: licId });
+          break;
+        }
+        case 'UPDATE_LICENSE':
+          await setDoc(wsDoc('licenses', payload.id || payload.key), payload, { merge: true });
+          break;
+        case 'DELETE_LICENSE':
+          await deleteDoc(wsDoc('licenses', payload));
+          break;
+
         // ── ORGANIZATIONS ─────────────────────────────────────────────────────
         case 'ADD_ORGANIZATION': {
           const id = payload.id || `org_${Date.now()}`;
@@ -482,6 +545,13 @@ export function AppProvider({ children }) {
         // ── USERS ─────────────────────────────────────────────────────────────
         case 'ADD_USER': {
           if (st.users.some((u) => u.email === payload.email)) break;
+          // Check user limit (skip for SUPER_ADMIN creating accounts)
+          if (st.currentUser?.role !== 'SUPER_ADMIN') {
+            const planId = getOrgPlan(orgId);
+            const count = st.users.filter(u => u.orgId === orgId && u.role !== 'SUPER_ADMIN').length;
+            const limit = checkLimit(planId, 'Users', count);
+            if (!limit.ok) throw new Error(`Limite atteinte : plan ${limit.plan} autorise ${limit.max} utilisateurs maximum.`);
+          }
           const id = Date.now();
           const newUser = {
             ...payload, id,
