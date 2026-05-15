@@ -8,13 +8,14 @@ import { auth } from '../lib/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 
 const ALL_TABS = [
-  { key: 'profile',  label: 'Mon Profil',      icon: 'account_circle', roles: null },
-  { key: 'org',      label: 'Organisation',     icon: 'business',       roles: ['ADMIN', 'MANAGER'] },
-  { key: 'users',    label: 'Utilisateurs',     icon: 'group',          roles: ['ADMIN'] },
-  { key: 'notif',    label: 'Notifications',    icon: 'notifications',  roles: null },
-  { key: 'data',     label: 'Données',          icon: 'database',       roles: ['ADMIN', 'MANAGER'] },
-  { key: 'system',   label: 'Système',          icon: 'settings_suggest', roles: ['ADMIN'] },
-  { key: 'security', label: 'Sécurité',         icon: 'lock',           roles: null },
+  { key: 'profile',       label: 'Mon Profil',      icon: 'account_circle',  roles: null },
+  { key: 'org',           label: 'Organisation',    icon: 'business',        roles: ['ADMIN', 'MANAGER'] },
+  { key: 'organizations', label: 'Organisations',   icon: 'corporate_fare',  roles: ['ADMIN'] },
+  { key: 'users',         label: 'Utilisateurs',    icon: 'group',           roles: ['ADMIN'] },
+  { key: 'notif',         label: 'Notifications',   icon: 'notifications',   roles: null },
+  { key: 'data',          label: 'Données',         icon: 'database',        roles: ['ADMIN', 'MANAGER'] },
+  { key: 'system',        label: 'Système',         icon: 'settings_suggest',roles: ['ADMIN'] },
+  { key: 'security',      label: 'Sécurité',        icon: 'lock',            roles: null },
 ];
 
 const ROLE_LABELS = {
@@ -479,6 +480,11 @@ export default function Settings() {
                 <Icon name="save" size={18} /> Enregistrer
               </button>
             </div>
+          )}
+
+          {/* ══════════ ORGANISATIONS ══════════ */}
+          {tab === 'organizations' && (
+            <OrganizationsTab state={state} dispatch={dispatch} showToast={showToast} />
           )}
 
           {/* ══════════ UTILISATEURS ══════════ */}
@@ -1594,6 +1600,186 @@ function CloudSyncTab({ state, dispatch, showToast }) {
       {syncStatus === 'ok' && <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm"><Icon name="check_circle" size={16} />Connexion réussie — sync automatique activée.</div>}
       {syncStatus === 'error' && <div className="flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-xl text-error text-sm"><Icon name="error" size={16} />Erreur — vérifiez l'URL et les règles Firebase (mode test).</div>}
       {cfg.enabled && state.systemSettings?.firebase?.enabled && <div className="flex items-center gap-2 p-3 bg-primary/10 border border-primary/20 rounded-xl text-primary text-sm"><Icon name="cloud_done" size={16} />Sync activée — sauvegarde Firebase toutes les 3 secondes.</div>}
+    </div>
+  );
+}
+
+/* ── OrganizationsTab ───────────────────────────────────────────────────────── */
+const PLAN_LABELS = { standard: 'Standard', pro: 'Pro', enterprise: 'Enterprise' };
+const EMPTY_ORG_FORM = { name: '', plan: 'standard', active: true, contactEmail: '', contactPhone: '', address: '' };
+
+function OrganizationsTab({ state, dispatch, showToast }) {
+  const orgs = state.organizations || [];
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState(EMPTY_ORG_FORM);
+  const [confirmDeletion, setConfirmDeletion] = useState(null);
+
+  const openAdd = () => { setForm(EMPTY_ORG_FORM); setEditing(null); setShowForm(true); };
+  const openEdit = (o) => { setForm({ ...EMPTY_ORG_FORM, ...o }); setEditing(o); setShowForm(true); };
+  const close = () => { setShowForm(false); setEditing(null); };
+
+  const handleSave = () => {
+    if (!form.name.trim()) { showToast('Le nom est requis'); return; }
+    if (editing) {
+      dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...editing, ...form } });
+      showToast('Organisation mise à jour');
+    } else {
+      dispatch({ type: 'ADD_ORGANIZATION', payload: form });
+      showToast('Organisation créée');
+    }
+    close();
+  };
+
+  const handleDelete = (org) => {
+    if (org.id === 'default') { showToast("L'organisation par défaut ne peut pas être supprimée"); return; }
+    setConfirmDeletion(org);
+  };
+
+  const confirmDel = () => {
+    dispatch({ type: 'DELETE_ORGANIZATION', payload: confirmDeletion.id });
+    showToast('Organisation supprimée');
+    setConfirmDeletion(null);
+  };
+
+  return (
+    <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h2 className="font-bold text-lg text-on-surface flex items-center gap-2">
+          <Icon name="corporate_fare" filled /> Organisations ({orgs.length})
+        </h2>
+        <button onClick={openAdd}
+          className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors">
+          <Icon name="add_business" size={16} /> Nouvelle organisation
+        </button>
+      </div>
+
+      <p className="text-xs text-on-surface-variant -mt-2">
+        Chaque organisation est isolée dans Firestore. Les utilisateurs voient uniquement les données de leur <code className="bg-surface-container px-1 rounded">orgId</code>.
+      </p>
+
+      {orgs.length === 0 ? (
+        <div className="text-center py-10 text-on-surface-variant">
+          <Icon name="corporate_fare" size={40} className="opacity-20 mb-2" />
+          <p>Aucune organisation</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {orgs.map(o => {
+            const userCount = (state.users || []).filter(u => u.orgId === o.id).length;
+            const propCount = (state.properties || []).filter(p => p.orgId === o.id).length;
+            return (
+              <div key={o.id} className="flex items-center gap-4 p-4 bg-surface-container rounded-xl border border-outline-variant/20 group">
+                <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center font-bold text-on-primary-container flex-shrink-0">
+                  {o.name?.[0]?.toUpperCase() || 'O'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-bold text-on-surface">{o.name}</p>
+                    {o.id === 'default' && (
+                      <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-semibold">Défaut</span>
+                    )}
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${o.active !== false ? 'bg-green-100 text-green-700' : 'bg-error/10 text-error'}`}>
+                      {o.active !== false ? 'Actif' : 'Inactif'}
+                    </span>
+                    <span className="text-[10px] bg-surface-container-high text-on-surface-variant px-2 py-0.5 rounded-full">
+                      {PLAN_LABELS[o.plan] || o.plan || 'Standard'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-on-surface-variant mt-0.5">
+                    ID : <code className="bg-surface-container-high px-1 rounded">{o.id}</code>
+                    {' · '}{userCount} utilisateur(s) · {propCount} bien(s)
+                  </p>
+                </div>
+                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                  <button onClick={() => openEdit(o)}
+                    className="w-8 h-8 rounded-full bg-white border border-outline-variant/30 flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shadow-sm">
+                    <Icon name="edit" size={14} />
+                  </button>
+                  {o.id !== 'default' && (
+                    <button onClick={() => handleDelete(o)}
+                      className="w-8 h-8 rounded-full bg-white border border-outline-variant/30 flex items-center justify-center text-error hover:bg-error/10 transition-colors shadow-sm">
+                      <Icon name="delete" size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-on-surface text-lg">
+                {editing ? "Modifier l'organisation" : 'Nouvelle organisation'}
+              </h3>
+              <button onClick={close} className="text-on-surface-variant hover:text-on-surface"><Icon name="close" size={20} /></button>
+            </div>
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Nom *</label>
+                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className={inputCls} placeholder="Ex: Agence Cocody" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Plan</label>
+                  <select value={form.plan} onChange={e => setForm(f => ({ ...f, plan: e.target.value }))} className={inputCls}>
+                    <option value="standard">Standard</option>
+                    <option value="pro">Pro</option>
+                    <option value="enterprise">Enterprise</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Statut</label>
+                  <select value={form.active ? 'true' : 'false'} onChange={e => setForm(f => ({ ...f, active: e.target.value === 'true' }))} className={inputCls}>
+                    <option value="true">Actif</option>
+                    <option value="false">Inactif</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Email de contact</label>
+                <input type="email" value={form.contactEmail || ''} onChange={e => setForm(f => ({ ...f, contactEmail: e.target.value }))} className={inputCls} placeholder="contact@agence.ci" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Téléphone</label>
+                <input value={form.contactPhone || ''} onChange={e => setForm(f => ({ ...f, contactPhone: e.target.value }))} className={inputCls} placeholder="+225 07 00 00 00 00" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Adresse</label>
+                <input value={form.address || ''} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} className={inputCls} placeholder="Abidjan, Cocody" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button onClick={close} className="px-4 py-2 text-sm font-medium text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors">Annuler</button>
+              <button onClick={handleSave} className="px-5 py-2 text-sm font-bold text-on-primary bg-primary rounded-xl hover:bg-primary/90 transition-colors flex items-center gap-2">
+                <Icon name="save" size={15} />{editing ? 'Enregistrer' : 'Créer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeletion && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="w-12 h-12 bg-error/10 rounded-xl flex items-center justify-center mb-4">
+              <Icon name="delete" size={24} className="text-error" />
+            </div>
+            <h3 className="font-bold text-on-surface text-lg mb-1">Supprimer l'organisation ?</h3>
+            <p className="text-sm text-on-surface-variant mb-4">
+              <strong>{confirmDeletion.name}</strong> sera supprimée. Les données liées ne seront pas effacées.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDeletion(null)} className="flex-1 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors">Annuler</button>
+              <button onClick={confirmDel} className="flex-1 py-2.5 text-sm font-bold text-white bg-error rounded-xl hover:bg-error/90 transition-colors">Supprimer</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

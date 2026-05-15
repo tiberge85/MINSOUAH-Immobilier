@@ -87,6 +87,20 @@ export const DEFAULT_SYSTEM = {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const norm = (s) => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
+// After a contract change, sync the linked property's status + currentTenant in Firestore
+async function pushPropertyTenant(contract, properties) {
+  if (!contract?.propertyId) return;
+  const isActive = contract.status === 'Actif' || contract.status === 'Expirant';
+  const prop = (properties || []).find(p =>
+    String(p.id) === String(contract.propertyId) || Number(p.id) === Number(contract.propertyId)
+  );
+  if (!prop) return;
+  await setDoc(wsDoc('properties', prop.id), {
+    currentTenantId:   isActive ? (contract.tenantId   || null) : null,
+    currentTenantName: isActive ? (contract.tenant     || null) : null,
+  }, { merge: true });
+}
+
 // After a contract change, sync the linked property's status in Firestore
 async function pushPropertyStatus(updatedContract, properties) {
   if (!updatedContract) return;
@@ -319,17 +333,22 @@ export function AppProvider({ children }) {
           const contract = { ...payload, id, orgId, createdAt: new Date().toISOString() };
           await setDoc(wsDoc('contracts', id), contract);
           await pushPropertyStatus(contract, st.properties);
+          await pushPropertyTenant(contract, st.properties);
           break;
         }
         case 'UPDATE_CONTRACT': {
           await setDoc(wsDoc('contracts', payload.id), payload);
           await pushPropertyStatus(payload, st.properties);
+          await pushPropertyTenant(payload, st.properties);
           break;
         }
         case 'DELETE_CONTRACT': {
           const deleted = st.contracts.find((c) => c.id === payload);
           await deleteDoc(wsDoc('contracts', payload));
-          if (deleted) await pushPropertyStatus({ ...deleted, status: 'Résilié' }, st.properties);
+          if (deleted) {
+            await pushPropertyStatus({ ...deleted, status: 'Résilié' }, st.properties);
+            await pushPropertyTenant({ ...deleted, status: 'Résilié' }, st.properties);
+          }
           break;
         }
 
@@ -445,6 +464,20 @@ export function AppProvider({ children }) {
           await setDoc(wsDoc('conversations', id), { ...payload, id, orgId });
           break;
         }
+
+        // ── ORGANIZATIONS ─────────────────────────────────────────────────────
+        case 'ADD_ORGANIZATION': {
+          const id = payload.id || `org_${Date.now()}`;
+          await setDoc(wsDoc('organizations', id), { ...payload, id, createdAt: new Date().toISOString() });
+          break;
+        }
+        case 'UPDATE_ORGANIZATION':
+          await setDoc(wsDoc('organizations', payload.id), payload, { merge: true });
+          break;
+        case 'DELETE_ORGANIZATION':
+          if (payload === 'default') break; // Never delete the default org
+          await deleteDoc(wsDoc('organizations', payload));
+          break;
 
         // ── USERS ─────────────────────────────────────────────────────────────
         case 'ADD_USER': {

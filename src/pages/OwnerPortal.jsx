@@ -28,7 +28,6 @@ function parsePaidDate(str) {
   return null;
 }
 
-const CHART_COLORS = ['#785a00', '#006399', '#4CAF50', '#FF6B35', '#9C27B0'];
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -232,7 +231,6 @@ export default function OwnerPortal() {
       const d = new Date(now.getFullYear(), now.getMonth() - (11 - idx), 1);
       const m = d.getMonth();
       const y = d.getFullYear();
-      const isFuture = d > now;
       const mois = d.toLocaleDateString('fr-FR', { month: 'short' });
       const collected = ownerPayments
         .filter(p => {
@@ -277,6 +275,86 @@ export default function OwnerPortal() {
 
   // For chart: show expected revenue as a baseline when no payment records
   const hasPaymentData = ownerPayments.length > 0;
+
+  /* ─── PDF export ─────────────────────────────────────────────── */
+  const exportPDF = () => {
+    const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+    const rows = (payments) => payments.map(p => `
+      <tr>
+        <td>${p.propertyName || '—'}</td>
+        <td>${p.tenantName || '—'}</td>
+        <td>${p.month || '—'}</td>
+        <td style="text-align:right;font-weight:bold;color:${p.status === 'Payé' ? '#166534' : '#991b1b'}">${Number(p.amount||0).toLocaleString('fr-CI')} FCFA</td>
+        <td><span style="padding:2px 8px;border-radius:20px;font-size:11px;background:${p.status === 'Payé' ? '#dcfce7' : '#fee2e2'};color:${p.status === 'Payé' ? '#166534' : '#991b1b'}">${p.status}</span></td>
+      </tr>`).join('');
+
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<title>Rapport — ${owner?.name}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#1c1b19;background:#fff;padding:32px}
+  h1{font-size:22px;font-weight:900;color:#785a00;margin-bottom:4px}
+  h2{font-size:14px;font-weight:700;color:#1c1b19;margin:24px 0 8px;border-bottom:2px solid #e3d9cc;padding-bottom:4px}
+  .meta{font-size:12px;color:#817662;margin-bottom:24px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+  .kpi{background:#fff8f2;border:1px solid #e3d9cc;border-radius:10px;padding:12px;text-align:center}
+  .kpi-val{font-size:18px;font-weight:900;color:#785a00}
+  .kpi-lbl{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#817662;margin-top:2px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{background:#785a00;color:#fff;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px}
+  td{padding:7px 10px;border-bottom:1px solid #f0e8de}
+  tr:hover td{background:#fff8f2}
+  .footer{margin-top:32px;padding-top:12px;border-top:1px solid #e3d9cc;font-size:10px;color:#817662;text-align:center}
+  @media print{body{padding:16px}}
+</style></head><body>
+<h1>${owner?.name || 'Propriétaire'}</h1>
+<div class="meta">Rapport généré le ${today} · ${ownerProperties.length} bien(s) · Période : ${period.from || 'début'} → ${period.to || 'aujourd\'hui'}</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="kpi-val">${ownerProperties.length}</div><div class="kpi-lbl">Biens</div></div>
+  <div class="kpi"><div class="kpi-val">${occupancyRate}%</div><div class="kpi-lbl">Occupation</div></div>
+  <div class="kpi"><div class="kpi-val">${Number(collectedTotal).toLocaleString('fr-CI')}</div><div class="kpi-lbl">Encaissé (FCFA)</div></div>
+  <div class="kpi"><div class="kpi-val">${recoveryRate !== null ? recoveryRate + '%' : '—'}</div><div class="kpi-lbl">Recouvrement</div></div>
+</div>
+
+<h2>Biens immobiliers</h2>
+<table>
+  <thead><tr><th>Nom</th><th>Adresse</th><th>Type</th><th>Loyer/mois</th><th>Statut</th></tr></thead>
+  <tbody>${ownerProperties.map(p => `<tr><td>${p.name}</td><td>${p.address||'—'}</td><td>${p.type||'—'}</td><td style="text-align:right">${Number(p.rent||0).toLocaleString('fr-CI')} FCFA</td><td>${p.status||'—'}</td></tr>`).join('')}</tbody>
+</table>
+
+<h2>Contrats actifs (${ownerContracts.filter(isActiveContract).length})</h2>
+<table>
+  <thead><tr><th>Bien</th><th>Locataire</th><th>Loyer</th><th>Fin bail</th><th>Statut</th></tr></thead>
+  <tbody>${ownerContracts.filter(isActiveContract).map(c => `<tr><td>${c.propertyName||'—'}</td><td>${c.tenant||'—'}</td><td style="text-align:right">${Number(c.rent||0).toLocaleString('fr-CI')} FCFA</td><td>${c.endDate||'—'}</td><td>${c.status}</td></tr>`).join('')}</tbody>
+</table>
+
+<h2>Paiements (${periodPayments.length})</h2>
+<table>
+  <thead><tr><th>Propriété</th><th>Locataire</th><th>Mois</th><th>Montant</th><th>Statut</th></tr></thead>
+  <tbody>${rows(periodPayments)}</tbody>
+</table>
+
+<h2>Résumé financier</h2>
+<table>
+  <thead><tr><th>Indicateur</th><th style="text-align:right">Valeur</th></tr></thead>
+  <tbody>
+    <tr><td>Loyer attendu/mois</td><td style="text-align:right">${Number(expectedMonthly).toLocaleString('fr-CI')} FCFA</td></tr>
+    <tr><td>Revenu annuel estimé</td><td style="text-align:right">${Number(expectedAnnual).toLocaleString('fr-CI')} FCFA</td></tr>
+    <tr><td>Total encaissé</td><td style="text-align:right;color:#166534;font-weight:bold">${Number(collectedTotal).toLocaleString('fr-CI')} FCFA</td></tr>
+    <tr><td>Impayés</td><td style="text-align:right;color:#991b1b;font-weight:bold">${Number(pendingAmount).toLocaleString('fr-CI')} FCFA</td></tr>
+    <tr><td>Taux de recouvrement</td><td style="text-align:right;font-weight:bold">${recoveryRate !== null ? recoveryRate + '%' : '—'}</td></tr>
+  </tbody>
+</table>
+
+<div class="footer">Minsouah Immobilier · Rapport propriétaire · ${today}</div>
+</body></html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    if (w) { w.onload = () => { w.print(); URL.revokeObjectURL(url); }; }
+  };
 
   /* ─── Owner selector ─────────────────────────────────────────── */
   if (!selectedId) {
@@ -401,6 +479,12 @@ export default function OwnerPortal() {
           </p>
         </div>
         <Badge label={owner.status || 'Actif'} />
+        <button
+          onClick={exportPDF}
+          className="ml-auto flex items-center gap-1.5 px-3 py-2 bg-primary text-on-primary rounded-xl text-xs font-bold hover:bg-primary/90 transition-colors flex-shrink-0"
+        >
+          <Icon name="picture_as_pdf" size={15} /> Exporter PDF
+        </button>
       </div>
 
       {/* Period filter */}
