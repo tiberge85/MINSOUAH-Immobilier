@@ -168,6 +168,9 @@ export function AppProvider({ children }) {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  // Prevents the seed effect from re-running after a PLATFORM_RESET wipes counts to 0
+  const seededRef = useRef(false);
+
   // Track which essential collections have received their first snapshot
   const loadedRef = useRef(new Set());
   const ESSENTIAL = ['users', 'organizations', 'properties', 'contracts', 'tenants', 'payments', 'owners'];
@@ -295,9 +298,12 @@ export function AppProvider({ children }) {
     };
   }, [checkBootstrap]);
 
-  // ── 5. Seed defaults on first run ─────────────────────────────────────────
+  // ── 5. Seed defaults on first run (runs once per page load, not after resets) ─
   useEffect(() => {
     if (state._bootstrapping) return;
+    if (seededRef.current) return; // already seeded this session — skip to avoid re-seeding after PLATFORM_RESET
+    seededRef.current = true;
+
     // Seed regular admin
     if (state.users.length === 0) {
       hashPwd(DEFAULT_ADMIN.password).then((hashed) => {
@@ -305,7 +311,7 @@ export function AppProvider({ children }) {
       });
     }
     // Seed super admin (always ensure it exists)
-    if (state.users.length > 0 && !state.users.some(u => u.role === 'SUPER_ADMIN')) {
+    if (!state.users.some(u => u.role === 'SUPER_ADMIN')) {
       hashPwd(DEFAULT_SUPER_ADMIN.password).then((hashed) => {
         setDoc(wsDoc('users', DEFAULT_SUPER_ADMIN.id), { ...DEFAULT_SUPER_ADMIN, password: hashed }).catch(console.error);
       });
@@ -326,7 +332,7 @@ export function AppProvider({ children }) {
       const payload = createLicensePayload({ orgId: 'default', plan: 'pro', trialDays: 365 });
       setDoc(wsDoc('licenses', payload.key), { ...payload, id: payload.key, status: 'active' }).catch(console.error);
     }
-  }, [state._bootstrapping, state.users.length, state.organizations.length, state.licenses.length]);
+  }, [state._bootstrapping]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 6. dispatch → Firestore writes ────────────────────────────────────────
   const dispatch = useCallback(async (action) => {
@@ -728,21 +734,17 @@ export function AppProvider({ children }) {
             await batch.commit();
           }
 
-          // 3. Delete non-default organizations
+          // 3. Delete ALL organizations (seed effect is blocked this session — fresh reload re-seeds)
           const orgSnap = await getDocs(wsCol('organizations'));
-          const orgsToDelete = orgSnap.docs.filter(d => d.id !== 'default');
-          for (let i = 0; i < orgsToDelete.length; i += 400) {
+          for (let i = 0; i < orgSnap.docs.length; i += 400) {
             const batch = writeBatch(db);
-            orgsToDelete.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+            orgSnap.docs.slice(i, i + 400).forEach(d => batch.delete(d.ref));
             await batch.commit();
           }
 
-          // 4. Delete non-essential users (keep SUPER_ADMIN + default admin id=1)
+          // 4. Delete ALL users except the current SUPER_ADMIN
           const userSnap = await getDocs(wsCol('users'));
-          const usersToDelete = userSnap.docs.filter(d => {
-            const u = d.data();
-            return u.role !== 'SUPER_ADMIN' && String(u.id) !== '1';
-          });
+          const usersToDelete = userSnap.docs.filter(d => d.data().role !== 'SUPER_ADMIN');
           for (let i = 0; i < usersToDelete.length; i += 400) {
             const batch = writeBatch(db);
             usersToDelete.slice(i, i + 400).forEach(d => batch.delete(d.ref));
