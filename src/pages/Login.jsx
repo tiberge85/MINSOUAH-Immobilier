@@ -2,14 +2,19 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
-import { hashPwd, verifyPwd } from '../lib/auth';
+import { verifyPwd } from '../lib/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
+
+const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
 
 const ROLE_HOME = {
-  TENANT:     '/portal/tenant',
-  OWNER:      '/portal/owner',
-  CONCIERGE:  '/maintenance',
-  TECHNICIAN: '/maintenance',
-  ACCOUNTANT: '/finance',
+  SUPER_ADMIN:           '/superadmin',
+  ORGANIZATION_ADMIN:    '/',
+  AGENT:                 '/',
+  TENANT:                '/portal/tenant',
+  OWNER:                 '/portal/owner',
 };
 
 export default function Login() {
@@ -70,16 +75,19 @@ export default function Login() {
 
     try {
       const emailLow = email.trim().toLowerCase();
+      // Search across all users (unfiltered — needed before org context is established)
       const user = users.find((u) => u.email.toLowerCase() === emailLow);
 
-      if (!user) {
-        setError('Aucun compte trouvé avec cet email.');
-        return;
-      }
+      if (!user) { setError('Aucun compte trouvé avec cet email.'); return; }
+      if (user.suspended) { setError("Ce compte a été suspendu. Contactez l'administrateur."); return; }
 
-      if (user.suspended) {
-        setError("Ce compte a été suspendu. Contactez l'administrateur.");
-        return;
+      // Check org suspension (SUPER_ADMIN bypasses)
+      if (user.role !== 'SUPER_ADMIN') {
+        const userOrg = (state.organizations || []).find(o => o.id === user.orgId);
+        if (userOrg && userOrg.active === false) {
+          setError("Votre organisation est suspendue. Contactez le support Minsouah.");
+          return;
+        }
       }
 
       if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
@@ -88,32 +96,59 @@ export default function Login() {
         return;
       }
 
-      const passwordOk = await verifyPwd(password, user.password);
-      if (!passwordOk) {
-        dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: user.email, success: false } });
-        const attempts = (user.failedAttempts || 0) + 1;
-        const remaining = 5 - attempts;
-        if (remaining > 0) {
-          setError(`Mot de passe incorrect. ${remaining} tentative(s) restante(s).`);
-        } else {
-          setError('Compte bloqué pour 15 minutes après 5 tentatives échouées.');
+      let firebaseUid = null;
+
+      // ── Try Firebase email/password auth ────────────────────────────────
+      try {
+        const cred = await signInWithEmailAndPassword(auth, emailLow, password);
+        firebaseUid = cred.user.uid;
+      } catch (fbErr) {
+        const isUnknown = ['auth/user-not-found', 'auth/invalid-credential', 'auth/wrong-password',
+          'auth/invalid-email', 'auth/user-disabled'].includes(fbErr.code);
+        if (!isUnknown) {
+          // Real Firebase error (wrong password detected by Firebase)
+          dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: emailLow, success: false } });
+          const attempts = (user.failedAttempts || 0) + 1;
+          setError(attempts >= 5
+            ? 'Compte bloqué pour 15 minutes après 5 tentatives échouées.'
+            : `Mot de passe incorrect. ${5 - attempts} tentative(s) restante(s).`);
+          return;
         }
-        return;
+        // Fallback: verify against Firestore hash (legacy accounts not yet on Firebase Auth)
+        const ok = await verifyPwd(password, user.password);
+        if (!ok) {
+          dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: emailLow, success: false } });
+          const attempts = (user.failedAttempts || 0) + 1;
+          setError(attempts >= 5
+            ? 'Compte bloqué pour 15 minutes après 5 tentatives échouées.'
+            : `Mot de passe incorrect. ${5 - attempts} tentative(s) restante(s).`);
+          return;
+        }
+        // Lazy migration: create Firebase Auth account for this legacy user
+        try {
+          const newCred = await createUserWithEmailAndPassword(auth, emailLow, password);
+          firebaseUid = newCred.user.uid;
+        } catch { /* ignore — account may already exist */ }
       }
 
-      // Upgrade plain-text password to SHA-256 hash on first successful login
-      if (!user.password.startsWith('sha256:')) {
-        const hashed = await hashPwd(password);
-        dispatch({ type: 'UPGRADE_PASSWORD', payload: { email: user.email, hashedPassword: hashed } });
+      // ── Write usersByUid for Firestore Rules enforcement ─────────────────
+      if (firebaseUid) {
+        setDoc(doc(db, 'workspaces', WS, 'usersByUid', firebaseUid), {
+          userId: String(user.id),
+          orgId: user.orgId || 'default',
+          role: user.role,
+          updatedAt: new Date().toISOString(),
+        }, { merge: true }).catch(console.warn);
       }
 
-      dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: user.email, success: true } });
+      dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: emailLow, success: true } });
       dispatch({
         type: 'LOGIN',
         payload: {
           id: user.id, role: user.role, name: user.name, initials: user.initials,
           email: user.email, color: user.color, avatar: user.avatar || null,
           personId: user.personId || null, firstLogin: user.firstLogin || false,
+          orgId: user.orgId || 'default',
         },
       });
 

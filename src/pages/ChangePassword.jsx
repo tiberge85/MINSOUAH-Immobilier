@@ -6,6 +6,29 @@ import Icon from '../components/Icon';
 import { hashPwd, verifyPwd } from '../lib/auth';
 
 const WELCOME_GUIDES = {
+  ORGANIZATION_ADMIN: {
+    title: 'Bienvenue, Administrateur !',
+    color: 'bg-primary',
+    icon: 'admin_panel_settings',
+    steps: [
+      { icon: 'group', label: 'Gérer les utilisateurs', desc: 'Créez des comptes pour vos équipes, locataires et propriétaires dans Paramètres → Utilisateurs.' },
+      { icon: 'apartment', label: 'Ajouter vos biens', desc: 'Enregistrez votre patrimoine immobilier dans la section Patrimoine.' },
+      { icon: 'contract', label: 'Créer des contrats', desc: 'Associez locataires et biens via des contrats dans Gestion Locative.' },
+      { icon: 'payments', label: 'Suivre les paiements', desc: 'Enregistrez les loyers et suivez les impayés dans Paiements.' },
+    ],
+  },
+  AGENT: {
+    title: 'Bienvenue, Agent !',
+    color: 'bg-secondary',
+    icon: 'manage_history',
+    steps: [
+      { icon: 'apartment', label: 'Consulter le patrimoine', desc: 'Accédez à la liste des biens gérés dans Patrimoine.' },
+      { icon: 'contract', label: 'Suivi des contrats', desc: 'Gérez les baux et les renouvellements dans Gestion Locative.' },
+      { icon: 'payments', label: 'Paiements', desc: 'Suivez les encaissements et les retards dans Paiements.' },
+      { icon: 'engineering', label: 'Maintenance', desc: 'Traitez les tickets de maintenance dans la section dédiée.' },
+    ],
+  },
+  // legacy roles (kept until migration runs)
   ADMIN: {
     title: 'Bienvenue, Administrateur !',
     color: 'bg-primary',

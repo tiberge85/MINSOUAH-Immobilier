@@ -31,12 +31,17 @@ const queryClient = new QueryClient({
 });
 
 const ROLE_HOME = {
-  SUPER_ADMIN: '/superadmin',
-  TENANT:      '/portal/tenant',
-  OWNER:       '/portal/owner',
-  CONCIERGE:   '/concierge',
-  TECHNICIAN:  '/maintenance',
-  ACCOUNTANT:  '/finance',
+  SUPER_ADMIN:        '/superadmin',
+  ORGANIZATION_ADMIN: '/',
+  AGENT:              '/',
+  TENANT:             '/portal/tenant',
+  OWNER:              '/portal/owner',
+  // legacy (kept for existing sessions until migration runs)
+  ADMIN:     '/',
+  MANAGER:   '/',
+  CONCIERGE: '/',
+  TECHNICIAN:'/',
+  ACCOUNTANT:'/',
 };
 
 function BootstrapScreen() {
@@ -87,17 +92,17 @@ function AppRoutes() {
       />
 
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-        <Route index element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}><Dashboard /></ProtectedRoute>} />
-        <Route path="assets"       element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'CONCIERGE']}><Assets /></ProtectedRoute>} />
-        <Route path="rental"       element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'CONCIERGE']}><Rental /></ProtectedRoute>} />
-        <Route path="finance"      element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'ACCOUNTANT']}><Finance /></ProtectedRoute>} />
-        <Route path="payments"     element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'ACCOUNTANT']}><Payments /></ProtectedRoute>} />
-        <Route path="maintenance"  element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'TECHNICIAN', 'CONCIERGE']}><Maintenance /></ProtectedRoute>} />
-        <Route path="inspections"  element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'CONCIERGE']}><Inspections /></ProtectedRoute>} />
-        <Route path="inbox"        element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'CONCIERGE', 'TECHNICIAN', 'ACCOUNTANT']}><Inbox /></ProtectedRoute>} />
-        <Route path="concierge"    element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'CONCIERGE']}><ConciergePortal /></ProtectedRoute>} />
-        <Route path="portal/tenant" element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'TENANT']}><TenantPortal /></ProtectedRoute>} />
-        <Route path="portal/owner"  element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'OWNER']}><OwnerPortal /></ProtectedRoute>} />
+        <Route index element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER']}><Dashboard /></ProtectedRoute>} />
+        <Route path="assets"       element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE']}><Assets /></ProtectedRoute>} />
+        <Route path="rental"       element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE']}><Rental /></ProtectedRoute>} />
+        <Route path="finance"      element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'ACCOUNTANT']}><Finance /></ProtectedRoute>} />
+        <Route path="payments"     element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'ACCOUNTANT']}><Payments /></ProtectedRoute>} />
+        <Route path="maintenance"  element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'TECHNICIAN', 'CONCIERGE']}><Maintenance /></ProtectedRoute>} />
+        <Route path="inspections"  element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE']}><Inspections /></ProtectedRoute>} />
+        <Route path="inbox"        element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE', 'TECHNICIAN', 'ACCOUNTANT']}><Inbox /></ProtectedRoute>} />
+        <Route path="concierge"    element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE']}><ConciergePortal /></ProtectedRoute>} />
+        <Route path="portal/tenant" element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'TENANT']}><TenantPortal /></ProtectedRoute>} />
+        <Route path="portal/owner"  element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'OWNER']}><OwnerPortal /></ProtectedRoute>} />
         <Route path="settings"     element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

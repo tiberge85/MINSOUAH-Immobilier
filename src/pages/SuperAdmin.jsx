@@ -355,7 +355,10 @@ export default function SuperAdmin() {
                             <p className="text-xs font-mono text-on-surface-variant">{o.license?.key?.slice(0, 12) || '—'}…</p>
                           </td>
                           <td className="px-4 py-3">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${licInfo.color}`}>{licInfo.label}</span>
+                            {o.active === false
+                              ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-error/10 text-error">Suspendue</span>
+                              : <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${licInfo.color}`}>{licInfo.label}</span>
+                            }
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1">
@@ -366,8 +369,17 @@ export default function SuperAdmin() {
                               <button onClick={() => setLicenseModal({ license: { orgId: o.id }, action: 'new' })}
                                 className="text-xs text-on-surface-variant hover:text-on-surface px-2 py-1 rounded-lg hover:bg-surface-container transition-colors">Licence</button>
                               {o.id !== 'default' && (
-                                <button onClick={() => setOrgDeleteConfirm(o)}
-                                  className="text-xs text-error hover:bg-error/10 px-2 py-1 rounded-lg transition-colors">Supp.</button>
+                                <>
+                                  <button
+                                    onClick={() => dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...o, active: o.active === false } })}
+                                    className={`text-xs px-2 py-1 rounded-lg transition-colors font-semibold ${o.active === false ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
+                                    title={o.active === false ? 'Réactiver l\'organisation' : 'Suspendre l\'organisation'}
+                                  >
+                                    {o.active === false ? 'Activer' : 'Suspendre'}
+                                  </button>
+                                  <button onClick={() => setOrgDeleteConfirm(o)}
+                                    className="text-xs text-error hover:bg-error/10 px-2 py-1 rounded-lg transition-colors">Supp.</button>
+                                </>
                               )}
                             </div>
                           </td>

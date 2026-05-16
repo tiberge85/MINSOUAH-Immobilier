@@ -9,21 +9,31 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { getPlan } from '../lib/planLimits';
 import { getDaysRemaining, getLicenseStatusInfo } from '../lib/licenses';
 
+const ADMIN_ROLES  = ['ORGANIZATION_ADMIN', 'ADMIN'];
+const STAFF_ROLES  = ['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER'];
+
 const ALL_TABS = [
   { key: 'profile',       label: 'Mon Profil',      icon: 'account_circle',  roles: null },
-  { key: 'org',           label: 'Organisation',    icon: 'business',        roles: ['ADMIN', 'MANAGER'] },
-  { key: 'organizations', label: 'Organisations',   icon: 'corporate_fare',  roles: ['ADMIN'] },
-  { key: 'plan',          label: 'Plan & Licence',  icon: 'verified',        roles: ['ADMIN'] },
-  { key: 'users',         label: 'Utilisateurs',    icon: 'group',           roles: ['ADMIN'] },
+  { key: 'org',           label: 'Organisation',    icon: 'business',        roles: STAFF_ROLES },
+  { key: 'organizations', label: 'Organisations',   icon: 'corporate_fare',  roles: ADMIN_ROLES },
+  { key: 'plan',          label: 'Plan & Licence',  icon: 'verified',        roles: ADMIN_ROLES },
+  { key: 'users',         label: 'Utilisateurs',    icon: 'group',           roles: ADMIN_ROLES },
   { key: 'notif',         label: 'Notifications',   icon: 'notifications',   roles: null },
-  { key: 'data',          label: 'Données',         icon: 'database',        roles: ['ADMIN', 'MANAGER'] },
-  { key: 'system',        label: 'Système',         icon: 'settings_suggest',roles: ['ADMIN'] },
+  { key: 'data',          label: 'Données',         icon: 'database',        roles: STAFF_ROLES },
+  { key: 'system',        label: 'Système',         icon: 'settings_suggest',roles: ADMIN_ROLES },
   { key: 'security',      label: 'Sécurité',        icon: 'lock',            roles: null },
 ];
 
 const ROLE_LABELS = {
-  ADMIN: 'Administrateur', MANAGER: 'Manager', TENANT: 'Locataire',
-  OWNER: 'Propriétaire', ACCOUNTANT: 'Comptable', TECHNICIAN: 'Technicien',
+  ORGANIZATION_ADMIN: 'Admin Organisation',
+  AGENT:              'Agent',
+  ADMIN:              'Administrateur',
+  MANAGER:            'Manager',
+  TENANT:             'Locataire',
+  OWNER:              'Propriétaire',
+  ACCOUNTANT:         'Comptable',
+  TECHNICIAN:         'Technicien',
+  CONCIERGE:          'Concierge',
 };
 const COLORS = [
   'bg-primary-container text-on-primary-container',
@@ -373,7 +383,7 @@ export default function Settings() {
                 <div>
                   <p className="font-bold text-on-surface text-base">{currentUser?.name || 'Utilisateur'}</p>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-semibold mt-1 inline-block ${
-                    currentUser?.role === 'ADMIN' ? 'bg-primary-container text-on-primary-container' :
+                    ['ORGANIZATION_ADMIN', 'ADMIN'].includes(currentUser?.role) ? 'bg-primary-container text-on-primary-container' :
                     currentUser?.role === 'TENANT' ? 'bg-secondary-container text-on-secondary-container' :
                     'bg-tertiary-container text-on-tertiary-container'
                   }`}>
@@ -676,8 +686,8 @@ export default function Settings() {
                 </button>
               </form>
 
-              {/* Reset section — ADMIN only */}
-              {currentUser?.role === 'ADMIN' && (
+              {/* Reset section — admin only */}
+              {['ORGANIZATION_ADMIN', 'ADMIN'].includes(currentUser?.role) && (
                 <div className="border-t border-outline-variant/20 pt-6 flex flex-col gap-4">
                   <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
                     <p className="font-semibold text-amber-800 text-sm flex items-center gap-2 mb-1">
@@ -986,13 +996,10 @@ function SystemTab({ state, dispatch, showToast }) {
 
 /* ── Role config ────────────────────────────────────────────────────────────── */
 const ALL_ROLES = [
-  { value: 'ADMIN',      label: 'Administrateur',  color: 'bg-primary-container text-on-primary-container',     icon: 'admin_panel_settings' },
-  { value: 'MANAGER',    label: 'Manager',          color: 'bg-secondary-container text-on-secondary-container', icon: 'manage_history' },
-  { value: 'ACCOUNTANT', label: 'Comptable',        color: 'bg-tertiary-container text-on-tertiary-container',   icon: 'calculate' },
-  { value: 'TECHNICIAN', label: 'Technicien',       color: 'bg-surface-container-high text-on-surface',         icon: 'engineering' },
-  { value: 'CONCIERGE',  label: 'Concierge',        color: 'bg-surface-container-high text-on-surface',         icon: 'supervised_user_circle' },
-  { value: 'OWNER',      label: 'Propriétaire',     color: 'bg-tertiary-container text-on-tertiary-container',   icon: 'manage_accounts' },
-  { value: 'TENANT',     label: 'Locataire',        color: 'bg-secondary-container text-on-secondary-container', icon: 'person' },
+  { value: 'ORGANIZATION_ADMIN', label: 'Admin Organisation', color: 'bg-primary-container text-on-primary-container',     icon: 'admin_panel_settings' },
+  { value: 'AGENT',              label: 'Agent',              color: 'bg-secondary-container text-on-secondary-container', icon: 'manage_history' },
+  { value: 'OWNER',              label: 'Propriétaire',       color: 'bg-tertiary-container text-on-tertiary-container',   icon: 'manage_accounts' },
+  { value: 'TENANT',             label: 'Locataire',          color: 'bg-secondary-container text-on-secondary-container', icon: 'person' },
 ];
 
 const ROLE_MAP = Object.fromEntries(ALL_ROLES.map(r => [r.value, r]));
@@ -1034,8 +1041,10 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
     const initials = getInitials(newUser.name);
     const roleInfo = ROLE_MAP[newUser.role] || ROLE_MAP.TENANT;
     // Firebase Auth needs plain-text password — create account before hashing
+    let firebaseUid = null;
     try {
-      await createUserWithEmailAndPassword(auth, newUser.email.trim().toLowerCase(), newUser.password);
+      const cred = await createUserWithEmailAndPassword(auth, newUser.email.trim().toLowerCase(), newUser.password);
+      firebaseUid = cred.user.uid;
     } catch (fbErr) {
       if (fbErr?.code !== 'auth/email-already-in-use') {
         console.warn('Firebase Auth createUser:', fbErr?.code, fbErr?.message);
@@ -1051,6 +1060,7 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
         initials,
         color: roleInfo.color,
         firstLogin: true,
+        firebaseUid,
       },
     });
     showToast(`Compte créé pour ${newUser.name} — mot de passe temporaire : ${newUser.password}`);
@@ -1142,7 +1152,7 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
         <h2 className="font-bold text-lg text-on-surface flex items-center gap-2">
           <Icon name="group" filled /> Gestion des Utilisateurs
         </h2>
-        {currentUser?.role === 'ADMIN' && subTab === 'users' && (
+        {['ORGANIZATION_ADMIN', 'ADMIN'].includes(currentUser?.role) && subTab === 'users' && (
           <button onClick={() => setShowCreate(v => !v)}
             className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors">
             <Icon name={showCreate ? 'close' : 'person_add'} size={16} />
@@ -1454,7 +1464,7 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                   {/* Role badge — clickable for ADMIN to quick-change role */}
                   <div className="relative">
-                    {currentUser?.role === 'ADMIN' && !isMe ? (
+                    {['ORGANIZATION_ADMIN', 'ADMIN'].includes(currentUser?.role) && !isMe ? (
                       <button
                         onClick={() => setQuickRoleUserId(quickRoleUserId === u.id ? null : u.id)}
                         className={`text-xs px-1.5 py-0.5 rounded-full font-semibold flex items-center gap-1 hover:ring-2 hover:ring-primary/40 transition-all ${roleInfo.color}`}
@@ -1492,7 +1502,7 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
                   )}
                 </div>
               </div>
-              {currentUser?.role === 'ADMIN' && (
+              {['ORGANIZATION_ADMIN', 'ADMIN'].includes(currentUser?.role) && (
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <button onClick={() => openEdit(u)} className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low hover:text-primary transition-colors" title="Modifier">
                     <Icon name="edit" size={15} />

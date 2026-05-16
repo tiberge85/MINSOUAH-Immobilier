@@ -83,7 +83,7 @@ export default function OrgRegistration() {
         name: adminForm.name.trim(),
         email: adminForm.email.trim().toLowerCase(),
         password: hashedPwd,
-        role: 'ADMIN',
+        role: 'ORGANIZATION_ADMIN',
         orgId,
         initials,
         color: 'bg-primary-container text-on-primary-container',

@@ -2,75 +2,144 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── Architecture note ─────────────────────────────────────────────────
-    // This app uses Firebase Anonymous Auth. Roles (ADMIN, MANAGER, …) and
-    // orgId live in Firestore, not in Auth custom claims.  Full per-org
-    // isolation at the rules level requires custom claims set by a backend;
-    // the app layer already enforces org scoping and role checks.
-    //
-    // What these rules enforce:
-    //   1. Authentication required for every read and write
-    //   2. Structural validation on sensitive collections (licenses, users)
-    //   3. No access whatsoever outside /workspaces/{wsId}
+    // ── Helper functions ─────────────────────────────────────────────────────
 
-    function isAuth() {
-      return request.auth != null;
+    // Get the caller's role/orgId from the usersByUid lookup doc (written at login)
+    function callerMeta(wsId) {
+      return get(/databases/$(database)/documents/workspaces/$(wsId)/usersByUid/$(request.auth.uid)).data;
     }
 
-    // ── License validation ────────────────────────────────────────────────
-    function validLicensePlan() {
-      let p = request.resource.data.plan;
-      return p == 'standard' || p == 'pro' || p == 'enterprise';
+    function callerRole(wsId) {
+      return callerMeta(wsId).role;
     }
 
-    function validLicenseStatus() {
-      let s = request.resource.data.status;
-      return s == 'trial' || s == 'active' || s == 'expired' || s == 'suspended';
+    function callerOrgId(wsId) {
+      return callerMeta(wsId).orgId;
     }
 
-    function validLicenseWrite() {
-      let d = request.resource.data;
-      return ('orgId' in d) && ('plan' in d) && ('status' in d)
-          && validLicensePlan()
-          && validLicenseStatus();
+    function isSuperAdmin(wsId) {
+      return callerRole(wsId) == 'SUPER_ADMIN';
     }
 
-    // ── User validation ───────────────────────────────────────────────────
-    function validRole() {
-      let r = request.resource.data.role;
-      return r == 'SUPER_ADMIN' || r == 'ADMIN'   || r == 'MANAGER'
-          || r == 'TENANT'      || r == 'OWNER'    || r == 'ACCOUNTANT'
-          || r == 'TECHNICIAN'  || r == 'CONCIERGE';
+    function isOrgAdmin(wsId) {
+      return callerRole(wsId) in ['ORGANIZATION_ADMIN', 'ADMIN'];
     }
 
-    function validUserWrite() {
-      // Allow writes that either omit the role field or set a known role value
-      return !('role' in request.resource.data) || validRole();
+    function isStaff(wsId) {
+      return callerRole(wsId) in ['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE', 'TECHNICIAN', 'ACCOUNTANT'];
     }
 
-    // ── Per-collection rules ──────────────────────────────────────────────
-    // Specific rules below are evaluated first; the {document=**} wildcard
-    // catches all other collections and future subcollections.
-    // NOTE: in Firestore, any matching "allow" grants access — these specific
-    // rules add structural validation that the catch-all does not.
+    function sameOrg(wsId, docOrgId) {
+      return callerOrgId(wsId) == docOrgId;
+    }
+
+    // ── usersByUid ───────────────────────────────────────────────────────────
+    // Any authenticated user can read/write their own uid doc (written at login)
+    match /workspaces/{wsId}/usersByUid/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+      // Super admin can read all
+      allow read: if request.auth != null && isSuperAdmin(wsId);
+    }
+
+    // ── SUPER_ADMIN global collections ───────────────────────────────────────
+    // organizations and licenses are global — org admins read their own only
+    match /workspaces/{wsId}/organizations/{orgId} {
+      allow read:  if request.auth != null && (isSuperAdmin(wsId) || sameOrg(wsId, orgId));
+      allow write: if request.auth != null && isSuperAdmin(wsId);
+    }
 
     match /workspaces/{wsId}/licenses/{licId} {
-      allow read:  if isAuth();
-      allow write: if isAuth() && validLicenseWrite();
+      allow read:  if request.auth != null && (
+        isSuperAdmin(wsId) ||
+        resource.data.orgId == callerOrgId(wsId)
+      );
+      allow write: if request.auth != null && isSuperAdmin(wsId);
     }
 
+    // ── Per-org user management ──────────────────────────────────────────────
     match /workspaces/{wsId}/users/{userId} {
-      allow read:  if isAuth();
-      allow write: if isAuth() && validUserWrite();
+      // Any authenticated user can read users (needed for cross-org login lookup)
+      allow read: if request.auth != null;
+      // Only org admins can write users in their own org; super admin can write any
+      allow create: if request.auth != null && (
+        isSuperAdmin(wsId) ||
+        (isOrgAdmin(wsId) && request.resource.data.orgId == callerOrgId(wsId))
+      );
+      allow update, delete: if request.auth != null && (
+        isSuperAdmin(wsId) ||
+        (isOrgAdmin(wsId) && resource.data.orgId == callerOrgId(wsId)) ||
+        // Users can update their own profile
+        resource.data.id == callerMeta(wsId).userId
+      );
     }
 
-    // All other workspace collections + future subcollections
-    match /workspaces/{wsId}/{document=**} {
-      allow read:  if isAuth();
-      allow write: if isAuth();
+    // ── Org-scoped collections ───────────────────────────────────────────────
+    // All other collections: staff can read/write within their org only
+    function isOrgDoc(wsId, docOrgId) {
+      return isStaff(wsId) && sameOrg(wsId, docOrgId);
     }
 
-    // ── Deny everything outside workspaces ───────────────────────────────
+    match /workspaces/{wsId}/properties/{docId} {
+      allow read, write: if request.auth != null && (
+        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
+      );
+    }
+
+    match /workspaces/{wsId}/contracts/{docId} {
+      allow read, write: if request.auth != null && (
+        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
+      );
+    }
+
+    match /workspaces/{wsId}/payments/{docId} {
+      allow read, write: if request.auth != null && (
+        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
+      );
+    }
+
+    match /workspaces/{wsId}/tickets/{docId} {
+      allow read, write: if request.auth != null && (
+        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
+      );
+    }
+
+    match /workspaces/{wsId}/inspections/{docId} {
+      allow read, write: if request.auth != null && (
+        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
+      );
+    }
+
+    match /workspaces/{wsId}/transactions/{docId} {
+      allow read, write: if request.auth != null && (
+        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
+      );
+    }
+
+    match /workspaces/{wsId}/conversations/{docId} {
+      allow read, write: if request.auth != null && (
+        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
+      );
+    }
+
+    match /workspaces/{wsId}/persons/{docId} {
+      allow read, write: if request.auth != null && (
+        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
+      );
+    }
+
+    match /workspaces/{wsId}/avenants/{docId} {
+      allow read, write: if request.auth != null && (
+        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
+      );
+    }
+
+    // Settings / system data — org admins only
+    match /workspaces/{wsId}/settings/{docId} {
+      allow read: if request.auth != null && isStaff(wsId);
+      allow write: if request.auth != null && (isSuperAdmin(wsId) || isOrgAdmin(wsId));
+    }
+
+    // ── Deny everything else ─────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }

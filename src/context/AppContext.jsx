@@ -33,7 +33,7 @@ export const DEFAULT_ADMIN = {
   id: 1,
   email: 'admin@minsouah.ci',
   password: 'admin123',
-  role: 'ADMIN',
+  role: 'ORGANIZATION_ADMIN',
   orgId: 'default',
   name: 'Administrateur',
   initials: 'AD',
@@ -45,6 +45,15 @@ export const DEFAULT_ADMIN = {
   lastLogin: null,
   failedAttempts: 0,
   lockedUntil: null,
+};
+
+// Legacy role names → new names (for migration of existing Firestore data)
+export const ROLE_MIGRATION = {
+  ADMIN: 'ORGANIZATION_ADMIN',
+  MANAGER: 'AGENT',
+  CONCIERGE: 'AGENT',
+  TECHNICIAN: 'AGENT',
+  ACCOUNTANT: 'AGENT',
 };
 
 export const DEFAULT_SUPER_ADMIN = {
@@ -301,6 +310,13 @@ export function AppProvider({ children }) {
         setDoc(wsDoc('users', DEFAULT_SUPER_ADMIN.id), { ...DEFAULT_SUPER_ADMIN, password: hashed }).catch(console.error);
       });
     }
+    // Migrate legacy role names (ADMIN→ORGANIZATION_ADMIN, MANAGER→AGENT, etc.)
+    state.users.forEach(u => {
+      const newRole = ROLE_MIGRATION[u.role];
+      if (newRole) {
+        setDoc(wsDoc('users', u.id), { role: newRole }, { merge: true }).catch(console.error);
+      }
+    });
     // Seed default organization
     if (state.organizations.length === 0) {
       setDoc(wsDoc('organizations', DEFAULT_ORGANIZATION.id), DEFAULT_ORGANIZATION).catch(console.error);
@@ -556,13 +572,23 @@ export function AppProvider({ children }) {
             if (!limit.ok) throw new Error(`Limite atteinte : plan ${limit.plan} autorise ${limit.max} utilisateurs maximum.`);
           }
           const id = Date.now();
+          const targetOrgId = payload.orgId || orgId;
           const newUser = {
             ...payload, id,
-            orgId: payload.orgId || orgId,
+            orgId: targetOrgId,
             failedAttempts: 0, lockedUntil: null,
             suspended: false, createdAt: new Date().toISOString(), lastLogin: null,
           };
-          await setDoc(wsDoc('users', id), newUser);
+          // Remove firebaseUid from the stored user document
+          const { firebaseUid, ...userDocPayload } = newUser;
+          await setDoc(wsDoc('users', id), userDocPayload);
+          // Write usersByUid for Firestore Rules enforcement
+          if (firebaseUid) {
+            setDoc(wsDoc('usersByUid', firebaseUid), {
+              userId: String(id), orgId: targetOrgId, role: payload.role,
+              updatedAt: new Date().toISOString(),
+            }, { merge: true }).catch(console.warn);
+          }
           await logActivity(`Compte créé : ${payload.name} (${payload.role})`, 'ADD_USER');
           break;
         }

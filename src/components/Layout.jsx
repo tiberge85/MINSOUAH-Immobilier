@@ -4,12 +4,26 @@ import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import Icon from './Icon';
 
-const ROLE_LABELS = { SUPER_ADMIN: 'Super Admin', ADMIN: 'Administrateur', MANAGER: 'Manager', TENANT: 'Locataire', OWNER: 'Propriétaire', ACCOUNTANT: 'Comptable', TECHNICIAN: 'Technicien', CONCIERGE: 'Concierge' };
+const ROLE_LABELS = {
+  SUPER_ADMIN:        'Super Admin',
+  ORGANIZATION_ADMIN: 'Admin Organisation',
+  AGENT:              'Agent',
+  TENANT:             'Locataire',
+  OWNER:              'Propriétaire',
+  // legacy
+  ADMIN:      'Administrateur',
+  MANAGER:    'Manager',
+  ACCOUNTANT: 'Comptable',
+  TECHNICIAN: 'Technicien',
+  CONCIERGE:  'Concierge',
+};
 
 const ROLE_NAV = {
+  // legacy restricted roles (until migration runs)
   CONCIERGE:  new Set(['/concierge', '/assets', '/rental', '/maintenance', '/inspections', '/inbox']),
   TECHNICIAN: new Set(['/maintenance', '/inbox']),
   ACCOUNTANT: new Set(['/finance', '/payments', '/inbox']),
+  // ORGANIZATION_ADMIN and AGENT see all nav — no restriction needed
 };
 
 const navItems = [
@@ -290,7 +304,7 @@ export default function Layout() {
 
         {/* Bottom — Portals + Settings */}
         <div className="px-1 pt-md border-t border-outline-variant/30 mt-auto flex flex-col gap-1">
-          {['ADMIN', 'MANAGER'].includes(currentUser?.role) && (
+          {['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER'].includes(currentUser?.role) && (
             <>
               <p className="px-margin text-label-sm text-on-surface-variant uppercase tracking-widest mb-1">Portails</p>
               <button
@@ -457,8 +471,8 @@ export default function Layout() {
               )}
             </NavLink>
           ))}
-          {/* Quick portal access for ADMIN/MANAGER on mobile */}
-          {['ADMIN', 'MANAGER'].includes(currentUser?.role) && (
+          {/* Quick portal access for admins/agents on mobile */}
+          {['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER'].includes(currentUser?.role) && (
             <button
               onClick={() => setSidebarOpen(true)}
               className="flex flex-col items-center justify-center gap-0.5 px-2.5 py-1 min-w-[56px] text-on-surface-variant transition-transform active:scale-90"

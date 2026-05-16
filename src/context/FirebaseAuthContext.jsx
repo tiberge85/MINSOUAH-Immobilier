@@ -16,13 +16,17 @@ import { db } from '../lib/firebase';
 const FirebaseAuthContext = createContext(null);
 
 export const ROLES = {
-  SUPER_ADMIN: 'SUPER_ADMIN',
-  ADMIN: 'ADMIN',
-  MANAGER: 'MANAGER',
+  SUPER_ADMIN:        'SUPER_ADMIN',
+  ORGANIZATION_ADMIN: 'ORGANIZATION_ADMIN',
+  AGENT:              'AGENT',
+  OWNER:              'OWNER',
+  TENANT:             'TENANT',
+  // legacy (kept for backward compat until migration completes)
+  ADMIN:      'ADMIN',
+  MANAGER:    'MANAGER',
   ACCOUNTANT: 'ACCOUNTANT',
   TECHNICIAN: 'TECHNICIAN',
-  OWNER: 'OWNER',
-  TENANT: 'TENANT',
+  CONCIERGE:  'CONCIERGE',
 };
 
 export function FirebaseAuthProvider({ children }) {
@@ -113,7 +117,7 @@ export function FirebaseAuthProvider({ children }) {
   const getIdToken = () => firebaseUser?.getIdToken(true);
 
   const hasRole = (...roles) => roles.includes(userProfile?.role);
-  const isAdmin = () => hasRole(ROLES.SUPER_ADMIN, ROLES.ADMIN);
+  const isAdmin = () => hasRole(ROLES.SUPER_ADMIN, ROLES.ORGANIZATION_ADMIN, ROLES.ADMIN);
 
   return (
     <FirebaseAuthContext.Provider value={{
