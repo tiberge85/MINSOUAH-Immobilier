@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import SignaturePad from '../components/SignaturePad';
 import { buildReceiptHTML as buildReceiptHTMLShared } from '../lib/quittanceReport';
+import { sendEmail, buildReminderHtml } from '../lib/email';
 
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
@@ -500,12 +501,27 @@ export default function Payments() {
     dispatch({ type: 'SEND_REMINDER', payload: p.id });
   };
 
-  const sendEmailReminder = (p) => {
-    const subject = encodeURIComponent(`Rappel de loyer — ${p.month}`);
-    const body = encodeURIComponent(
-      `Bonjour ${p.tenantName},\n\nNous vous rappelons que votre loyer de ${fmt(p.amount)} pour ${p.month} n'a pas encore été reçu.\nPropriété : ${p.propertyName}\n\nMerci de régulariser votre situation dans les meilleurs délais.\n\nCordialement,\n${orgSettings?.companyName || 'Minsouah Immobilier'}`
-    );
-    window.location.href = `mailto:${p.tenantEmail || ''}?subject=${subject}&body=${body}`;
+  const sendEmailReminder = async (p) => {
+    const email = p.tenantEmail || '';
+    if (!email) { alert('Adresse email manquante pour ce locataire.'); return; }
+    const companyName = orgSettings?.companyName || 'Minsouah Immobilier';
+    const { ok } = await sendEmail({
+      to: email,
+      subject: `Rappel de loyer — ${p.month}`,
+      html: buildReminderHtml({
+        tenantName: p.tenantName,
+        amount: p.amount,
+        month: p.month,
+        propertyName: p.propertyName,
+        companyName,
+      }),
+    });
+    if (!ok) {
+      // Fallback gracieux si Firestore indisponible
+      const subject = encodeURIComponent(`Rappel de loyer — ${p.month}`);
+      const body = encodeURIComponent(`Bonjour ${p.tenantName},\n\nVotre loyer de ${fmt(p.amount)} pour ${p.month} n'a pas été reçu.\nPropriété : ${p.propertyName}\n\nCordialement,\n${companyName}`);
+      window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+    }
     dispatch({ type: 'SEND_REMINDER', payload: p.id });
   };
 

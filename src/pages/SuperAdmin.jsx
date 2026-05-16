@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { getPlan, PLANS, fmtLimit } from '../lib/planLimits';
 import { getLicenseStatusInfo, getDaysRemaining, createLicensePayload } from '../lib/licenses';
 import { hashPwd } from '../lib/auth';
+import { sendEmail } from '../lib/email';
 import Icon from '../components/Icon';
 
 const fmt = n => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
@@ -140,10 +141,11 @@ export default function SuperAdmin() {
   };
 
   const TABS = [
-    { id: 'overview', label: 'Vue d\'ensemble', icon: 'dashboard' },
-    { id: 'orgs', label: 'Organisations', icon: 'corporate_fare' },
-    { id: 'licenses', label: 'Licences', icon: 'verified' },
-    { id: 'activity', label: 'Activité', icon: 'history' },
+    { id: 'overview',  label: 'Vue d\'ensemble', icon: 'dashboard' },
+    { id: 'orgs',      label: 'Organisations',   icon: 'corporate_fare' },
+    { id: 'licenses',  label: 'Licences',        icon: 'verified' },
+    { id: 'activity',  label: 'Activité',        icon: 'history' },
+    { id: 'platform',  label: 'Plateforme',      icon: 'settings_suggest' },
   ];
 
   return (
@@ -498,6 +500,9 @@ export default function SuperAdmin() {
             )}
           </div>
         )}
+
+        {/* ── PLATEFORME ── */}
+        {tab === 'platform' && <PlatformTab state={state} dispatch={dispatch} showToast={showToast} />}
       </div>
 
       {/* License action modal */}
@@ -681,6 +686,221 @@ export default function SuperAdmin() {
               <button onClick={() => setOrgDeleteConfirm(null)} className="flex-1 py-2.5 bg-surface-container text-on-surface-variant rounded-xl text-sm font-semibold">Annuler</button>
               <button onClick={handleDeleteOrg} className="flex-1 py-2.5 bg-error text-white rounded-xl text-sm font-bold">Supprimer</button>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── PlatformTab — SMTP + Monitoring global (SUPER_ADMIN uniquement) ─────────── */
+const inputCls = 'w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface text-sm';
+
+function Toggle({ checked, onChange }) {
+  return (
+    <button onClick={onChange}
+      className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${checked ? 'bg-primary' : 'bg-outline-variant'}`}>
+      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${checked ? 'translate-x-7' : 'translate-x-1'}`} />
+    </button>
+  );
+}
+
+function PlatformTab({ state, dispatch, showToast }) {
+  const sys = state.systemSettings || {};
+  const [section, setSection] = useState('smtp');
+  const [smtp, setSmtp] = useState({
+    host: sys.smtp?.host || '',
+    port: sys.smtp?.port || 587,
+    user: sys.smtp?.user || '',
+    password: sys.smtp?.password || '',
+    from: sys.smtp?.from || '',
+    encryption: sys.smtp?.encryption || 'TLS',
+    enabled: sys.smtp?.enabled || false,
+  });
+  const [testEmail, setTestEmail] = useState('');
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState(null); // 'ok' | 'error'
+
+  const saveSmtp = () => {
+    dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: { smtp } });
+    showToast('Configuration SMTP enregistrée');
+  };
+
+  const handleTestEmail = async () => {
+    if (!testEmail.trim()) { showToast('Entrez un email de destination'); return; }
+    setTestLoading(true);
+    setTestResult(null);
+    const { ok } = await sendEmail({
+      to: testEmail.trim(),
+      subject: 'Test SMTP — Minsouah',
+      html: `<p>Bonjour,</p><p>Cet email confirme que la configuration SMTP de votre plateforme <strong>Minsouah</strong> fonctionne correctement.</p><p>— Super Admin Minsouah</p>`,
+    });
+    setTestResult(ok ? 'ok' : 'error');
+    setTestLoading(false);
+    showToast(ok ? 'Email de test envoyé avec succès !' : 'Erreur — vérifiez la configuration SMTP');
+  };
+
+  const SECTIONS = [
+    { key: 'smtp',       label: 'SMTP / Email',  icon: 'email' },
+    { key: 'monitoring', label: 'Monitoring',     icon: 'monitor_heart' },
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Sub-nav */}
+      <div className="flex gap-2 flex-wrap">
+        {SECTIONS.map(s => (
+          <button key={s.key} onClick={() => setSection(s.key)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
+              section === s.key ? 'bg-primary text-on-primary' : 'bg-surface border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high'
+            }`}>
+            <Icon name={s.icon} size={15} />{s.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── SMTP ── */}
+      {section === 'smtp' && (
+        <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-on-surface flex items-center gap-2"><Icon name="email" filled />Configuration SMTP Plateforme</h3>
+              <p className="text-xs text-on-surface-variant mt-1">
+                Les emails transitent via la collection <code className="bg-surface-container px-1 rounded">mail</code> Firestore —
+                l'extension <strong>Trigger Email</strong> les envoie côté serveur (aucune clé SMTP dans le navigateur).
+              </p>
+            </div>
+            <Toggle checked={smtp.enabled} onChange={() => setSmtp(s => ({ ...s, enabled: !s.enabled }))} />
+          </div>
+
+          {/* Notice Firebase Extension */}
+          <div className="p-3 bg-primary/5 border border-primary/20 rounded-xl text-xs text-on-surface-variant">
+            <p className="font-semibold text-primary mb-1 flex items-center gap-1"><Icon name="tips_and_updates" size={14} />Prérequis : Firebase Trigger Email Extension</p>
+            <ol className="list-decimal list-inside space-y-0.5">
+              <li>Firebase Console → <strong className="text-on-surface">Extensions</strong> → chercher «&nbsp;Trigger Email&nbsp;»</li>
+              <li>Installer et configurer l'URI SMTP (ex: <code>smtps://user:pass@smtp.sendgrid.net:465</code>)</li>
+              <li>Définir la collection source : <code>mail</code></li>
+              <li>Enregistrer la config ci-dessous pour référence et activer le toggle</li>
+            </ol>
+          </div>
+
+          <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${!smtp.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Serveur SMTP</label>
+              <input value={smtp.host} onChange={e => setSmtp(s => ({ ...s, host: e.target.value }))} className={inputCls} placeholder="smtp.sendgrid.net" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Port</label>
+              <select value={smtp.port} onChange={e => setSmtp(s => ({ ...s, port: Number(e.target.value) }))} className={inputCls}>
+                <option value={587}>587 (TLS)</option>
+                <option value={465}>465 (SSL)</option>
+                <option value={25}>25</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Email expéditeur</label>
+              <input type="email" value={smtp.from} onChange={e => setSmtp(s => ({ ...s, from: e.target.value }))} className={inputCls} placeholder="noreply@minsouah.ci" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Chiffrement</label>
+              <select value={smtp.encryption} onChange={e => setSmtp(s => ({ ...s, encryption: e.target.value }))} className={inputCls}>
+                <option value="TLS">TLS (STARTTLS)</option>
+                <option value="SSL">SSL</option>
+                <option value="NONE">Aucun</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Utilisateur SMTP</label>
+              <input value={smtp.user} onChange={e => setSmtp(s => ({ ...s, user: e.target.value }))} className={inputCls} placeholder="apikey" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Mot de passe / API Key</label>
+              <input type="password" value={smtp.password} onChange={e => setSmtp(s => ({ ...s, password: e.target.value }))} className={inputCls} placeholder="••••••••" />
+            </div>
+          </div>
+
+          <div className="flex gap-3 flex-wrap">
+            <button onClick={saveSmtp}
+              className="px-5 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 flex items-center gap-2 transition-colors">
+              <Icon name="save" size={16} />Enregistrer la config
+            </button>
+          </div>
+
+          {/* Test email réel */}
+          <div className="border-t border-outline-variant/20 pt-5">
+            <p className="text-sm font-bold text-on-surface mb-3 flex items-center gap-2">
+              <Icon name="send" size={16} className="text-primary" />Envoyer un email de test (réel)
+            </p>
+            <div className="flex gap-3 items-end">
+              <div className="flex-1">
+                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Adresse de destination</label>
+                <input type="email" value={testEmail} onChange={e => setTestEmail(e.target.value)}
+                  className={inputCls} placeholder="test@example.com" />
+              </div>
+              <button onClick={handleTestEmail} disabled={testLoading || !testEmail}
+                className="px-5 py-2.5 bg-surface-container border border-outline-variant/30 text-on-surface rounded-xl text-sm font-semibold hover:bg-surface-container-high flex items-center gap-2 transition-colors disabled:opacity-50 flex-shrink-0">
+                {testLoading
+                  ? <><Icon name="progress_activity" size={16} className="animate-spin" />Envoi…</>
+                  : <><Icon name="send" size={16} />Tester</>
+                }
+              </button>
+            </div>
+            {testResult === 'ok' && (
+              <div className="mt-3 flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm">
+                <Icon name="check_circle" size={16} />Email enregistré dans la queue Firestore — il sera envoyé par l'extension Trigger Email.
+              </div>
+            )}
+            {testResult === 'error' && (
+              <div className="mt-3 flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-xl text-error text-sm">
+                <Icon name="error" size={16} />Échec — vérifiez que Firestore est accessible et que l'extension est installée.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Monitoring global ── */}
+      {section === 'monitoring' && (
+        <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-4">
+          <h3 className="font-bold text-on-surface flex items-center gap-2"><Icon name="monitor_heart" filled />Monitoring Plateforme</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              { label: 'Organisations actives', value: (state.organizations || []).filter(o => o.active !== false).length, icon: 'corporate_fare', color: 'text-primary bg-primary/10' },
+              { label: 'Utilisateurs totaux',   value: (state.users || []).filter(u => u.role !== 'SUPER_ADMIN').length,   icon: 'group',          color: 'text-secondary bg-secondary/10' },
+              { label: 'Biens totaux',          value: (state.properties || []).length,                                     icon: 'apartment',      color: 'text-tertiary bg-tertiary/10' },
+              { label: 'Contrats actifs',       value: (state.contracts || []).filter(c => c.status === 'Actif').length,    icon: 'contract',       color: 'text-green-600 bg-green-50' },
+              { label: 'Paiements en attente',  value: (state.payments || []).filter(p => p.status !== 'Payé').length,      icon: 'pending',        color: 'text-amber-600 bg-amber-50' },
+              { label: 'Tickets ouverts',       value: (state.tickets || []).filter(t => t.status !== 'Fermé' && t.status !== 'Résolu').length, icon: 'engineering', color: 'text-error bg-error/10' },
+            ].map(s => (
+              <div key={s.label} className={`p-4 rounded-xl ${s.color.split(' ')[1]} flex items-center gap-3`}>
+                <Icon name={s.icon} size={22} className={s.color.split(' ')[0]} />
+                <div>
+                  <p className={`font-black text-xl ${s.color.split(' ')[0]}`}>{s.value}</p>
+                  <p className="text-xs text-on-surface-variant">{s.label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-2 bg-surface-container-low rounded-xl p-4">
+            <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-3">Dernières connexions</p>
+            {(state.activityLog || []).filter(e => e.action === 'LOGIN' || e.action === 'LOGIN_FAIL').slice(0, 10).length === 0
+              ? <p className="text-xs text-on-surface-variant">Aucune activité.</p>
+              : (state.activityLog || []).filter(e => e.action === 'LOGIN' || e.action === 'LOGIN_FAIL').slice(0, 10).map((e, i) => (
+                <div key={i} className="flex items-center gap-3 py-2 border-b border-outline-variant/10 last:border-0">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs ${e.action === 'LOGIN' ? 'bg-green-100 text-green-600' : 'bg-error/10 text-error'}`}>
+                    <Icon name={e.action === 'LOGIN' ? 'login' : 'block'} size={14} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-on-surface truncate">{e.userEmail || e.details}</p>
+                    <p className="text-xs text-on-surface-variant">{e.action === 'LOGIN' ? 'Connexion réussie' : 'Tentative échouée'}</p>
+                  </div>
+                  <p className="text-xs text-on-surface-variant flex-shrink-0">
+                    {e.timestamp ? new Date(e.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
+                  </p>
+                </div>
+              ))
+            }
           </div>
         </div>
       )}

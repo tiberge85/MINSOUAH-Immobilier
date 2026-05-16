@@ -9,18 +9,19 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { getPlan } from '../lib/planLimits';
 import { getDaysRemaining, getLicenseStatusInfo } from '../lib/licenses';
 
+// Rôles autorisés par catégorie — SUPER_ADMIN a sa propre page /superadmin
 const ADMIN_ROLES  = ['ORGANIZATION_ADMIN', 'ADMIN'];
 const STAFF_ROLES  = ['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER'];
 
 const ALL_TABS = [
   { key: 'profile',       label: 'Mon Profil',      icon: 'account_circle',  roles: null },
   { key: 'org',           label: 'Organisation',    icon: 'business',        roles: STAFF_ROLES },
-  { key: 'organizations', label: 'Organisations',   icon: 'corporate_fare',  roles: ADMIN_ROLES },
+  // 'organizations' retiré de Settings — géré exclusivement dans /superadmin
   { key: 'plan',          label: 'Plan & Licence',  icon: 'verified',        roles: ADMIN_ROLES },
   { key: 'users',         label: 'Utilisateurs',    icon: 'group',           roles: ADMIN_ROLES },
   { key: 'notif',         label: 'Notifications',   icon: 'notifications',   roles: null },
   { key: 'data',          label: 'Données',         icon: 'database',        roles: STAFF_ROLES },
-  { key: 'system',        label: 'Système',         icon: 'settings_suggest',roles: ADMIN_ROLES },
+  { key: 'system',        label: 'Intégrations',    icon: 'settings_suggest',roles: ADMIN_ROLES },
   { key: 'security',      label: 'Sécurité',        icon: 'lock',            roles: null },
 ];
 
@@ -495,11 +496,6 @@ export default function Settings() {
             </div>
           )}
 
-          {/* ══════════ ORGANISATIONS ══════════ */}
-          {tab === 'organizations' && (
-            <OrganizationsTab state={state} dispatch={dispatch} showToast={showToast} />
-          )}
-
           {/* ══════════ PLAN & LICENCE ══════════ */}
           {tab === 'plan' && (
             <PlanLicenceTab state={state} />
@@ -733,15 +729,11 @@ function Toggle({ checked, onChange }) {
   );
 }
 
-/* ── SystemTab ──────────────────────────────────────────────────────────────── */
+/* ── SystemTab (Intégrations par organisation) ──────────────────────────────── */
+// SMTP, sync cloud et monitoring sont SUPER_ADMIN uniquement → /superadmin
+// Cet onglet expose uniquement les intégrations propres à l'organisation.
 function SystemTab({ state, dispatch, showToast }) {
   const sys = state.systemSettings || {};
-  const [smtp, setSmtp] = useState({
-    host: sys.smtp?.host || '', port: sys.smtp?.port || 587,
-    user: sys.smtp?.user || '', password: sys.smtp?.password || '',
-    from: sys.smtp?.from || '', encryption: sys.smtp?.encryption || 'TLS',
-    enabled: sys.smtp?.enabled || false,
-  });
   const [wa, setWa] = useState({
     apiKey: sys.whatsapp?.apiKey || '', phoneNumber: sys.whatsapp?.phoneNumber || '',
     businessName: sys.whatsapp?.businessName || '', enabled: sys.whatsapp?.enabled || false,
@@ -752,12 +744,8 @@ function SystemTab({ state, dispatch, showToast }) {
   const [mtn, setMtn] = useState({ apiKey: mm.mtn?.apiKey || '', enabled: mm.mtn?.enabled || false });
   const [wave, setWave] = useState({ apiKey: mm.wave?.apiKey || '', enabled: mm.wave?.enabled || false });
   const [moov, setMoov] = useState({ apiKey: mm.moov?.apiKey || '', enabled: mm.moov?.enabled || false });
-  const [section, setSection] = useState('smtp');
+  const [section, setSection] = useState('whatsapp');
 
-  const saveSmtp = () => {
-    dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: { smtp } });
-    showToast('Configuration SMTP enregistrée');
-  };
   const saveWa = () => {
     dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: { whatsapp: wa } });
     showToast('Configuration WhatsApp enregistrée');
@@ -767,17 +755,10 @@ function SystemTab({ state, dispatch, showToast }) {
     showToast('Configuration Mobile Money enregistrée');
   };
 
-  const testSmtp = () => {
-    if (!smtp.host || !smtp.user) { showToast('Remplissez au moins le serveur et l\'email'); return; }
-    showToast('Test SMTP envoyé (simulation)');
-  };
-
+  // Sections disponibles pour ORGANIZATION_ADMIN — SMTP/monitoring réservés au SuperAdmin
   const SECTIONS = [
-    { key: 'smtp', label: 'SMTP / Email', icon: 'email' },
     { key: 'whatsapp', label: 'WhatsApp Business', icon: 'chat' },
     { key: 'mobilemoney', label: 'Mobile Money', icon: 'payments' },
-    { key: 'sync', label: 'Sync Cloud', icon: 'cloud_sync' },
-    { key: 'monitoring', label: 'Monitoring', icon: 'monitor_heart' },
   ];
 
   return (
@@ -793,52 +774,6 @@ function SystemTab({ state, dispatch, showToast }) {
       </div>
 
       {/* SMTP */}
-      {section === 'smtp' && (
-        <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-on-surface flex items-center gap-2"><Icon name="email" filled />Configuration SMTP</h3>
-            <Toggle checked={smtp.enabled} onChange={() => setSmtp(s => ({ ...s, enabled: !s.enabled }))} />
-          </div>
-          <p className="text-xs text-on-surface-variant -mt-2">Permet l'envoi d'emails de notification (quittances, rappels, alertes).</p>
-          <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${!smtp.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
-            <Field label="Serveur SMTP" icon="dns">
-              <input value={smtp.host} onChange={e => setSmtp(s => ({ ...s, host: e.target.value }))} className={inputCls} placeholder="smtp.gmail.com" />
-            </Field>
-            <Field label="Port">
-              <select value={smtp.port} onChange={e => setSmtp(s => ({ ...s, port: Number(e.target.value) }))} className={inputCls}>
-                <option value={587}>587 (TLS)</option><option value={465}>465 (SSL)</option><option value={25}>25</option>
-              </select>
-            </Field>
-            <Field label="Email expéditeur" icon="alternate_email">
-              <input type="email" value={smtp.from} onChange={e => setSmtp(s => ({ ...s, from: e.target.value }))} className={inputCls} placeholder="noreply@minsouah.ci" />
-            </Field>
-            <Field label="Chiffrement">
-              <select value={smtp.encryption} onChange={e => setSmtp(s => ({ ...s, encryption: e.target.value }))} className={inputCls}>
-                <option value="TLS">TLS (STARTTLS)</option><option value="SSL">SSL</option><option value="NONE">Aucun</option>
-              </select>
-            </Field>
-            <Field label="Nom d'utilisateur SMTP" icon="person">
-              <input value={smtp.user} onChange={e => setSmtp(s => ({ ...s, user: e.target.value }))} className={inputCls} placeholder="votre@email.com" />
-            </Field>
-            <Field label="Mot de passe SMTP" icon="lock">
-              <input type="password" value={smtp.password} onChange={e => setSmtp(s => ({ ...s, password: e.target.value }))} className={inputCls} placeholder="••••••••" />
-            </Field>
-          </div>
-          <div className="flex gap-3 flex-wrap">
-            <button onClick={saveSmtp} className="px-5 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 flex items-center gap-2 transition-colors">
-              <Icon name="save" size={16} />Enregistrer
-            </button>
-            <button onClick={testSmtp} className="px-5 py-2.5 bg-surface-container border border-outline-variant/30 text-on-surface rounded-xl text-sm font-semibold hover:bg-surface-container-high flex items-center gap-2 transition-colors">
-              <Icon name="send" size={16} />Tester la connexion
-            </button>
-          </div>
-          <div className="p-3 bg-surface-container-low rounded-xl text-xs text-on-surface-variant">
-            <strong className="text-on-surface">Gmail :</strong> Activez «&nbsp;Accès moins sécurisé&nbsp;» ou utilisez un mot de passe d'application.<br />
-            <strong className="text-on-surface">Recommandé :</strong> SendGrid, Mailgun ou Brevo pour un usage professionnel.
-          </div>
-        </div>
-      )}
-
       {/* WhatsApp */}
       {section === 'whatsapp' && (
         <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-4">
@@ -943,53 +878,6 @@ function SystemTab({ state, dispatch, showToast }) {
         </div>
       )}
 
-      {/* Cloud Sync */}
-      {section === 'sync' && (
-        <CloudSyncTab state={state} dispatch={dispatch} showToast={showToast} />
-      )}
-
-      {/* Monitoring */}
-      {section === 'monitoring' && (
-        <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-4">
-          <h3 className="font-bold text-on-surface flex items-center gap-2"><Icon name="monitor_heart" filled />Monitoring Système</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[
-              { label: 'Statut application', value: 'Opérationnel', icon: 'check_circle', color: 'text-green-600 bg-green-50' },
-              { label: 'Données locales', value: `${(JSON.stringify(state).length / 1024).toFixed(1)} Ko`, icon: 'database', color: 'text-primary bg-primary/10' },
-              { label: 'Utilisateurs actifs', value: (state.users || []).filter(u => !u.suspended).length, icon: 'group', color: 'text-secondary bg-secondary/10' },
-              { label: 'Biens enregistrés', value: (state.properties || []).length, icon: 'apartment', color: 'text-tertiary bg-tertiary/10' },
-              { label: 'Contrats actifs', value: (state.contracts || []).filter(c => c.status === 'Actif').length, icon: 'contract', color: 'text-primary bg-primary/10' },
-              { label: 'Paiements en attente', value: (state.payments || []).filter(p => p.status !== 'Payé').length, icon: 'pending', color: 'text-amber-600 bg-amber-50' },
-            ].map(s => (
-              <div key={s.label} className={`p-4 rounded-xl ${s.color.split(' ')[1]} flex items-center gap-3`}>
-                <Icon name={s.icon} size={22} className={s.color.split(' ')[0]} />
-                <div>
-                  <p className={`font-black text-lg ${s.color.split(' ')[0]}`}>{s.value}</p>
-                  <p className="text-xs text-on-surface-variant">{s.label}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-2 p-4 bg-surface-container-low rounded-xl">
-            <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-3">Dernières activités</p>
-            {(state.activityLog || []).slice(0, 8).length === 0
-              ? <p className="text-xs text-on-surface-variant">Aucune activité enregistrée.</p>
-              : (state.activityLog || []).slice(0, 8).map((e, i) => (
-                <div key={i} className="flex items-center gap-3 py-2 border-b border-outline-variant/10 last:border-0">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${e.action === 'LOGIN' ? 'bg-green-100 text-green-600' : e.action === 'LOGIN_FAIL' ? 'bg-error/10 text-error' : e.action === 'ADD_USER' ? 'bg-primary/10 text-primary' : 'bg-surface-container-high text-on-surface-variant'}`}>
-                    <Icon name={e.action === 'LOGIN' ? 'login' : e.action === 'LOGIN_FAIL' ? 'block' : e.action === 'ADD_USER' ? 'person_add' : 'history'} size={14} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-on-surface truncate">{e.details}</p>
-                    <p className="text-xs text-on-surface-variant">{e.userEmail || ''}</p>
-                  </div>
-                  <p className="text-xs text-on-surface-variant flex-shrink-0">{e.timestamp ? new Date(e.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</p>
-                </div>
-              ))
-            }
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1548,262 +1436,6 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
   );
 }
 
-/* ── Cloud Sync Tab (Firebase REST) ────────────────────────────────────────── */
-function CloudSyncTab({ state, dispatch, showToast }) {
-  const fb = state.systemSettings?.firebase || {};
-  const [cfg, setCfg] = useState({
-    enabled: fb.enabled || false,
-    databaseURL: fb.databaseURL || '',
-    workspaceId: fb.workspaceId || '',
-  });
-  const [testing, setTesting] = useState(false);
-  const [syncStatus, setSyncStatus] = useState(null);
-
-  const save = () => {
-    dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: { firebase: cfg } });
-    showToast('Configuration Cloud enregistrée');
-  };
-
-  const testConnection = async () => {
-    if (!cfg.databaseURL || !cfg.workspaceId) { showToast('Remplissez l\'URL et l\'identifiant'); return; }
-    setTesting(true);
-    try {
-      const url = `${cfg.databaseURL.replace(/\/$/, '')}/minsouah/${cfg.workspaceId}/ping.json`;
-      await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ts: Date.now() }) });
-      setSyncStatus('ok');
-      showToast('Connexion Firebase réussie !');
-    } catch {
-      setSyncStatus('error');
-      showToast('Erreur de connexion Firebase — vérifiez l\'URL et les règles');
-    }
-    setTesting(false);
-  };
-
-  return (
-    <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold text-on-surface flex items-center gap-2"><Icon name="cloud_sync" filled />Synchronisation Cloud</h3>
-        <Toggle checked={cfg.enabled} onChange={() => setCfg(c => ({ ...c, enabled: !c.enabled }))} />
-      </div>
-
-      <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl">
-        <p className="font-semibold text-on-surface mb-2 flex items-center gap-1.5 text-sm"><Icon name="tips_and_updates" size={16} className="text-primary" />Configuration Firebase (gratuit)</p>
-        <ol className="list-decimal list-inside space-y-1 text-xs text-on-surface-variant">
-          <li>Créez un projet sur <strong className="text-on-surface">console.firebase.google.com</strong></li>
-          <li>Activez <strong className="text-on-surface">Realtime Database</strong> → mode test</li>
-          <li>Copiez l'URL de la base (ex: <code className="bg-surface-container px-1 rounded">https://mon-projet.firebaseio.com</code>)</li>
-          <li>Entrez l'URL + un identifiant d'espace unique ci-dessous et enregistrez</li>
-          <li>Faites pareil sur tous les appareils — les données se synchroniseront</li>
-        </ol>
-      </div>
-
-      <div className={`flex flex-col gap-4 ${!cfg.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
-        <Field label="URL Firebase Realtime Database" icon="link">
-          <input value={cfg.databaseURL} onChange={e => setCfg(c => ({ ...c, databaseURL: e.target.value }))} className={inputCls} placeholder="https://mon-projet.firebaseio.com" />
-        </Field>
-        <Field label="Identifiant d'espace (Workspace ID)" icon="key">
-          <input value={cfg.workspaceId} onChange={e => setCfg(c => ({ ...c, workspaceId: e.target.value.replace(/\s/g, '-') }))} className={inputCls} placeholder="minsouah-principal-2024" />
-          <p className="text-xs text-on-surface-variant mt-1">Utilisez le même identifiant sur tous les appareils.</p>
-        </Field>
-      </div>
-
-      <div className="flex gap-3 flex-wrap">
-        <button onClick={save} className="px-5 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 flex items-center gap-2 transition-colors">
-          <Icon name="save" size={16} />Enregistrer
-        </button>
-        <button onClick={testConnection} disabled={testing || !cfg.databaseURL || !cfg.workspaceId}
-          className="px-5 py-2.5 bg-surface-container border border-outline-variant/30 text-on-surface rounded-xl text-sm font-semibold hover:bg-surface-container-high flex items-center gap-2 transition-colors disabled:opacity-50">
-          {testing ? <Icon name="progress_activity" size={16} className="animate-spin" /> : <Icon name="wifi_tethering" size={16} />}
-          Tester
-        </button>
-      </div>
-
-      {syncStatus === 'ok' && <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm"><Icon name="check_circle" size={16} />Connexion réussie — sync automatique activée.</div>}
-      {syncStatus === 'error' && <div className="flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-xl text-error text-sm"><Icon name="error" size={16} />Erreur — vérifiez l'URL et les règles Firebase (mode test).</div>}
-      {cfg.enabled && state.systemSettings?.firebase?.enabled && <div className="flex items-center gap-2 p-3 bg-primary/10 border border-primary/20 rounded-xl text-primary text-sm"><Icon name="cloud_done" size={16} />Sync activée — sauvegarde Firebase toutes les 3 secondes.</div>}
-    </div>
-  );
-}
-
-/* ── OrganizationsTab ───────────────────────────────────────────────────────── */
-const PLAN_LABELS = { standard: 'Standard', pro: 'Pro', enterprise: 'Enterprise' };
-const EMPTY_ORG_FORM = { name: '', plan: 'standard', active: true, contactEmail: '', contactPhone: '', address: '' };
-
-function OrganizationsTab({ state, dispatch, showToast }) {
-  const orgs = state.organizations || [];
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState(EMPTY_ORG_FORM);
-  const [confirmDeletion, setConfirmDeletion] = useState(null);
-
-  const openAdd = () => { setForm(EMPTY_ORG_FORM); setEditing(null); setShowForm(true); };
-  const openEdit = (o) => { setForm({ ...EMPTY_ORG_FORM, ...o }); setEditing(o); setShowForm(true); };
-  const close = () => { setShowForm(false); setEditing(null); };
-
-  const handleSave = () => {
-    if (!form.name.trim()) { showToast('Le nom est requis'); return; }
-    if (editing) {
-      dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...editing, ...form } });
-      showToast('Organisation mise à jour');
-    } else {
-      dispatch({ type: 'ADD_ORGANIZATION', payload: form });
-      showToast('Organisation créée');
-    }
-    close();
-  };
-
-  const handleDelete = (org) => {
-    if (org.id === 'default') { showToast("L'organisation par défaut ne peut pas être supprimée"); return; }
-    setConfirmDeletion(org);
-  };
-
-  const confirmDel = () => {
-    dispatch({ type: 'DELETE_ORGANIZATION', payload: confirmDeletion.id });
-    showToast('Organisation supprimée');
-    setConfirmDeletion(null);
-  };
-
-  return (
-    <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="font-bold text-lg text-on-surface flex items-center gap-2">
-          <Icon name="corporate_fare" filled /> Organisations ({orgs.length})
-        </h2>
-        <button onClick={openAdd}
-          className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors">
-          <Icon name="add_business" size={16} /> Nouvelle organisation
-        </button>
-      </div>
-
-      <p className="text-xs text-on-surface-variant -mt-2">
-        Chaque organisation est isolée dans Firestore. Les utilisateurs voient uniquement les données de leur <code className="bg-surface-container px-1 rounded">orgId</code>.
-      </p>
-
-      {orgs.length === 0 ? (
-        <div className="text-center py-10 text-on-surface-variant">
-          <Icon name="corporate_fare" size={40} className="opacity-20 mb-2" />
-          <p>Aucune organisation</p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {orgs.map(o => {
-            const userCount = (state.users || []).filter(u => u.orgId === o.id).length;
-            const propCount = (state.properties || []).filter(p => p.orgId === o.id).length;
-            return (
-              <div key={o.id} className="flex items-center gap-4 p-4 bg-surface-container rounded-xl border border-outline-variant/20 group">
-                <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center font-bold text-on-primary-container flex-shrink-0">
-                  {o.name?.[0]?.toUpperCase() || 'O'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-bold text-on-surface">{o.name}</p>
-                    {o.id === 'default' && (
-                      <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-semibold">Défaut</span>
-                    )}
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${o.active !== false ? 'bg-green-100 text-green-700' : 'bg-error/10 text-error'}`}>
-                      {o.active !== false ? 'Actif' : 'Inactif'}
-                    </span>
-                    <span className="text-[10px] bg-surface-container-high text-on-surface-variant px-2 py-0.5 rounded-full">
-                      {PLAN_LABELS[o.plan] || o.plan || 'Standard'}
-                    </span>
-                  </div>
-                  <p className="text-xs text-on-surface-variant mt-0.5">
-                    ID : <code className="bg-surface-container-high px-1 rounded">{o.id}</code>
-                    {' · '}{userCount} utilisateur(s) · {propCount} bien(s)
-                  </p>
-                </div>
-                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                  <button onClick={() => openEdit(o)}
-                    className="w-8 h-8 rounded-full bg-white border border-outline-variant/30 flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shadow-sm">
-                    <Icon name="edit" size={14} />
-                  </button>
-                  {o.id !== 'default' && (
-                    <button onClick={() => handleDelete(o)}
-                      className="w-8 h-8 rounded-full bg-white border border-outline-variant/30 flex items-center justify-center text-error hover:bg-error/10 transition-colors shadow-sm">
-                      <Icon name="delete" size={14} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {showForm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-on-surface text-lg">
-                {editing ? "Modifier l'organisation" : 'Nouvelle organisation'}
-              </h3>
-              <button onClick={close} className="text-on-surface-variant hover:text-on-surface"><Icon name="close" size={20} /></button>
-            </div>
-            <div className="flex flex-col gap-3">
-              <div>
-                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Nom *</label>
-                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className={inputCls} placeholder="Ex: Agence Cocody" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Plan</label>
-                  <select value={form.plan} onChange={e => setForm(f => ({ ...f, plan: e.target.value }))} className={inputCls}>
-                    <option value="standard">Standard</option>
-                    <option value="pro">Pro</option>
-                    <option value="enterprise">Enterprise</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Statut</label>
-                  <select value={form.active ? 'true' : 'false'} onChange={e => setForm(f => ({ ...f, active: e.target.value === 'true' }))} className={inputCls}>
-                    <option value="true">Actif</option>
-                    <option value="false">Inactif</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Email de contact</label>
-                <input type="email" value={form.contactEmail || ''} onChange={e => setForm(f => ({ ...f, contactEmail: e.target.value }))} className={inputCls} placeholder="contact@agence.ci" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Téléphone</label>
-                <input value={form.contactPhone || ''} onChange={e => setForm(f => ({ ...f, contactPhone: e.target.value }))} className={inputCls} placeholder="+225 07 00 00 00 00" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Adresse</label>
-                <input value={form.address || ''} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} className={inputCls} placeholder="Abidjan, Cocody" />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <button onClick={close} className="px-4 py-2 text-sm font-medium text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors">Annuler</button>
-              <button onClick={handleSave} className="px-5 py-2 text-sm font-bold text-on-primary bg-primary rounded-xl hover:bg-primary/90 transition-colors flex items-center gap-2">
-                <Icon name="save" size={15} />{editing ? 'Enregistrer' : 'Créer'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {confirmDeletion && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-sm p-6">
-            <div className="w-12 h-12 bg-error/10 rounded-xl flex items-center justify-center mb-4">
-              <Icon name="delete" size={24} className="text-error" />
-            </div>
-            <h3 className="font-bold text-on-surface text-lg mb-1">Supprimer l'organisation ?</h3>
-            <p className="text-sm text-on-surface-variant mb-4">
-              <strong>{confirmDeletion.name}</strong> sera supprimée. Les données liées ne seront pas effacées.
-            </p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmDeletion(null)} className="flex-1 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors">Annuler</button>
-              <button onClick={confirmDel} className="flex-1 py-2.5 text-sm font-bold text-white bg-error rounded-xl hover:bg-error/90 transition-colors">Supprimer</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 /* ── PlanLicenceTab ─────────────────────────────────────────────────────────── */
 const PLAN_COLORS = {
@@ -1932,7 +1564,7 @@ function PlanLicenceTab({ state }) {
           <Icon name="star" size={18} /> Fonctionnalités du plan
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {FEATURE_LIST.map(({ key, icon, label }) => {
+          {FEATURE_LIST.map(({ key, label }) => {
             const included = plan.features?.[key];
             return (
               <div key={key} className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium ${

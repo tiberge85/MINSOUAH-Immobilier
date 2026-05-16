@@ -2,144 +2,109 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── Helper functions ─────────────────────────────────────────────────────
+    // ── Helpers ──────────────────────────────────────────────────────────────
 
-    // Get the caller's role/orgId from the usersByUid lookup doc (written at login)
     function callerMeta(wsId) {
       return get(/databases/$(database)/documents/workspaces/$(wsId)/usersByUid/$(request.auth.uid)).data;
     }
+    function callerRole(wsId)  { return callerMeta(wsId).role; }
+    function callerOrgId(wsId) { return callerMeta(wsId).orgId; }
 
-    function callerRole(wsId) {
-      return callerMeta(wsId).role;
-    }
-
-    function callerOrgId(wsId) {
-      return callerMeta(wsId).orgId;
-    }
-
-    function isSuperAdmin(wsId) {
-      return callerRole(wsId) == 'SUPER_ADMIN';
-    }
+    function isSuperAdmin(wsId) { return callerRole(wsId) == 'SUPER_ADMIN'; }
 
     function isOrgAdmin(wsId) {
       return callerRole(wsId) in ['ORGANIZATION_ADMIN', 'ADMIN'];
     }
 
     function isStaff(wsId) {
-      return callerRole(wsId) in ['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE', 'TECHNICIAN', 'ACCOUNTANT'];
+      return callerRole(wsId) in [
+        'ORGANIZATION_ADMIN', 'AGENT',
+        'ADMIN', 'MANAGER', 'CONCIERGE', 'TECHNICIAN', 'ACCOUNTANT'
+      ];
     }
 
     function sameOrg(wsId, docOrgId) {
       return callerOrgId(wsId) == docOrgId;
     }
 
-    // ── usersByUid ───────────────────────────────────────────────────────────
-    // Any authenticated user can read/write their own uid doc (written at login)
+    // Determine orgId from an existing doc or from a create payload
+    function orgIdOf(resource, request) {
+      return resource == null ? request.resource.data.orgId : resource.data.orgId;
+    }
+
+    // ── usersByUid — written at login ─────────────────────────────────────────
     match /workspaces/{wsId}/usersByUid/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
-      // Super admin can read all
       allow read: if request.auth != null && isSuperAdmin(wsId);
     }
 
-    // ── SUPER_ADMIN global collections ───────────────────────────────────────
-    // organizations and licenses are global — org admins read their own only
+    // ── Organizations — SUPER_ADMIN only write ────────────────────────────────
     match /workspaces/{wsId}/organizations/{orgId} {
-      allow read:  if request.auth != null && (isSuperAdmin(wsId) || sameOrg(wsId, orgId));
+      allow read:  if request.auth != null
+                   && (isSuperAdmin(wsId) || sameOrg(wsId, orgId));
       allow write: if request.auth != null && isSuperAdmin(wsId);
     }
 
+    // ── Licenses — SUPER_ADMIN only write ────────────────────────────────────
     match /workspaces/{wsId}/licenses/{licId} {
-      allow read:  if request.auth != null && (
-        isSuperAdmin(wsId) ||
-        resource.data.orgId == callerOrgId(wsId)
-      );
+      allow read:  if request.auth != null
+                   && (isSuperAdmin(wsId)
+                       || resource.data.orgId == callerOrgId(wsId));
       allow write: if request.auth != null && isSuperAdmin(wsId);
     }
 
-    // ── Per-org user management ──────────────────────────────────────────────
+    // ── Users ─────────────────────────────────────────────────────────────────
     match /workspaces/{wsId}/users/{userId} {
-      // Any authenticated user can read users (needed for cross-org login lookup)
+      // All authenticated users can read (needed for login cross-org lookup)
       allow read: if request.auth != null;
-      // Only org admins can write users in their own org; super admin can write any
-      allow create: if request.auth != null && (
-        isSuperAdmin(wsId) ||
-        (isOrgAdmin(wsId) && request.resource.data.orgId == callerOrgId(wsId))
-      );
-      allow update, delete: if request.auth != null && (
-        isSuperAdmin(wsId) ||
-        (isOrgAdmin(wsId) && resource.data.orgId == callerOrgId(wsId)) ||
-        // Users can update their own profile
-        resource.data.id == callerMeta(wsId).userId
-      );
+      // Create: SUPER_ADMIN anywhere, org-admin within own org
+      allow create: if request.auth != null
+                    && (isSuperAdmin(wsId)
+                        || (isOrgAdmin(wsId)
+                            && request.resource.data.orgId == callerOrgId(wsId)));
+      // Update/delete: SUPER_ADMIN, own-org admin, or the user themselves
+      allow update, delete: if request.auth != null
+                            && (isSuperAdmin(wsId)
+                                || (isOrgAdmin(wsId)
+                                    && resource.data.orgId == callerOrgId(wsId))
+                                || resource.data.id == callerMeta(wsId).userId);
     }
 
-    // ── Org-scoped collections ───────────────────────────────────────────────
-    // All other collections: staff can read/write within their org only
-    function isOrgDoc(wsId, docOrgId) {
-      return isStaff(wsId) && sameOrg(wsId, docOrgId);
-    }
-
-    match /workspaces/{wsId}/properties/{docId} {
-      allow read, write: if request.auth != null && (
-        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
-      );
-    }
-
-    match /workspaces/{wsId}/contracts/{docId} {
-      allow read, write: if request.auth != null && (
-        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
-      );
-    }
-
-    match /workspaces/{wsId}/payments/{docId} {
-      allow read, write: if request.auth != null && (
-        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
-      );
-    }
-
-    match /workspaces/{wsId}/tickets/{docId} {
-      allow read, write: if request.auth != null && (
-        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
-      );
-    }
-
-    match /workspaces/{wsId}/inspections/{docId} {
-      allow read, write: if request.auth != null && (
-        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
-      );
-    }
-
-    match /workspaces/{wsId}/transactions/{docId} {
-      allow read, write: if request.auth != null && (
-        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
-      );
-    }
-
-    match /workspaces/{wsId}/conversations/{docId} {
-      allow read, write: if request.auth != null && (
-        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
-      );
-    }
-
-    match /workspaces/{wsId}/persons/{docId} {
-      allow read, write: if request.auth != null && (
-        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
-      );
-    }
-
-    match /workspaces/{wsId}/avenants/{docId} {
-      allow read, write: if request.auth != null && (
-        isSuperAdmin(wsId) || isOrgDoc(wsId, resource == null ? request.resource.data.orgId : resource.data.orgId)
-      );
-    }
-
-    // Settings / system data — org admins only
-    match /workspaces/{wsId}/settings/{docId} {
+    // ── System settings — split by sub-document ───────────────────────────────
+    // 'systemSettings' doc (SMTP, platform) = SUPER_ADMIN only
+    // All other settings docs (org preferences) = org-admin of matching org
+    match /workspaces/{wsId}/settings/{settingId} {
       allow read: if request.auth != null && isStaff(wsId);
-      allow write: if request.auth != null && (isSuperAdmin(wsId) || isOrgAdmin(wsId));
+      allow write: if request.auth != null
+                   && (isSuperAdmin(wsId)
+                       || (settingId != 'systemSettings' && isOrgAdmin(wsId)));
     }
 
-    // ── Deny everything else ─────────────────────────────────────────────────
+    // ── Mail queue (Firebase Trigger Email extension) ─────────────────────────
+    // Any authenticated user can enqueue a mail; only server-side functions read
+    match /mail/{mailId} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if false; // handled by extension service account
+    }
+
+    // ── Org-scoped collections — staff within own org only ────────────────────
+    function allowOrgDoc(wsId) {
+      return request.auth != null
+             && (isSuperAdmin(wsId) || isStaff(wsId))
+             && (isSuperAdmin(wsId) || sameOrg(wsId, orgIdOf(resource, request)));
+    }
+
+    match /workspaces/{wsId}/properties/{id}    { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/contracts/{id}     { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/payments/{id}      { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/tickets/{id}       { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/inspections/{id}   { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/transactions/{id}  { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/conversations/{id} { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/persons/{id}       { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/avenants/{id}      { allow read, write: if allowOrgDoc(wsId); }
+
+    // ── Deny everything else ──────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }
