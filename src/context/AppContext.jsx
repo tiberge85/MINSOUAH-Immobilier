@@ -298,11 +298,24 @@ export function AppProvider({ children }) {
     };
   }, [checkBootstrap]);
 
-  // ── 5. Seed defaults on first run (runs once per page load, not after resets) ─
+  // ── 5. Seed defaults on first run ────────────────────────────────────────
+  // _skipSeed persists in Firestore (settings/system) so reloads after PLATFORM_RESET
+  // don't re-create organizations/users/licenses.
   useEffect(() => {
     if (state._bootstrapping) return;
-    if (seededRef.current) return; // already seeded this session — skip to avoid re-seeding after PLATFORM_RESET
+    if (seededRef.current) return;
     seededRef.current = true;
+
+    // If a PLATFORM_RESET was performed, skip all seeding of orgs/licenses
+    if (state.systemSettings?._skipSeed) {
+      // Still ensure SUPER_ADMIN account exists (needed for login)
+      if (!state.users.some(u => u.role === 'SUPER_ADMIN')) {
+        hashPwd(DEFAULT_SUPER_ADMIN.password).then((hashed) => {
+          setDoc(wsDoc('users', DEFAULT_SUPER_ADMIN.id), { ...DEFAULT_SUPER_ADMIN, password: hashed }).catch(console.error);
+        });
+      }
+      return;
+    }
 
     // Seed regular admin
     if (state.users.length === 0) {
@@ -750,6 +763,9 @@ export function AppProvider({ children }) {
             usersToDelete.slice(i, i + 400).forEach(d => batch.delete(d.ref));
             await batch.commit();
           }
+
+          // 5. Write skip-seed flag so page reloads don't re-create default org/license/admin
+          await setDoc(wsDoc('settings', 'system'), { _skipSeed: true, _resetAt: new Date().toISOString() }, { merge: true });
 
           await logActivity(
             `RESET GLOBAL exécuté par ${st.currentUser?.email || 'SUPER_ADMIN'}`,
