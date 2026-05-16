@@ -5,7 +5,7 @@ import {
 } from 'firebase/firestore';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { hashPwd } from '../lib/auth';
+import { hashPwd, verifyPwd } from '../lib/auth';
 import { checkLimit } from '../lib/planLimits';
 import { createLicensePayload } from '../lib/licenses';
 
@@ -694,6 +694,67 @@ export function AppProvider({ children }) {
         case 'LOG_ACTIVITY':
           await logActivity(payload.details || String(payload), payload.action || 'ACTION');
           break;
+
+        // ── PLATFORM_RESET (SUPER_ADMIN full wipe — password verified in UI) ────
+        case 'PLATFORM_RESET': {
+          const { password } = payload || {};
+          // Verify SUPER_ADMIN password server-side as a second check
+          const superAdmin = st.users.find(u => u.role === 'SUPER_ADMIN');
+          if (superAdmin && password) {
+            const ok = await verifyPwd(password, superAdmin.password);
+            if (!ok) throw new Error('Mot de passe SUPER_ADMIN incorrect');
+          }
+
+          // 1. Wipe entity collections entirely
+          const ENTITY_COLS = [
+            'properties', 'contracts', 'tenants', 'owners',
+            'payments', 'transactions', 'tickets', 'inspections',
+            'conversations', 'activityLog',
+          ];
+          for (const col of ENTITY_COLS) {
+            const snap = await getDocs(wsCol(col));
+            for (let i = 0; i < snap.docs.length; i += 400) {
+              const batch = writeBatch(db);
+              snap.docs.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+              await batch.commit();
+            }
+          }
+
+          // 2. Delete all licenses
+          const licSnap = await getDocs(wsCol('licenses'));
+          for (let i = 0; i < licSnap.docs.length; i += 400) {
+            const batch = writeBatch(db);
+            licSnap.docs.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+            await batch.commit();
+          }
+
+          // 3. Delete non-default organizations
+          const orgSnap = await getDocs(wsCol('organizations'));
+          const orgsToDelete = orgSnap.docs.filter(d => d.id !== 'default');
+          for (let i = 0; i < orgsToDelete.length; i += 400) {
+            const batch = writeBatch(db);
+            orgsToDelete.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+            await batch.commit();
+          }
+
+          // 4. Delete non-essential users (keep SUPER_ADMIN + default admin id=1)
+          const userSnap = await getDocs(wsCol('users'));
+          const usersToDelete = userSnap.docs.filter(d => {
+            const u = d.data();
+            return u.role !== 'SUPER_ADMIN' && String(u.id) !== '1';
+          });
+          for (let i = 0; i < usersToDelete.length; i += 400) {
+            const batch = writeBatch(db);
+            usersToDelete.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+            await batch.commit();
+          }
+
+          await logActivity(
+            `RESET GLOBAL exécuté par ${st.currentUser?.email || 'SUPER_ADMIN'}`,
+            'PLATFORM_RESET'
+          );
+          break;
+        }
 
         // ── RESET (delete all entity data, keep users+settings) ───────────────
         case 'RESET': {

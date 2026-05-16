@@ -104,6 +104,31 @@ service cloud.firestore {
     match /workspaces/{wsId}/persons/{id}       { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/avenants/{id}      { allow read, write: if allowOrgDoc(wsId); }
 
+    // ── Security logs — any auth can create; SUPER_ADMIN reads; immutable ────────
+    match /workspaces/{wsId}/security_logs/{logId} {
+      allow create: if request.auth != null;
+      allow read:   if request.auth != null && isSuperAdmin(wsId);
+      allow update, delete: if false;
+    }
+
+    // ── Backups — SUPER_ADMIN only (metadata + all sub-collections) ───────────
+    match /workspaces/{wsId}/backups/{backupId} {
+      allow read, write: if request.auth != null && isSuperAdmin(wsId);
+    }
+    match /workspaces/{wsId}/backups/{backupId}/{subCol}/{subDoc} {
+      allow read, write: if request.auth != null && isSuperAdmin(wsId);
+    }
+
+    // ── Activity log — staff read; system write ───────────────────────────────
+    match /workspaces/{wsId}/activityLog/{id} {
+      allow read:  if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
+      allow write: if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
+    }
+
+    // ── Tenants / owners — org-scoped ─────────────────────────────────────────
+    match /workspaces/{wsId}/tenants/{id}  { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/owners/{id}   { allow read, write: if allowOrgDoc(wsId); }
+
     // ── Deny everything else ──────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

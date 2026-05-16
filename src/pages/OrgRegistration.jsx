@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, doc, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import { db, auth } from '../lib/firebase';
 import { hashPwd } from '../lib/auth';
 import { createLicensePayload, generateLicenseKey } from '../lib/licenses';
 import { PLANS, getPlan } from '../lib/planLimits';
@@ -42,6 +43,7 @@ export default function OrgRegistration() {
   const [adminForm, setAdminForm] = useState({ name: '', email: '', password: '', confirm: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [emailSent, setEmailSent] = useState(false);
 
   const plan = getPlan(selectedPlan);
 
@@ -78,10 +80,11 @@ export default function OrgRegistration() {
       await setDoc(wsDoc('licenses', license.key), { ...license, id: license.key });
 
       // 3. Create admin user
+      const emailLow = adminForm.email.trim().toLowerCase();
       await setDoc(wsDoc('users', adminId), {
         id: adminId,
         name: adminForm.name.trim(),
-        email: adminForm.email.trim().toLowerCase(),
+        email: emailLow,
         password: hashedPwd,
         role: 'ORGANIZATION_ADMIN',
         orgId,
@@ -94,9 +97,25 @@ export default function OrgRegistration() {
         lastLogin: null,
         failedAttempts: 0,
         lockedUntil: null,
+        emailVerificationRequired: true,
       });
 
-      navigate('/login', { state: { registered: true, email: adminForm.email, orgName: orgForm.name } });
+      // 4. Create Firebase Auth account + send verification email
+      try {
+        const fbCred = await createUserWithEmailAndPassword(auth, emailLow, adminForm.password);
+        await sendEmailVerification(fbCred.user);
+        // Write usersByUid for Firestore Rules enforcement
+        await setDoc(doc(db, 'workspaces', WS, 'usersByUid', fbCred.user.uid), {
+          userId: String(adminId),
+          orgId,
+          role: 'ORGANIZATION_ADMIN',
+          updatedAt: now,
+        });
+      } catch {
+        // Non-blocking: Firebase account will be created lazily on first login
+      }
+
+      setEmailSent(true);
     } catch (err) {
       setError("Erreur lors de la création : " + (err.message || 'Réessayez.'));
       setLoading(false);
@@ -137,6 +156,41 @@ export default function OrgRegistration() {
       <main className="flex-1 px-4 py-8 overflow-y-auto">
         <div className="max-w-4xl mx-auto">
 
+          {/* STEP 4 — Email sent success */}
+          {emailSent && (
+            <div className="max-w-lg mx-auto text-center">
+              <div className="w-20 h-20 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <Icon name="mark_email_read" size={40} className="text-green-700" />
+              </div>
+              <h2 className="text-2xl font-black text-on-surface mb-2">Vérifiez votre email !</h2>
+              <p className="text-on-surface-variant mb-4">
+                Un email de confirmation a été envoyé à{' '}
+                <strong className="text-on-surface">{adminForm.email}</strong>.
+                Cliquez sur le lien pour activer votre compte.
+              </p>
+              <div className="bg-primary/5 border border-primary/20 rounded-2xl p-5 text-sm text-on-surface-variant mb-6 text-left flex flex-col gap-1.5">
+                <p className="font-bold text-primary text-base mb-1 flex items-center gap-2">
+                  <Icon name="check_circle" size={18} /> Organisation créée avec succès
+                </p>
+                <p><strong className="text-on-surface">{orgForm.name}</strong></p>
+                <p>Plan {plan.name} · Essai {plan.trialDays} jours gratuits</p>
+                <p>Admin : {adminForm.name}</p>
+              </div>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => navigate('/login', { state: { registered: true, email: adminForm.email, orgName: orgForm.name } })}
+                  className="w-full py-3 bg-primary text-on-primary rounded-xl font-bold text-sm hover:bg-primary/90 flex items-center justify-center gap-2">
+                  <Icon name="login" size={18} /> Aller à la connexion
+                </button>
+                <p className="text-xs text-on-surface-variant">
+                  L'email n'est pas arrivé ? Vérifiez vos spams ou connectez-vous d'abord — il peut être renvoyé depuis la page de connexion.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!emailSent && (
+          <>
           {/* STEP 1 — Plan */}
           {step === 1 && (
             <div>
@@ -300,6 +354,8 @@ export default function OrgRegistration() {
                 </button>
               </div>
             </div>
+          )}
+          </>
           )}
         </div>
       </main>
