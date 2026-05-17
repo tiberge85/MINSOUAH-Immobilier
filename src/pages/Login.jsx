@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import { verifyPwd } from '../lib/auth';
@@ -11,17 +10,8 @@ import { logSec, SEC } from '../lib/securityLog';
 
 const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
 
-const ROLE_HOME = {
-  SUPER_ADMIN:           '/superadmin',
-  ORGANIZATION_ADMIN:    '/',
-  AGENT:                 '/',
-  TENANT:                '/portal/tenant',
-  OWNER:                 '/portal/owner',
-};
-
 export default function Login() {
   const { state, dispatch } = useApp();
-  const navigate = useNavigate();
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -216,6 +206,12 @@ export default function Login() {
         try {
           const newCred = await createUserWithEmailAndPassword(auth, emailLow, password);
           firebaseUid = newCred.user.uid;
+          // Also block unverified accounts created via this legacy fallback path
+          if (user.emailVerificationRequired && user.role !== 'SUPER_ADMIN') {
+            await sendEmailVerification(newCred.user).catch(() => {});
+            setVerifyEmail({ fbUser: newCred.user, email: emailLow });
+            return;
+          }
         } catch { /* ignore */ }
       }
 

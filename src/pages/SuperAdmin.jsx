@@ -7,7 +7,8 @@ import {
 import {
   collection, query, orderBy, limit, onSnapshot,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { db, auth } from '../lib/firebase';
 import { useApp } from '../context/AppContext';
 import { getPlan, PLANS, fmtLimit } from '../lib/planLimits';
 import { getLicenseStatusInfo, getDaysRemaining, createLicensePayload } from '../lib/licenses';
@@ -272,21 +273,36 @@ export default function SuperAdmin() {
     if (!orgName.trim()) { showToast("Nom d'organisation requis"); return; }
     if (!adminName.trim() || !adminEmail.trim()) { showToast('Nom et email admin requis'); return; }
     if (adminPassword.length < 8) { showToast('Mot de passe : 8 caractères minimum'); return; }
-    if (users.some(u => u.email === adminEmail.trim().toLowerCase())) { showToast('Cet email est déjà utilisé'); return; }
+    const emailLow = adminEmail.trim().toLowerCase();
+    if (users.some(u => u.email === emailLow)) { showToast('Cet email est déjà utilisé'); return; }
     setCreateOrgLoading(true);
     try {
+      // Create Firebase Auth account first — catches duplicate emails and invalid formats
+      let firebaseUid;
+      try {
+        const fbCred = await createUserWithEmailAndPassword(auth, emailLow, adminPassword);
+        firebaseUid = fbCred.user.uid;
+      } catch (fbErr) {
+        if (fbErr.code === 'auth/email-already-in-use') {
+          showToast('Cet email est déjà associé à un compte existant');
+          return;
+        }
+        throw fbErr; // abort — don't create Firestore records without a Firebase Auth account
+      }
+
       const orgId = `org_${Date.now()}`;
       const initials = adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
       const hashedPwd = await hashPwd(adminPassword);
       const trialDays = Number(createOrgForm.trialDays) || 7;
-      // Licence d'essai sans plan défini — le plan sera choisi lors de la conversion
       const license = createLicensePayload({ orgId, plan: 'trial', trialDays });
       await dispatch({ type: 'ADD_ORGANIZATION', payload: { id: orgId, name: orgName.trim(), plan: 'trial', active: true, licenseKey: license.key, createdAt: new Date().toISOString() } });
       await dispatch({ type: 'ADD_LICENSE', payload: { ...license, id: license.key } });
+      // firebaseUid in payload triggers usersByUid write inside ADD_USER
       await dispatch({ type: 'ADD_USER', payload: {
-        name: adminName.trim(), email: adminEmail.trim().toLowerCase(),
+        name: adminName.trim(), email: emailLow,
         password: hashedPwd, role: 'ORGANIZATION_ADMIN', orgId, initials,
         color: 'bg-primary-container text-on-primary-container', firstLogin: false,
+        emailVerificationRequired: false, firebaseUid,
       }});
       await logSec({ action: SEC.ORG_CREATED, userId: state.currentUser?.id, userEmail: state.currentUser?.email, role: 'SUPER_ADMIN', target: orgName.trim(), details: `Essai: ${trialDays}j` });
       showToast(`Organisation "${orgName.trim()}" créée — essai ${trialDays} jours`);
