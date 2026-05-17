@@ -57,6 +57,11 @@ export default function OrgRegistration() {
   const plan = getPlan(selectedPlan);
 
   const commitToFirestore = async () => {
+    // Hard guard — never write to Firestore if email is not verified
+    if (!fbUserRef.current?.emailVerified) {
+      setResendMsg("Email pas encore vérifié. Cliquez sur le lien reçu par email.");
+      return;
+    }
     const { orgId, orgData, adminId, adminData, license, now } = pendingDataRef.current;
     const fbUser = fbUserRef.current;
     await setDoc(wsDoc('organizations', orgId), orgData);
