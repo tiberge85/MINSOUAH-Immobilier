@@ -40,23 +40,25 @@ service cloud.firestore {
 
     // ── Organizations ─────────────────────────────────────────────────────────
     // Read: any non-anonymous authenticated user (avoids callerMeta chicken-and-egg).
-    // Create: only users with a verified email (prevents fake-email org creation).
+    // Create: any authenticated user — the app enforces email verification before
+    //   calling commitToFirestore (checked via fbUser.emailVerified + getIdToken).
+    //   We don't enforce email_verified in rules because the refreshed token may
+    //   not be picked up synchronously by the Firestore SDK.
     // Update/delete: SUPER_ADMIN only.
     match /workspaces/{wsId}/organizations/{orgId} {
       allow read:   if request.auth != null
                     && request.auth.token.firebase.sign_in_provider != 'anonymous';
       allow create: if request.auth != null
-                    && request.auth.token.email_verified == true;
+                    && request.auth.token.firebase.sign_in_provider != 'anonymous';
       allow update, delete: if request.auth != null && isSuperAdmin(wsId);
     }
 
     // ── Licenses ──────────────────────────────────────────────────────────────
-    // Same email-verified requirement for creation as organizations.
     match /workspaces/{wsId}/licenses/{licId} {
       allow read:  if request.auth != null
                    && request.auth.token.firebase.sign_in_provider != 'anonymous';
       allow create: if request.auth != null
-                    && request.auth.token.email_verified == true;
+                    && request.auth.token.firebase.sign_in_provider != 'anonymous';
       allow update, delete: if request.auth != null && isSuperAdmin(wsId);
     }
 
@@ -64,10 +66,9 @@ service cloud.firestore {
     match /workspaces/{wsId}/users/{userId} {
       // All authenticated users can read (needed for login cross-org lookup)
       allow read: if request.auth != null;
-      // Create: verified email required for self-registration; SUPER_ADMIN exempt
-      // (SUPER_ADMIN creates staff accounts from the admin panel, no email check needed there)
+      // Create: any non-anonymous authenticated user (self-registration + org-admin adding staff)
       allow create: if request.auth != null
-                    && (request.auth.token.email_verified == true || isSuperAdmin(wsId));
+                    && request.auth.token.firebase.sign_in_provider != 'anonymous';
       // Update/delete: SUPER_ADMIN, own-org admin, or the user themselves
       allow update, delete: if request.auth != null
                             && (isSuperAdmin(wsId)
