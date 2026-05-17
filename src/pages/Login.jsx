@@ -95,14 +95,23 @@ export default function Login() {
 
   useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
 
-  const completeLogin = (user, firebaseUid) => {
+  const completeLogin = async (user, firebaseUid) => {
+    // Must await so usersByUid exists in Firestore BEFORE the page reloads.
+    // Firestore rules for orgs/licenses/users depend on this doc — without it
+    // all collection snapshots return empty and the user sees "Accès suspendu".
     if (firebaseUid) {
-      setDoc(doc(db, 'workspaces', WS, 'usersByUid', firebaseUid), {
-        userId: String(user.id), orgId: user.orgId || 'default',
-        role: user.role, updatedAt: new Date().toISOString(),
-      }, { merge: true }).catch(console.warn);
+      try {
+        await setDoc(doc(db, 'workspaces', WS, 'usersByUid', firebaseUid), {
+          userId: String(user.id), orgId: user.orgId || 'default',
+          role: user.role, updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      } catch (e) {
+        console.warn('[usersByUid write]', e);
+      }
     }
     dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: user.email, success: true } });
+    // LOGIN saves the session to localStorage then calls window.location.reload().
+    // Navigation after reload is handled by AppRoutes based on the session.
     dispatch({
       type: 'LOGIN',
       payload: {
@@ -112,8 +121,6 @@ export default function Login() {
         orgId: user.orgId || 'default',
       },
     });
-    if (user.firstLogin) navigate('/change-password');
-    else navigate(ROLE_HOME[user.role] || '/');
   };
 
   // ── OTP submit ─────────────────────────────────────────────────────────
@@ -127,7 +134,7 @@ export default function Login() {
       const result = await verifyOTP({ userId: user.id, code: otpCode });
       if (result.ok) {
         await logSec({ action: SEC.LOGIN_SUCCESS, userId: user.id, userEmail: user.email, role: user.role, details: '2FA verified' });
-        completeLogin(user, firebaseUid);
+        await completeLogin(user, firebaseUid);
       } else if (result.reason === 'expired') {
         setOtpError('Code expiré. Renvoyez un nouveau code.');
       } else if (result.reason === 'locked') {
@@ -222,7 +229,7 @@ export default function Login() {
         return;
       }
 
-      completeLogin(user, firebaseUid);
+      await completeLogin(user, firebaseUid);
     } finally {
       setLoading(false);
     }

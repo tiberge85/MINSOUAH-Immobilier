@@ -39,10 +39,14 @@ service cloud.firestore {
     }
 
     // ── Organizations ─────────────────────────────────────────────────────────
+    // Read is open to any non-anonymous authenticated user so that the app can
+    // bootstrap orgs/licenses even before usersByUid is written (which happens
+    // during completeLogin, just before the page reload). Requiring callerMeta()
+    // for reads caused a chicken-and-egg: usersByUid didn't exist yet → rules
+    // denied → state.organizations was empty → ProtectedRoute showed "Accès suspendu".
     match /workspaces/{wsId}/organizations/{orgId} {
       allow read:   if request.auth != null
-                    && (isSuperAdmin(wsId) || sameOrg(wsId, orgId));
-      // Allow authenticated users to create their own org (self-registration after email verify)
+                    && request.auth.token.firebase.sign_in_provider != 'anonymous';
       allow create: if request.auth != null;
       allow update, delete: if request.auth != null && isSuperAdmin(wsId);
     }
@@ -50,9 +54,7 @@ service cloud.firestore {
     // ── Licenses ──────────────────────────────────────────────────────────────
     match /workspaces/{wsId}/licenses/{licId} {
       allow read:  if request.auth != null
-                   && (isSuperAdmin(wsId)
-                       || resource.data.orgId == callerOrgId(wsId));
-      // Allow authenticated users to create their own trial license (self-registration)
+                   && request.auth.token.firebase.sign_in_provider != 'anonymous';
       allow create: if request.auth != null;
       allow update, delete: if request.auth != null && isSuperAdmin(wsId);
     }
