@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, doc, setDoc } from 'firebase/firestore';
-import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, sendEmailVerification, deleteUser } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
 import { hashPwd } from '../lib/auth';
-import { createLicensePayload, generateLicenseKey } from '../lib/licenses';
+import { createLicensePayload } from '../lib/licenses';
 import { PLANS, getPlan } from '../lib/planLimits';
 import Icon from '../components/Icon';
 
@@ -45,7 +45,84 @@ export default function OrgRegistration() {
   const [error, setError] = useState('');
   const [emailSent, setEmailSent] = useState(false);
 
+  // ── Email verification gate ─────────────────────────────────────────────
+  const [waitingVerification, setWaitingVerification] = useState(false);
+  const [resendMsg, setResendMsg] = useState('');
+  const pendingDataRef = useRef(null); // all Firestore data — held in memory until email verified
+  const fbUserRef     = useRef(null); // firebase Auth user
+  const pollingRef    = useRef(null);
+
+  useEffect(() => () => { if (pollingRef.current) clearInterval(pollingRef.current); }, []);
+
   const plan = getPlan(selectedPlan);
+
+  const commitToFirestore = async () => {
+    const { orgId, orgData, adminId, adminData, license, now } = pendingDataRef.current;
+    const fbUser = fbUserRef.current;
+    await setDoc(wsDoc('organizations', orgId), orgData);
+    await setDoc(wsDoc('licenses', license.key), { ...license, id: license.key });
+    await setDoc(wsDoc('users', adminId), adminData);
+    if (fbUser) {
+      await setDoc(doc(db, 'workspaces', WS, 'usersByUid', fbUser.uid), {
+        userId: String(adminId),
+        orgId,
+        role: 'ORGANIZATION_ADMIN',
+        updatedAt: now,
+      }, { merge: true }).catch(console.warn);
+    }
+    setEmailSent(true);
+    setWaitingVerification(false);
+  };
+
+  const startPolling = () => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    pollingRef.current = setInterval(async () => {
+      try {
+        await fbUserRef.current?.reload();
+        if (fbUserRef.current?.emailVerified) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+          await commitToFirestore();
+        }
+      } catch { /* ignore — network blip */ }
+    }, 4000);
+  };
+
+  const handleCheckNow = async () => {
+    setLoading(true);
+    setResendMsg('');
+    try {
+      await fbUserRef.current?.reload();
+      if (fbUserRef.current?.emailVerified) {
+        if (pollingRef.current) clearInterval(pollingRef.current);
+        await commitToFirestore();
+      } else {
+        setResendMsg("Email pas encore vérifié. Cliquez sur le lien dans votre boîte mail.");
+      }
+    } catch {
+      setResendMsg("Erreur de connexion. Réessayez.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    try {
+      await sendEmailVerification(fbUserRef.current);
+      setResendMsg("Email renvoyé !");
+    } catch {
+      setResendMsg("Erreur lors de l'envoi — réessayez dans 1 minute.");
+    }
+  };
+
+  const handleCancelVerification = async () => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    try { if (fbUserRef.current) await deleteUser(fbUserRef.current); } catch { /* ignore */ }
+    fbUserRef.current = null;
+    pendingDataRef.current = null;
+    setWaitingVerification(false);
+    setResendMsg('');
+  };
 
   const handleRegister = async () => {
     if (adminForm.password.length < 8) { setError('Mot de passe : 8 caractères minimum.'); return; }
@@ -56,68 +133,68 @@ export default function OrgRegistration() {
     setLoading(true);
     setError('');
     try {
-      const orgId = `org_${Date.now()}`;
-      const adminId = Date.now() + 1;
-      const now = new Date().toISOString();
+      const emailLow = adminForm.email.trim().toLowerCase();
+
+      // Step 1: Firebase Auth account only — NO Firestore writes yet
+      const fbCred = await createUserWithEmailAndPassword(auth, emailLow, adminForm.password);
+      fbUserRef.current = fbCred.user;
+
+      // Step 2: Send verification email
+      await sendEmailVerification(fbCred.user);
+
+      // Step 3: Prepare Firestore payload — held in memory until email is verified
+      const orgId    = `org_${Date.now()}`;
+      const adminId  = Date.now() + 1;
+      const now      = new Date().toISOString();
       const initials = adminForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
       const hashedPwd = await hashPwd(adminForm.password);
-      const license = createLicensePayload({ orgId, plan: selectedPlan });
+      const license  = createLicensePayload({ orgId, plan: 'trial' });
 
-      // 1. Create organization
-      await setDoc(wsDoc('organizations', orgId), {
-        id: orgId,
-        name: orgForm.name.trim(),
-        address: orgForm.address,
-        phone: orgForm.phone,
-        email: orgForm.email || adminForm.email,
-        plan: selectedPlan,
-        active: true,
-        createdAt: now,
-        licenseKey: license.key,
-      });
-
-      // 2. Create license
-      await setDoc(wsDoc('licenses', license.key), { ...license, id: license.key });
-
-      // 3. Create admin user
-      const emailLow = adminForm.email.trim().toLowerCase();
-      await setDoc(wsDoc('users', adminId), {
-        id: adminId,
-        name: adminForm.name.trim(),
-        email: emailLow,
-        password: hashedPwd,
-        role: 'ORGANIZATION_ADMIN',
+      pendingDataRef.current = {
         orgId,
-        initials,
-        color: 'bg-primary-container text-on-primary-container',
-        personId: null,
-        firstLogin: false,
-        suspended: false,
-        createdAt: now,
-        lastLogin: null,
-        failedAttempts: 0,
-        lockedUntil: null,
-        emailVerificationRequired: true,
-      });
-
-      // 4. Create Firebase Auth account + send verification email
-      try {
-        const fbCred = await createUserWithEmailAndPassword(auth, emailLow, adminForm.password);
-        await sendEmailVerification(fbCred.user);
-        // Write usersByUid for Firestore Rules enforcement
-        await setDoc(doc(db, 'workspaces', WS, 'usersByUid', fbCred.user.uid), {
-          userId: String(adminId),
-          orgId,
+        orgData: {
+          id: orgId,
+          name: orgForm.name.trim(),
+          address: orgForm.address,
+          phone: orgForm.phone,
+          email: orgForm.email || emailLow,
+          plan: 'trial',
+          active: true,
+          createdAt: now,
+          licenseKey: license.key,
+        },
+        adminId,
+        adminData: {
+          id: adminId,
+          name: adminForm.name.trim(),
+          email: emailLow,
+          password: hashedPwd,
           role: 'ORGANIZATION_ADMIN',
-          updatedAt: now,
-        });
-      } catch {
-        // Non-blocking: Firebase account will be created lazily on first login
-      }
+          orgId,
+          initials,
+          color: 'bg-primary-container text-on-primary-container',
+          personId: null,
+          firstLogin: false,
+          suspended: false,
+          createdAt: now,
+          lastLogin: null,
+          failedAttempts: 0,
+          lockedUntil: null,
+          emailVerificationRequired: true,
+        },
+        license,
+        now,
+      };
 
-      setEmailSent(true);
+      setWaitingVerification(true);
+      startPolling();
     } catch (err) {
-      setError("Erreur lors de la création : " + (err.message || 'Réessayez.'));
+      if (err.code === 'auth/email-already-in-use') {
+        setError("Cet email est déjà associé à un compte. Connectez-vous ou utilisez un autre email.");
+      } else {
+        setError("Erreur lors de la création : " + (err.message || 'Réessayez.'));
+      }
+    } finally {
       setLoading(false);
     }
   };
@@ -156,6 +233,56 @@ export default function OrgRegistration() {
       <main className="flex-1 px-4 py-8 overflow-y-auto">
         <div className="max-w-4xl mx-auto">
 
+          {/* Waiting for email verification — polling active */}
+          {waitingVerification && !emailSent && (
+            <div className="max-w-lg mx-auto text-center">
+              <div className="w-20 h-20 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <Icon name="mark_email_unread" size={40} className="text-amber-700" />
+              </div>
+              <h2 className="text-2xl font-black text-on-surface mb-2">Vérifiez votre email</h2>
+              <p className="text-on-surface-variant mb-2">
+                Un lien de confirmation a été envoyé à{' '}
+                <strong className="text-on-surface">{adminForm.email}</strong>.
+              </p>
+              <p className="text-sm text-on-surface-variant mb-6">
+                Cliquez sur le lien dans l'email, puis revenez ici. Votre espace sera créé automatiquement dès la vérification.
+              </p>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={handleCheckNow}
+                  disabled={loading}
+                  className="w-full py-3 bg-primary text-on-primary rounded-xl font-bold text-sm hover:bg-primary/90 flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {loading
+                    ? <><Icon name="progress_activity" size={18} className="animate-spin" /> Vérification…</>
+                    : <><Icon name="check_circle" size={18} /> J'ai vérifié mon email</>
+                  }
+                </button>
+                <button
+                  onClick={handleResendVerification}
+                  className="w-full py-3 bg-surface border border-outline-variant/30 text-on-surface-variant rounded-xl font-semibold text-sm hover:bg-surface-container flex items-center justify-center gap-2"
+                >
+                  <Icon name="refresh" size={18} /> Renvoyer l'email
+                </button>
+                <button
+                  onClick={handleCancelVerification}
+                  className="text-sm text-on-surface-variant hover:text-on-surface underline mt-1"
+                >
+                  Annuler et recommencer
+                </button>
+              </div>
+              {resendMsg && (
+                <p className={`text-sm mt-4 font-semibold ${resendMsg.startsWith('Email renvoyé') ? 'text-green-700' : 'text-amber-700'}`}>
+                  {resendMsg}
+                </p>
+              )}
+              <div className="mt-6 flex items-center justify-center gap-2 text-xs text-on-surface-variant">
+                <Icon name="progress_activity" size={14} className="animate-spin text-primary" />
+                Vérification automatique en cours…
+              </div>
+            </div>
+          )}
+
           {/* STEP 4 — Email sent success */}
           {emailSent && (
             <div className="max-w-lg mx-auto text-center">
@@ -189,7 +316,7 @@ export default function OrgRegistration() {
             </div>
           )}
 
-          {!emailSent && (
+          {!emailSent && !waitingVerification && (
           <>
           {/* STEP 1 — Plan */}
           {step === 1 && (

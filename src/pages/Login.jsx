@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
@@ -6,6 +6,8 @@ import { verifyPwd } from '../lib/auth';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import { sendOTP, verifyOTP } from '../lib/otp';
+import { logSec, SEC } from '../lib/securityLog';
 
 const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
 
@@ -27,6 +29,15 @@ export default function Login() {
   const [loading, setLoading]         = useState(false);
   const [verifyEmail, setVerifyEmail] = useState(null); // { fbUser, email }
   const [resendMsg, setResendMsg]     = useState('');
+
+  // ── 2FA OTP state ────────────────────────────────────────────────────
+  const [otpStep, setOtpStep]         = useState(false);   // show OTP screen
+  const [otpCode, setOtpCode]         = useState('');
+  const [otpLoading, setOtpLoading]   = useState(false);
+  const [otpError, setOtpError]       = useState('');
+  const [otpCooldown, setOtpCooldown] = useState(0);        // seconds until resend allowed
+  const pendingLoginRef               = useRef(null);       // { user, firebaseUid }
+  const cooldownRef                   = useRef(null);
 
   // Show loading screen while Firestore is bootstrapping
   if (state._bootstrapping) {
@@ -70,6 +81,75 @@ export default function Login() {
 
   const users = state.users || [];
 
+  // ── Helpers ────────────────────────────────────────────────────────────
+  const startCooldown = (seconds = 60) => {
+    setOtpCooldown(seconds);
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
+    cooldownRef.current = setInterval(() => {
+      setOtpCooldown(s => {
+        if (s <= 1) { clearInterval(cooldownRef.current); return 0; }
+        return s - 1;
+      });
+    }, 1000);
+  };
+
+  useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
+
+  const completeLogin = (user, firebaseUid) => {
+    if (firebaseUid) {
+      setDoc(doc(db, 'workspaces', WS, 'usersByUid', firebaseUid), {
+        userId: String(user.id), orgId: user.orgId || 'default',
+        role: user.role, updatedAt: new Date().toISOString(),
+      }, { merge: true }).catch(console.warn);
+    }
+    dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: user.email, success: true } });
+    dispatch({
+      type: 'LOGIN',
+      payload: {
+        id: user.id, role: user.role, name: user.name, initials: user.initials,
+        email: user.email, color: user.color, avatar: user.avatar || null,
+        personId: user.personId || null, firstLogin: user.firstLogin || false,
+        orgId: user.orgId || 'default',
+      },
+    });
+    if (user.firstLogin) navigate('/change-password');
+    else navigate(ROLE_HOME[user.role] || '/');
+  };
+
+  // ── OTP submit ─────────────────────────────────────────────────────────
+  const handleOtpSubmit = async (e) => {
+    e.preventDefault();
+    if (!otpCode.trim() || otpCode.length < 6) { setOtpError('Entrez le code à 6 chiffres.'); return; }
+    setOtpLoading(true);
+    setOtpError('');
+    try {
+      const { user, firebaseUid } = pendingLoginRef.current;
+      const result = await verifyOTP({ userId: user.id, code: otpCode });
+      if (result.ok) {
+        await logSec({ action: SEC.LOGIN_SUCCESS, userId: user.id, userEmail: user.email, role: user.role, details: '2FA verified' });
+        completeLogin(user, firebaseUid);
+      } else if (result.reason === 'expired') {
+        setOtpError('Code expiré. Renvoyez un nouveau code.');
+      } else if (result.reason === 'locked') {
+        setOtpError('Trop de tentatives. Renvoyez un nouveau code.');
+      } else {
+        setOtpError(`Code incorrect. ${result.remaining} tentative${result.remaining > 1 ? 's' : ''} restante${result.remaining > 1 ? 's' : ''}.`);
+      }
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleOtpResend = async () => {
+    if (otpCooldown > 0 || !pendingLoginRef.current) return;
+    const { user } = pendingLoginRef.current;
+    await sendOTP({ userId: user.id, email: user.email, name: user.name });
+    setOtpCode('');
+    setOtpError('');
+    startCooldown(60);
+  };
+
+  // ── Password login ─────────────────────────────────────────────────────
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
@@ -77,13 +157,11 @@ export default function Login() {
 
     try {
       const emailLow = email.trim().toLowerCase();
-      // Search across all users (unfiltered — needed before org context is established)
       const user = users.find((u) => u.email.toLowerCase() === emailLow);
 
       if (!user) { setError('Aucun compte trouvé avec cet email.'); return; }
       if (user.suspended) { setError("Ce compte a été suspendu. Contactez l'administrateur."); return; }
 
-      // Check org suspension (SUPER_ADMIN bypasses)
       if (user.role !== 'SUPER_ADMIN') {
         const userOrg = (state.organizations || []).find(o => o.id === user.orgId);
         if (userOrg && userOrg.active === false) {
@@ -100,12 +178,9 @@ export default function Login() {
 
       let firebaseUid = null;
 
-      // ── Try Firebase email/password auth ────────────────────────────────
       try {
         const cred = await signInWithEmailAndPassword(auth, emailLow, password);
         firebaseUid = cred.user.uid;
-
-        // Block unverified emails for accounts that require verification
         if (!cred.user.emailVerified && user.emailVerificationRequired && user.role !== 'SUPER_ADMIN') {
           setVerifyEmail({ fbUser: cred.user, email: emailLow });
           return;
@@ -114,15 +189,14 @@ export default function Login() {
         const isUnknown = ['auth/user-not-found', 'auth/invalid-credential', 'auth/wrong-password',
           'auth/invalid-email', 'auth/user-disabled'].includes(fbErr.code);
         if (!isUnknown) {
-          // Real Firebase error (wrong password detected by Firebase)
           dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: emailLow, success: false } });
           const attempts = (user.failedAttempts || 0) + 1;
+          await logSec({ action: SEC.LOGIN_FAIL, userId: user.id, userEmail: emailLow, role: user.role, details: `Attempt ${attempts}` });
           setError(attempts >= 5
             ? 'Compte bloqué pour 15 minutes après 5 tentatives échouées.'
             : `Mot de passe incorrect. ${5 - attempts} tentative(s) restante(s).`);
           return;
         }
-        // Fallback: verify against Firestore hash (legacy accounts not yet on Firebase Auth)
         const ok = await verifyPwd(password, user.password);
         if (!ok) {
           dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: emailLow, success: false } });
@@ -132,43 +206,143 @@ export default function Login() {
             : `Mot de passe incorrect. ${5 - attempts} tentative(s) restante(s).`);
           return;
         }
-        // Lazy migration: create Firebase Auth account for this legacy user
         try {
           const newCred = await createUserWithEmailAndPassword(auth, emailLow, password);
           firebaseUid = newCred.user.uid;
-        } catch { /* ignore — account may already exist */ }
+        } catch { /* ignore */ }
       }
 
-      // ── Write usersByUid for Firestore Rules enforcement ─────────────────
-      if (firebaseUid) {
-        setDoc(doc(db, 'workspaces', WS, 'usersByUid', firebaseUid), {
-          userId: String(user.id),
-          orgId: user.orgId || 'default',
-          role: user.role,
-          updatedAt: new Date().toISOString(),
-        }, { merge: true }).catch(console.warn);
+      // ── 2FA: required for SUPER_ADMIN and twoFaEnabled ORGANIZATION_ADMIN ──
+      const needs2FA = user.role === 'SUPER_ADMIN' || (user.role === 'ORGANIZATION_ADMIN' && user.twoFaEnabled);
+      if (needs2FA) {
+        pendingLoginRef.current = { user, firebaseUid };
+        await sendOTP({ userId: user.id, email: user.email, name: user.name });
+        setOtpStep(true);
+        startCooldown(60);
+        return;
       }
 
-      dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: emailLow, success: true } });
-      dispatch({
-        type: 'LOGIN',
-        payload: {
-          id: user.id, role: user.role, name: user.name, initials: user.initials,
-          email: user.email, color: user.color, avatar: user.avatar || null,
-          personId: user.personId || null, firstLogin: user.firstLogin || false,
-          orgId: user.orgId || 'default',
-        },
-      });
-
-      if (user.firstLogin) {
-        navigate('/change-password');
-      } else {
-        navigate(ROLE_HOME[user.role] || '/');
-      }
+      completeLogin(user, firebaseUid);
     } finally {
       setLoading(false);
     }
   };
+
+  // ── OTP / 2FA screen ───────────────────────────────────────────────────
+  if (otpStep) {
+    const maskedEmail = pendingLoginRef.current?.user?.email?.replace(/(.{2})(.*)(@.*)/, (_, a, b, c) => a + '*'.repeat(Math.max(2, b.length)) + c) || '…';
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
+              <Icon name="shield" size={32} className="text-on-primary" />
+            </div>
+            <h1 className="font-black text-4xl text-primary tracking-tight">Minsouah</h1>
+            <p className="text-on-surface-variant text-sm mt-1 tracking-widest uppercase">
+              Vérification en deux étapes
+            </p>
+          </div>
+
+          <div className="bg-surface rounded-3xl shadow-xl overflow-hidden border border-outline-variant/20">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Icon name="mark_email_read" size={20} className="text-primary" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-on-surface leading-tight">Code de vérification</h2>
+                  <p className="text-xs text-on-surface-variant mt-0.5">
+                    Envoyé à <strong>{maskedEmail}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-sm text-on-surface-variant mb-5">
+                Entrez le code à <strong>6 chiffres</strong> reçu par email. Il expire dans <strong>5 minutes</strong>.
+              </p>
+
+              <form onSubmit={handleOtpSubmit} className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-semibold text-on-surface">Code OTP</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    value={otpCode}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/\D/g, '').slice(0, 6);
+                      setOtpCode(v);
+                      if (otpError) setOtpError('');
+                    }}
+                    placeholder="— — — — — —"
+                    autoFocus
+                    className="w-full px-4 py-4 rounded-xl border-2 border-outline-variant/40 bg-surface-container focus:outline-none focus:border-primary text-on-surface text-center text-2xl font-black tracking-[0.6em] placeholder:tracking-normal placeholder:text-on-surface-variant/40 placeholder:text-base placeholder:font-normal"
+                    required
+                  />
+                </div>
+
+                {otpError && (
+                  <div className="flex items-start gap-2 bg-error/10 border border-error/20 rounded-xl px-3 py-2.5">
+                    <Icon name="error" size={16} className="text-error flex-shrink-0 mt-0.5" />
+                    <p className="text-error text-sm">{otpError}</p>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={otpLoading || otpCode.length < 6}
+                  className="w-full py-3.5 bg-primary text-on-primary font-bold rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {otpLoading
+                    ? <><Icon name="progress_activity" size={20} className="animate-spin" /> Vérification…</>
+                    : <><Icon name="verified_user" size={20} /> Vérifier le code</>
+                  }
+                </button>
+
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={handleOtpResend}
+                    disabled={otpCooldown > 0}
+                    className="text-sm font-semibold text-primary disabled:text-on-surface-variant disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
+                  >
+                    <Icon name="refresh" size={16} />
+                    {otpCooldown > 0 ? `Renvoyer dans ${otpCooldown}s` : 'Renvoyer le code'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOtpStep(false);
+                      setOtpCode('');
+                      setOtpError('');
+                      pendingLoginRef.current = null;
+                      if (cooldownRef.current) clearInterval(cooldownRef.current);
+                    }}
+                    className="text-sm text-on-surface-variant hover:text-on-surface underline transition-colors"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <div className="border-t border-outline-variant/10 px-6 py-3 flex items-center justify-center gap-2">
+              <Icon name="lock" size={14} className="text-on-surface-variant" />
+              <span className="text-xs text-on-surface-variant">
+                Authentification à deux facteurs activée
+              </span>
+            </div>
+          </div>
+
+          <p className="text-center text-xs text-on-surface-variant mt-6">
+            © {new Date().getFullYear()} Minsouah — Gestion immobilière Côte d'Ivoire
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">

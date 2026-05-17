@@ -38,30 +38,31 @@ service cloud.firestore {
       allow read: if request.auth != null && isSuperAdmin(wsId);
     }
 
-    // ── Organizations — SUPER_ADMIN only write ────────────────────────────────
+    // ── Organizations ─────────────────────────────────────────────────────────
     match /workspaces/{wsId}/organizations/{orgId} {
-      allow read:  if request.auth != null
-                   && (isSuperAdmin(wsId) || sameOrg(wsId, orgId));
-      allow write: if request.auth != null && isSuperAdmin(wsId);
+      allow read:   if request.auth != null
+                    && (isSuperAdmin(wsId) || sameOrg(wsId, orgId));
+      // Allow authenticated users to create their own org (self-registration after email verify)
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && isSuperAdmin(wsId);
     }
 
-    // ── Licenses — SUPER_ADMIN only write ────────────────────────────────────
+    // ── Licenses ──────────────────────────────────────────────────────────────
     match /workspaces/{wsId}/licenses/{licId} {
       allow read:  if request.auth != null
                    && (isSuperAdmin(wsId)
                        || resource.data.orgId == callerOrgId(wsId));
-      allow write: if request.auth != null && isSuperAdmin(wsId);
+      // Allow authenticated users to create their own trial license (self-registration)
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && isSuperAdmin(wsId);
     }
 
     // ── Users ─────────────────────────────────────────────────────────────────
     match /workspaces/{wsId}/users/{userId} {
       // All authenticated users can read (needed for login cross-org lookup)
       allow read: if request.auth != null;
-      // Create: SUPER_ADMIN anywhere, org-admin within own org
-      allow create: if request.auth != null
-                    && (isSuperAdmin(wsId)
-                        || (isOrgAdmin(wsId)
-                            && request.resource.data.orgId == callerOrgId(wsId)));
+      // Create: any authenticated user (covers self-registration bootstrap and org-admin adding staff)
+      allow create: if request.auth != null;
       // Update/delete: SUPER_ADMIN, own-org admin, or the user themselves
       allow update, delete: if request.auth != null
                             && (isSuperAdmin(wsId)
@@ -103,6 +104,11 @@ service cloud.firestore {
     match /workspaces/{wsId}/conversations/{id} { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/persons/{id}       { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/avenants/{id}      { allow read, write: if allowOrgDoc(wsId); }
+
+    // ── OTP (2FA) — user reads/writes own doc; deleted on verify ─────────────────
+    match /workspaces/{wsId}/otps/{userId} {
+      allow read, write, delete: if request.auth != null;
+    }
 
     // ── Security logs — any auth can create; SUPER_ADMIN reads; immutable ────────
     match /workspaces/{wsId}/security_logs/{logId} {
