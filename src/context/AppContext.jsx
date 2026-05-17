@@ -298,37 +298,22 @@ export function AppProvider({ children }) {
     };
   }, [checkBootstrap]);
 
-  // ── 5. Seed defaults on first run ────────────────────────────────────────
-  // _skipSeed persists in Firestore (settings/system) so reloads after PLATFORM_RESET
-  // don't re-create organizations/users/licenses.
+  // ── 5. Seed — only ensure SUPER_ADMIN account exists ─────────────────────
+  // Organizations and licenses are NEVER auto-created — the Super Admin creates
+  // them manually via the /superadmin panel. This prevents phantom "Minsouah Immobilier"
+  // orgs from appearing after every cold start.
   useEffect(() => {
     if (state._bootstrapping) return;
     if (seededRef.current) return;
     seededRef.current = true;
 
-    // If a PLATFORM_RESET was performed, skip all seeding of orgs/licenses
-    if (state.systemSettings?._skipSeed) {
-      // Still ensure SUPER_ADMIN account exists (needed for login)
-      if (!state.users.some(u => u.role === 'SUPER_ADMIN')) {
-        hashPwd(DEFAULT_SUPER_ADMIN.password).then((hashed) => {
-          setDoc(wsDoc('users', DEFAULT_SUPER_ADMIN.id), { ...DEFAULT_SUPER_ADMIN, password: hashed }).catch(console.error);
-        });
-      }
-      return;
-    }
-
-    // Seed regular admin
-    if (state.users.length === 0) {
-      hashPwd(DEFAULT_ADMIN.password).then((hashed) => {
-        setDoc(wsDoc('users', DEFAULT_ADMIN.id), { ...DEFAULT_ADMIN, password: hashed }).catch(console.error);
-      });
-    }
-    // Seed super admin (always ensure it exists)
+    // Only seed SUPER_ADMIN if no account with that role exists
     if (!state.users.some(u => u.role === 'SUPER_ADMIN')) {
       hashPwd(DEFAULT_SUPER_ADMIN.password).then((hashed) => {
         setDoc(wsDoc('users', DEFAULT_SUPER_ADMIN.id), { ...DEFAULT_SUPER_ADMIN, password: hashed }).catch(console.error);
       });
     }
+
     // Migrate legacy role names (ADMIN→ORGANIZATION_ADMIN, MANAGER→AGENT, etc.)
     state.users.forEach(u => {
       const newRole = ROLE_MIGRATION[u.role];
@@ -336,15 +321,6 @@ export function AppProvider({ children }) {
         setDoc(wsDoc('users', u.id), { role: newRole }, { merge: true }).catch(console.error);
       }
     });
-    // Seed default organization
-    if (state.organizations.length === 0) {
-      setDoc(wsDoc('organizations', DEFAULT_ORGANIZATION.id), DEFAULT_ORGANIZATION).catch(console.error);
-    }
-    // Seed default license (pro trial for default org)
-    if (state.organizations.length > 0 && state.licenses.length === 0) {
-      const payload = createLicensePayload({ orgId: 'default', plan: 'pro', trialDays: 365 });
-      setDoc(wsDoc('licenses', payload.key), { ...payload, id: payload.key, status: 'active' }).catch(console.error);
-    }
   }, [state._bootstrapping]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 6. dispatch → Firestore writes ────────────────────────────────────────
