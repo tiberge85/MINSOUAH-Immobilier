@@ -484,6 +484,7 @@ export default function Login() {
         <p className="text-center text-xs text-on-surface-variant mt-6">
           © {new Date().getFullYear()} Minsouah — Gestion immobilière Côte d'Ivoire
         </p>
+        <p className="text-center text-[10px] text-on-surface-variant/40 mt-1">v2.5 — 2026-05-17</p>
       </div>
     </div>
   );
