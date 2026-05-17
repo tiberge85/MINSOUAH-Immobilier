@@ -52,7 +52,7 @@ export default function SuperAdmin() {
   const [licSearch, setLicSearch] = useState('');
   const [orgSearch, setOrgSearch] = useState('');
   const [showCreateOrg, setShowCreateOrg] = useState(false);
-  const [createOrgForm, setCreateOrgForm] = useState({ orgName: '', plan: 'pro', adminName: '', adminEmail: '', adminPassword: '' });
+  const [createOrgForm, setCreateOrgForm] = useState({ orgName: '', plan: 'pro', adminName: '', adminEmail: '', adminPassword: '', trialDays: 7 });
   const [createOrgLoading, setCreateOrgLoading] = useState(false);
   const [newLicenseOrgId, setNewLicenseOrgId] = useState('');
   const [secSearch, setSecSearch] = useState('');
@@ -262,7 +262,7 @@ export default function SuperAdmin() {
       const orgId = `org_${Date.now()}`;
       const initials = adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
       const hashedPwd = await hashPwd(adminPassword);
-      const license = createLicensePayload({ orgId, plan, trialDays: 7 });
+      const license = createLicensePayload({ orgId, plan, trialDays: Number(createOrgForm.trialDays) || 7 });
       await dispatch({ type: 'ADD_ORGANIZATION', payload: { id: orgId, name: orgName.trim(), plan, active: true, licenseKey: license.key, createdAt: new Date().toISOString() } });
       await dispatch({ type: 'ADD_LICENSE', payload: { ...license, id: license.key } });
       await dispatch({ type: 'ADD_USER', payload: {
@@ -271,9 +271,9 @@ export default function SuperAdmin() {
         color: 'bg-primary-container text-on-primary-container', firstLogin: false,
       }});
       await logSec({ action: SEC.ORG_CREATED, userId: state.currentUser?.id, userEmail: state.currentUser?.email, role: 'SUPER_ADMIN', target: orgName.trim(), details: `Plan: ${plan}` });
-      showToast(`Organisation "${orgName.trim()}" créée — essai 7 jours`);
+      showToast(`Organisation "${orgName.trim()}" créée — essai ${createOrgForm.trialDays} jours`);
       setShowCreateOrg(false);
-      setCreateOrgForm({ orgName: '', plan: 'pro', adminName: '', adminEmail: '', adminPassword: '' });
+      setCreateOrgForm({ orgName: '', plan: 'pro', adminName: '', adminEmail: '', adminPassword: '', trialDays: 7 });
     } catch (err) {
       showToast('Erreur : ' + (err.message || 'Réessayez'));
     } finally {
@@ -969,6 +969,40 @@ export default function SuperAdmin() {
               <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Nom de l'organisation *</label>
               <input value={createOrgForm.orgName} onChange={e => setCreateOrgForm(f => ({ ...f, orgName: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface text-sm" placeholder="Ex: Agence Cocody" />
             </div>
+            {/* Trial duration */}
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-2 block">Durée de l'essai</label>
+              <div className="flex gap-2 flex-wrap mb-2">
+                {[7, 14, 30, 60, 90].map(d => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setCreateOrgForm(f => ({ ...f, trialDays: d }))}
+                    className={`px-3 py-1.5 rounded-xl text-sm font-bold transition-colors ${
+                      createOrgForm.trialDays === d
+                        ? 'bg-primary text-on-primary'
+                        : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
+                    }`}
+                  >
+                    {d}j
+                  </button>
+                ))}
+                <div className="flex items-center gap-1.5 ml-1">
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={[7,14,30,60,90].includes(createOrgForm.trialDays) ? '' : createOrgForm.trialDays}
+                    onChange={e => setCreateOrgForm(f => ({ ...f, trialDays: Math.max(1, Math.min(365, Number(e.target.value) || 7)) }))}
+                    placeholder="Autre"
+                    className="w-20 px-2 py-1.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface text-sm"
+                  />
+                  <span className="text-xs text-on-surface-variant">jours</span>
+                </div>
+              </div>
+              <p className="text-xs text-on-surface-variant">Durée sélectionnée : <strong>{createOrgForm.trialDays} jour{createOrgForm.trialDays > 1 ? 's' : ''}</strong></p>
+            </div>
+
             <div className="border-t border-outline-variant/20 pt-3">
               <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-3">Compte administrateur</p>
               <div className="flex flex-col gap-3">
@@ -978,7 +1012,7 @@ export default function SuperAdmin() {
               </div>
             </div>
             <p className="text-xs text-on-surface-variant bg-surface-container rounded-xl px-3 py-2">
-              Licence <strong>Essai 7 jours</strong> générée automatiquement. Convertissez depuis l'onglet Essais.
+              Licence <strong>Essai {createOrgForm.trialDays} jour{createOrgForm.trialDays > 1 ? 's' : ''}</strong> générée automatiquement. Convertissez en actif depuis l'onglet Essais.
             </p>
             <div className="flex gap-3">
               <button onClick={() => setShowCreateOrg(false)} className="flex-1 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors">Annuler</button>

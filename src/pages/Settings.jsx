@@ -94,13 +94,23 @@ export default function Settings() {
 
   /* ── Org ── */
   const [org, setOrg] = useState({
-    companyName: orgSettings?.companyName || 'Minsouah Immobilier',
-    address:     orgSettings?.address || 'Abidjan, Côte d\'Ivoire',
-    phone:       orgSettings?.phone || '',
-    email:       orgSettings?.email || '',
-    currency:    orgSettings?.currency || 'XOF',
-    language:    orgSettings?.language || 'fr',
-    logo:        orgSettings?.logo || '',
+    companyName:  orgSettings?.companyName  || 'Minsouah Immobilier',
+    tagline:      orgSettings?.tagline      || '',
+    description:  orgSettings?.description  || '',
+    address:      orgSettings?.address      || "Abidjan, Côte d'Ivoire",
+    city:         orgSettings?.city         || '',
+    phone:        orgSettings?.phone        || '',
+    phone2:       orgSettings?.phone2       || '',
+    email:        orgSettings?.email        || '',
+    website:      orgSettings?.website      || '',
+    whatsapp:     orgSettings?.whatsapp     || '',
+    facebook:     orgSettings?.facebook     || '',
+    instagram:    orgSettings?.instagram    || '',
+    linkedin:     orgSettings?.linkedin     || '',
+    rccm:         orgSettings?.rccm         || '',
+    currency:     orgSettings?.currency     || 'XOF',
+    language:     orgSettings?.language     || 'fr',
+    logo:         orgSettings?.logo         || '',
   });
 
   /* ── Notifications ── */
@@ -155,8 +165,21 @@ export default function Settings() {
   const handleLogoChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { showToast('Image trop grande (max 10 Mo)'); return; }
     const reader = new FileReader();
-    reader.onload = (ev) => setOrg(o => ({ ...o, logo: ev.target.result }));
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 400;
+        const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.width  * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        setOrg(o => ({ ...o, logo: canvas.toDataURL('image/png', 0.90) }));
+      };
+      img.src = ev.target.result;
+    };
     reader.readAsDataURL(file);
   };
 
@@ -442,56 +465,136 @@ export default function Settings() {
 
           {/* ══════════ ORGANISATION ══════════ */}
           {tab === 'org' && (
-            <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6">
-              <h2 className="font-bold text-lg text-on-surface mb-6 flex items-center gap-2">
-                <Icon name="business" filled /> Organisation
-              </h2>
+            <div className="flex flex-col gap-5">
 
-              {/* Logo */}
-              <div className="flex items-center gap-4 mb-6 p-4 bg-surface-container rounded-2xl">
-                {org.logo
-                  ? <img src={org.logo} alt="logo" className="w-16 h-16 rounded-xl object-contain border border-outline-variant/30" />
-                  : <div className="w-16 h-16 rounded-xl bg-primary-container flex items-center justify-center text-on-primary-container font-black text-xl">M</div>
-                }
-                <div>
-                  <p className="font-semibold text-on-surface text-sm">{org.companyName}</p>
-                  <label className="mt-1 flex items-center gap-1.5 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-semibold cursor-pointer hover:bg-primary/90 transition-colors w-fit">
-                    <Icon name="upload" size={13} /> Changer le logo
-                    <input type="file" accept="image/*" className="hidden" onChange={handleLogoChange} />
-                  </label>
+              {/* Brand preview card */}
+              <div className="bg-surface rounded-2xl border border-outline-variant/20 p-5">
+                <h2 className="font-bold text-lg text-on-surface mb-4 flex items-center gap-2">
+                  <Icon name="business" filled /> Identité visuelle
+                </h2>
+                <div className="flex items-center gap-5 p-4 bg-surface-container rounded-2xl">
+                  <div className="relative flex-shrink-0">
+                    {org.logo
+                      ? <img src={org.logo} alt="logo" className="w-20 h-20 rounded-2xl object-contain border border-outline-variant/30 bg-white" />
+                      : <div className="w-20 h-20 rounded-2xl bg-primary-container flex items-center justify-center text-on-primary-container font-black text-2xl">
+                          {(org.companyName || 'M').charAt(0).toUpperCase()}
+                        </div>
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-black text-on-surface text-lg leading-tight truncate">{org.companyName || 'Nom de votre agence'}</p>
+                    {org.tagline && <p className="text-sm text-on-surface-variant italic mt-0.5 truncate">{org.tagline}</p>}
+                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5">
+                      {org.phone    && <span className="text-xs text-on-surface-variant flex items-center gap-1"><Icon name="phone" size={12}/>{org.phone}</span>}
+                      {org.email    && <span className="text-xs text-on-surface-variant flex items-center gap-1"><Icon name="email" size={12}/>{org.email}</span>}
+                      {org.website  && <span className="text-xs text-primary flex items-center gap-1"><Icon name="language" size={12}/>{org.website}</span>}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2 flex-shrink-0">
+                    <label className="flex items-center gap-1.5 px-3 py-2 bg-primary text-on-primary rounded-xl text-xs font-semibold cursor-pointer hover:bg-primary/90 transition-colors">
+                      <Icon name="upload" size={13} /> {org.logo ? 'Changer' : 'Ajouter logo'}
+                      <input type="file" accept="image/*" className="hidden" onChange={handleLogoChange} />
+                    </label>
+                    {org.logo && (
+                      <button onClick={() => setOrg(o => ({ ...o, logo: '' }))}
+                        className="text-xs text-error text-center hover:underline">Supprimer</button>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[
-                  { key: 'companyName', label: 'Nom de la société', span: true },
-                  { key: 'address', label: 'Adresse', span: true },
-                  { key: 'phone', label: 'Téléphone' },
-                  { key: 'email', label: 'Email professionnel' },
-                ].map(f => (
-                  <Field key={f.key} label={f.label} span={f.span}>
-                    <input value={org[f.key]} onChange={e => setOrg(o => ({ ...o, [f.key]: e.target.value }))} className={inputCls} />
+              {/* Informations générales */}
+              <div className="bg-surface rounded-2xl border border-outline-variant/20 p-5">
+                <h3 className="font-bold text-base text-on-surface mb-4 flex items-center gap-2">
+                  <Icon name="info" size={18} className="text-primary" /> Informations générales
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Field label="Nom de l'organisation" icon="business" span>
+                    <input value={org.companyName} onChange={e => setOrg(o => ({ ...o, companyName: e.target.value }))} className={inputCls} placeholder="Ex: Agence Cocody Immobilier" />
                   </Field>
-                ))}
-                <Field label="Devise">
-                  <select value={org.currency} onChange={e => setOrg(o => ({ ...o, currency: e.target.value }))} className={inputCls}>
-                    <option value="XOF">XOF — Franc CFA (BCEAO)</option>
-                    <option value="EUR">EUR — Euro</option>
-                    <option value="USD">USD — Dollar US</option>
-                    <option value="GHS">GHS — Cedi ghanéen</option>
-                  </select>
-                </Field>
-                <Field label="Langue">
-                  <select value={org.language} onChange={e => setOrg(o => ({ ...o, language: e.target.value }))} className={inputCls}>
-                    <option value="fr">Français</option>
-                    <option value="en">English</option>
-                  </select>
-                </Field>
+                  <Field label="Slogan / Tagline" icon="format_quote" span>
+                    <input value={org.tagline} onChange={e => setOrg(o => ({ ...o, tagline: e.target.value }))} className={inputCls} placeholder="Ex: L'immobilier à votre service" />
+                  </Field>
+                  <Field label="Description courte" icon="description" span>
+                    <textarea
+                      value={org.description}
+                      onChange={e => setOrg(o => ({ ...o, description: e.target.value }))}
+                      className={inputCls + ' resize-none'}
+                      rows={3}
+                      placeholder="Présentez votre agence en quelques lignes…"
+                    />
+                  </Field>
+                  <Field label="N° RCCM / Registre" icon="badge">
+                    <input value={org.rccm} onChange={e => setOrg(o => ({ ...o, rccm: e.target.value }))} className={inputCls} placeholder="Ex: CI-ABJ-2023-B-12345" />
+                  </Field>
+                  <Field label="Devise">
+                    <select value={org.currency} onChange={e => setOrg(o => ({ ...o, currency: e.target.value }))} className={inputCls}>
+                      <option value="XOF">XOF — Franc CFA (BCEAO)</option>
+                      <option value="EUR">EUR — Euro</option>
+                      <option value="USD">USD — Dollar US</option>
+                      <option value="GHS">GHS — Cedi ghanéen</option>
+                    </select>
+                  </Field>
+                  <Field label="Langue">
+                    <select value={org.language} onChange={e => setOrg(o => ({ ...o, language: e.target.value }))} className={inputCls}>
+                      <option value="fr">Français</option>
+                      <option value="en">English</option>
+                    </select>
+                  </Field>
+                </div>
+              </div>
+
+              {/* Coordonnées */}
+              <div className="bg-surface rounded-2xl border border-outline-variant/20 p-5">
+                <h3 className="font-bold text-base text-on-surface mb-4 flex items-center gap-2">
+                  <Icon name="location_on" size={18} className="text-primary" /> Coordonnées
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Field label="Adresse complète" icon="home" span>
+                    <input value={org.address} onChange={e => setOrg(o => ({ ...o, address: e.target.value }))} className={inputCls} placeholder="Ex: Rue des Jardins, Cocody" />
+                  </Field>
+                  <Field label="Ville" icon="location_city">
+                    <input value={org.city} onChange={e => setOrg(o => ({ ...o, city: e.target.value }))} className={inputCls} placeholder="Ex: Abidjan" />
+                  </Field>
+                  <Field label="Téléphone principal" icon="phone">
+                    <input value={org.phone} onChange={e => setOrg(o => ({ ...o, phone: e.target.value }))} className={inputCls} placeholder="+225 07 00 00 00 00" />
+                  </Field>
+                  <Field label="Téléphone secondaire" icon="phone">
+                    <input value={org.phone2} onChange={e => setOrg(o => ({ ...o, phone2: e.target.value }))} className={inputCls} placeholder="+225 05 00 00 00 00" />
+                  </Field>
+                  <Field label="Email professionnel" icon="email">
+                    <input type="email" value={org.email} onChange={e => setOrg(o => ({ ...o, email: e.target.value }))} className={inputCls} placeholder="contact@agence.ci" />
+                  </Field>
+                  <Field label="Site web" icon="language">
+                    <input value={org.website} onChange={e => setOrg(o => ({ ...o, website: e.target.value }))} className={inputCls} placeholder="www.agence.ci" />
+                  </Field>
+                  <Field label="WhatsApp Business" icon="chat">
+                    <input value={org.whatsapp} onChange={e => setOrg(o => ({ ...o, whatsapp: e.target.value }))} className={inputCls} placeholder="+225 07 00 00 00 00" />
+                  </Field>
+                </div>
+              </div>
+
+              {/* Réseaux sociaux */}
+              <div className="bg-surface rounded-2xl border border-outline-variant/20 p-5">
+                <h3 className="font-bold text-base text-on-surface mb-4 flex items-center gap-2">
+                  <Icon name="share" size={18} className="text-primary" /> Réseaux sociaux
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Field label="Page Facebook" icon="thumb_up">
+                    <input value={org.facebook} onChange={e => setOrg(o => ({ ...o, facebook: e.target.value }))} className={inputCls} placeholder="facebook.com/votre-agence" />
+                  </Field>
+                  <Field label="Instagram" icon="photo_camera">
+                    <input value={org.instagram} onChange={e => setOrg(o => ({ ...o, instagram: e.target.value }))} className={inputCls} placeholder="instagram.com/votre-agence" />
+                  </Field>
+                  <Field label="LinkedIn" icon="work">
+                    <input value={org.linkedin} onChange={e => setOrg(o => ({ ...o, linkedin: e.target.value }))} className={inputCls} placeholder="linkedin.com/company/votre-agence" />
+                  </Field>
+                </div>
               </div>
 
               <button onClick={() => save('org', org)}
-                className="mt-6 px-6 py-2.5 bg-primary text-on-primary rounded-xl font-semibold hover:bg-primary/90 transition-colors flex items-center gap-2">
-                <Icon name="save" size={18} /> Enregistrer
+                className="px-6 py-3 bg-primary text-on-primary rounded-xl font-bold hover:bg-primary/90 transition-colors flex items-center gap-2 self-start">
+                <Icon name="save" size={18} /> Enregistrer les modifications
               </button>
             </div>
           )}
