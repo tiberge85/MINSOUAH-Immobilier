@@ -52,10 +52,15 @@ export default function SuperAdmin() {
   const [licSearch, setLicSearch] = useState('');
   const [orgSearch, setOrgSearch] = useState('');
   const [showCreateOrg, setShowCreateOrg] = useState(false);
-  const [createOrgForm, setCreateOrgForm] = useState({ orgName: '', plan: 'pro', adminName: '', adminEmail: '', adminPassword: '', trialDays: 7 });
+  const [createOrgForm, setCreateOrgForm] = useState({ orgName: '', adminName: '', adminEmail: '', adminPassword: '', trialDays: 7 });
   const [createOrgLoading, setCreateOrgLoading] = useState(false);
   const [newLicenseOrgId, setNewLicenseOrgId] = useState('');
   const [secSearch, setSecSearch] = useState('');
+
+  // ── Convert trial modal ───────────────────────────────────────────────
+  const [convertModal, setConvertModal] = useState(null); // { license }
+  const [convertPlan, setConvertPlan]   = useState('pro');
+  const [convertDuration, setConvertDuration] = useState(365);
 
   // ── Security logs state (fetched directly from Firestore) ──────────────
   const [securityLogs, setSecurityLogs] = useState([]);
@@ -236,11 +241,22 @@ export default function SuperAdmin() {
     setLicenseModal(null);
   };
 
-  const handleConvertTrial = async (license) => {
-    const expiry = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
-    await dispatch({ type: 'UPDATE_LICENSE', payload: { ...license, status: 'active', expiresAt: expiry.toISOString() } });
-    await logSec({ action: SEC.LIC_CONVERTED, userId: state.currentUser?.id, userEmail: state.currentUser?.email, role: 'SUPER_ADMIN', target: license.key });
-    showToast('Essai converti en licence active (1 an)');
+  const handleConvertTrial = (license) => {
+    setConvertPlan('pro');
+    setConvertDuration(365);
+    setConvertModal({ license });
+  };
+
+  const handleExecuteConvert = async () => {
+    if (!convertModal) return;
+    const { license } = convertModal;
+    const expiry = new Date(Date.now() + convertDuration * 24 * 60 * 60 * 1000);
+    await dispatch({ type: 'UPDATE_LICENSE', payload: { ...license, status: 'active', plan: convertPlan, expiresAt: expiry.toISOString() } });
+    const org = organizations.find(o => o.id === license.orgId);
+    if (org) await dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...org, plan: convertPlan } });
+    await logSec({ action: SEC.LIC_CONVERTED, userId: state.currentUser?.id, userEmail: state.currentUser?.email, role: 'SUPER_ADMIN', target: license.key, details: `Plan: ${convertPlan} — ${convertDuration}j` });
+    showToast(`Essai converti en ${getPlan(convertPlan).name} (${convertDuration}j)`);
+    setConvertModal(null);
   };
 
   const handleDeleteOrg = async () => {
@@ -252,7 +268,7 @@ export default function SuperAdmin() {
   };
 
   const handleCreateOrg = async () => {
-    const { orgName, plan, adminName, adminEmail, adminPassword } = createOrgForm;
+    const { orgName, adminName, adminEmail, adminPassword } = createOrgForm;
     if (!orgName.trim()) { showToast("Nom d'organisation requis"); return; }
     if (!adminName.trim() || !adminEmail.trim()) { showToast('Nom et email admin requis'); return; }
     if (adminPassword.length < 8) { showToast('Mot de passe : 8 caractères minimum'); return; }
@@ -262,18 +278,20 @@ export default function SuperAdmin() {
       const orgId = `org_${Date.now()}`;
       const initials = adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
       const hashedPwd = await hashPwd(adminPassword);
-      const license = createLicensePayload({ orgId, plan, trialDays: Number(createOrgForm.trialDays) || 7 });
-      await dispatch({ type: 'ADD_ORGANIZATION', payload: { id: orgId, name: orgName.trim(), plan, active: true, licenseKey: license.key, createdAt: new Date().toISOString() } });
+      const trialDays = Number(createOrgForm.trialDays) || 7;
+      // Licence d'essai sans plan défini — le plan sera choisi lors de la conversion
+      const license = createLicensePayload({ orgId, plan: 'trial', trialDays });
+      await dispatch({ type: 'ADD_ORGANIZATION', payload: { id: orgId, name: orgName.trim(), plan: 'trial', active: true, licenseKey: license.key, createdAt: new Date().toISOString() } });
       await dispatch({ type: 'ADD_LICENSE', payload: { ...license, id: license.key } });
       await dispatch({ type: 'ADD_USER', payload: {
         name: adminName.trim(), email: adminEmail.trim().toLowerCase(),
         password: hashedPwd, role: 'ORGANIZATION_ADMIN', orgId, initials,
         color: 'bg-primary-container text-on-primary-container', firstLogin: false,
       }});
-      await logSec({ action: SEC.ORG_CREATED, userId: state.currentUser?.id, userEmail: state.currentUser?.email, role: 'SUPER_ADMIN', target: orgName.trim(), details: `Plan: ${plan}` });
-      showToast(`Organisation "${orgName.trim()}" créée — essai ${createOrgForm.trialDays} jours`);
+      await logSec({ action: SEC.ORG_CREATED, userId: state.currentUser?.id, userEmail: state.currentUser?.email, role: 'SUPER_ADMIN', target: orgName.trim(), details: `Essai: ${trialDays}j` });
+      showToast(`Organisation "${orgName.trim()}" créée — essai ${trialDays} jours`);
       setShowCreateOrg(false);
-      setCreateOrgForm({ orgName: '', plan: 'pro', adminName: '', adminEmail: '', adminPassword: '', trialDays: 7 });
+      setCreateOrgForm({ orgName: '', adminName: '', adminEmail: '', adminPassword: '', trialDays: 7 });
     } catch (err) {
       showToast('Erreur : ' + (err.message || 'Réessayez'));
     } finally {
@@ -482,7 +500,7 @@ export default function SuperAdmin() {
             </div>
 
             <div className="bg-surface rounded-xl border border-outline-variant/20 p-5 lg:col-span-2">
-              <h3 className="font-bold text-on-surface mb-4 flex items-center gap-2"><Icon name="schedule" size={16} className="text-amber-600" />Licences expirant dans 30 jours</h3>
+              <h3 className="font-bold text-on-surface mb-4 flex items-center gap-2"><Icon name="schedule" size={16} className="text-amber-600" />Alertes licences <span className="text-xs font-normal text-on-surface-variant ml-1">(expire dans ≤ 30j)</span></h3>
               {(() => {
                 const expiring = licenses.filter(l => { if (!l.expiresAt) return false; const d = getDaysRemaining(l); return d !== null && d <= 30 && (l.status === 'trial' || l.status === 'active'); });
                 if (expiring.length === 0) return <p className="text-sm text-on-surface-variant text-center py-4"><Icon name="check_circle" size={20} className="text-green-600 inline mr-1" />Aucune licence n'expire dans les 30 prochains jours.</p>;
@@ -961,9 +979,13 @@ export default function SuperAdmin() {
               <h3 className="font-bold text-on-surface text-lg flex items-center gap-2"><Icon name="add_business" size={20} className="text-primary" /> Nouvelle organisation</h3>
               <button onClick={() => setShowCreateOrg(false)}><Icon name="close" size={20} className="text-on-surface-variant" /></button>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-2 block">Plan</label>
-              <div className="flex gap-2">{Object.keys(PLANS).map(p => (<button key={p} onClick={() => setCreateOrgForm(f => ({ ...f, plan: p }))} className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${createOrgForm.plan === p ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'}`}>{getPlan(p).name}</button>))}</div>
+            {/* Essai banner */}
+            <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+              <Icon name="hourglass_top" size={20} className="text-amber-600 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-bold text-amber-800">Mode Essai</p>
+                <p className="text-xs text-amber-700">Le plan payant sera choisi lors de la conversion de l'essai.</p>
+              </div>
             </div>
             <div>
               <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Nom de l'organisation *</label>
@@ -1018,6 +1040,74 @@ export default function SuperAdmin() {
               <button onClick={() => setShowCreateOrg(false)} className="flex-1 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors">Annuler</button>
               <button onClick={handleCreateOrg} disabled={createOrgLoading} className="flex-1 py-2.5 text-sm font-bold text-on-primary bg-primary rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
                 {createOrgLoading ? <><Icon name="progress_activity" size={16} className="animate-spin" />Création…</> : <><Icon name="add_business" size={16} />Créer</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Convert trial → paid plan modal ── */}
+      {convertModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-lg p-6 flex flex-col gap-5 my-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-on-surface text-lg flex items-center gap-2">
+                <Icon name="verified" size={20} className="text-green-600" /> Convertir l'essai en licence
+              </h3>
+              <button onClick={() => setConvertModal(null)}><Icon name="close" size={20} className="text-on-surface-variant" /></button>
+            </div>
+
+            <div className="p-3 bg-surface-container rounded-xl text-sm text-on-surface-variant flex items-center gap-2">
+              <Icon name="business" size={16} className="flex-shrink-0" />
+              <span><strong className="text-on-surface">{organizations.find(o => o.id === convertModal.license?.orgId)?.name || convertModal.license?.orgId}</strong> — choisissez le plan payant</span>
+            </div>
+
+            {/* Plan cards */}
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-3 block">Plan</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {['standard', 'pro', 'enterprise'].map(p => {
+                  const plan = getPlan(p);
+                  const selected = convertPlan === p;
+                  return (
+                    <button key={p} onClick={() => setConvertPlan(p)}
+                      className={`p-4 rounded-2xl border-2 text-left transition-all ${selected ? 'border-primary bg-primary/5' : 'border-outline-variant/30 hover:border-primary/40'}`}>
+                      <div className={`text-xs font-bold px-2 py-0.5 rounded-full w-fit mb-2 ${plan.badgeColor}`}>{plan.name}</div>
+                      <p className="font-black text-on-surface text-base">
+                        {plan.monthlyPrice ? `${plan.monthlyPrice.toLocaleString('fr-CI')} FCFA` : 'Sur devis'}
+                        <span className="text-xs font-normal text-on-surface-variant">/mois</span>
+                      </p>
+                      <p className="text-xs text-on-surface-variant mt-1">{plan.description}</p>
+                      <ul className="mt-2 flex flex-col gap-0.5">
+                        <li className="text-xs text-on-surface-variant flex items-center gap-1"><Icon name="person" size={11}/>{plan.maxUsers === Infinity ? 'Illimité' : plan.maxUsers} utilisateurs</li>
+                        <li className="text-xs text-on-surface-variant flex items-center gap-1"><Icon name="home" size={11}/>{plan.maxProperties === Infinity ? 'Illimité' : plan.maxProperties} biens</li>
+                      </ul>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Duration */}
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-2 block">Durée</label>
+              <div className="flex gap-2 flex-wrap">
+                {[{ d: 30, label: '1 mois' }, { d: 90, label: '3 mois' }, { d: 180, label: '6 mois' }, { d: 365, label: '1 an' }, { d: 730, label: '2 ans' }].map(({ d, label }) => (
+                  <button key={d} onClick={() => setConvertDuration(d)}
+                    className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${convertDuration === d ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-on-surface-variant mt-2">
+                Expiration : <strong>{new Date(Date.now() + convertDuration * 86400000).toLocaleDateString('fr-FR')}</strong>
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setConvertModal(null)} className="flex-1 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors">Annuler</button>
+              <button onClick={handleExecuteConvert} className="flex-1 py-2.5 text-sm font-bold text-on-primary bg-green-600 rounded-xl hover:bg-green-700 transition-colors flex items-center justify-center gap-2">
+                <Icon name="verified" size={16} /> Activer — {getPlan(convertPlan).name}
               </button>
             </div>
           </div>
