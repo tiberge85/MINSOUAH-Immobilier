@@ -58,7 +58,7 @@ export const ROLE_MIGRATION = {
 
 export const DEFAULT_SUPER_ADMIN = {
   id: 'superadmin',
-  email: 'superadmin@minsouah.ci',
+  email: 'superadmin_minsouah@ramyaci.tech',
   password: 'Minsouah@SuperAdmin2025',
   role: 'SUPER_ADMIN',
   orgId: null,
@@ -307,11 +307,15 @@ export function AppProvider({ children }) {
     if (seededRef.current) return;
     seededRef.current = true;
 
-    // Only seed SUPER_ADMIN if no account with that role exists
-    if (!state.users.some(u => u.role === 'SUPER_ADMIN')) {
+    const existingSA = state.users.find(u => u.role === 'SUPER_ADMIN');
+    if (!existingSA) {
+      // No SUPER_ADMIN yet — create it
       hashPwd(DEFAULT_SUPER_ADMIN.password).then((hashed) => {
         setDoc(wsDoc('users', DEFAULT_SUPER_ADMIN.id), { ...DEFAULT_SUPER_ADMIN, password: hashed }).catch(console.error);
       });
+    } else if (existingSA.email !== DEFAULT_SUPER_ADMIN.email) {
+      // Email changed in code — update Firestore to match
+      setDoc(wsDoc('users', existingSA.id), { email: DEFAULT_SUPER_ADMIN.email }, { merge: true }).catch(console.error);
     }
 
     // Migrate legacy role names (ADMIN→ORGANIZATION_ADMIN, MANAGER→AGENT, etc.)
