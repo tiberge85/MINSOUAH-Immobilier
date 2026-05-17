@@ -323,7 +323,30 @@ export function AppProvider({ children }) {
     });
   }, [state._bootstrapping]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 6. dispatch → Firestore writes ────────────────────────────────────────
+  // ── 6. Auto-suspend expired licenses ─────────────────────────────────────
+  // Runs whenever the licenses list changes. If a trial or active license has
+  // passed expiresAt, set its status to 'suspended' and deactivate the org.
+  useEffect(() => {
+    if (state._bootstrapping) return;
+    const now = new Date();
+    state.licenses.forEach(lic => {
+      if (
+        (lic.status === 'trial' || lic.status === 'active') &&
+        lic.expiresAt &&
+        new Date(lic.expiresAt) < now
+      ) {
+        const licId = lic.id || lic.key;
+        setDoc(wsDoc('licenses', licId), { ...lic, status: 'suspended' }).catch(console.error);
+        // Also deactivate the org so the suspension screen appears
+        const org = (state.organizations || []).find(o => o.id === lic.orgId);
+        if (org) {
+          setDoc(wsDoc('organizations', org.id), { ...org, active: false }).catch(console.error);
+        }
+      }
+    });
+  }, [state._bootstrapping, state.licenses]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 7. dispatch → Firestore writes ────────────────────────────────────────
   const dispatch = useCallback(async (action) => {
     const { type, payload } = action;
     const st = stateRef.current;

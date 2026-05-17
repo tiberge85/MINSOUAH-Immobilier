@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
+import { isLicenseValid, getDaysRemaining } from './lib/licenses';
 import Layout from './components/Layout';
 import Icon from './components/Icon';
 
@@ -59,13 +60,68 @@ function BootstrapScreen() {
   );
 }
 
+function SuspendedScreen({ license, onLogout }) {
+  const isExpired = license?.status === 'suspended' || (license?.expiresAt && new Date(license.expiresAt) < new Date());
+  const wasTrialExpired = license?.trialDays > 0 && isExpired;
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="w-full max-w-md text-center">
+        <div className="w-20 h-20 bg-error/10 rounded-3xl flex items-center justify-center mx-auto mb-4">
+          <Icon name="lock" size={36} className="text-error" />
+        </div>
+        <h1 className="font-black text-2xl text-on-surface mb-2">
+          {wasTrialExpired ? 'Période d\'essai terminée' : 'Accès suspendu'}
+        </h1>
+        <p className="text-on-surface-variant text-sm mb-6">
+          {wasTrialExpired
+            ? 'Votre période d\'essai gratuite est arrivée à expiration. Contactez votre administrateur pour activer une licence.'
+            : 'Votre licence a été suspendue. Contactez votre administrateur Minsouah pour rétablir l\'accès.'}
+        </p>
+        <div className="bg-surface rounded-2xl border border-outline-variant/20 p-5 mb-6 text-left">
+          <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-3">Que faire ?</p>
+          <ul className="flex flex-col gap-2.5">
+            <li className="flex items-start gap-2.5 text-sm text-on-surface">
+              <Icon name="mail" size={16} className="text-primary flex-shrink-0 mt-0.5" />
+              Contactez votre administrateur ou l'équipe Minsouah
+            </li>
+            <li className="flex items-start gap-2.5 text-sm text-on-surface">
+              <Icon name="verified" size={16} className="text-green-600 flex-shrink-0 mt-0.5" />
+              Choisissez un plan Standard, Pro ou Enterprise
+            </li>
+            <li className="flex items-start gap-2.5 text-sm text-on-surface">
+              <Icon name="check_circle" size={16} className="text-primary flex-shrink-0 mt-0.5" />
+              Votre accès sera restauré immédiatement
+            </li>
+          </ul>
+        </div>
+        <button
+          onClick={onLogout}
+          className="w-full py-3 bg-surface border border-outline-variant/30 text-on-surface-variant font-semibold rounded-xl hover:bg-surface-container transition-colors flex items-center justify-center gap-2"
+        >
+          <Icon name="logout" size={18} /> Se déconnecter
+        </button>
+        <p className="text-xs text-on-surface-variant mt-4">
+          © {new Date().getFullYear()} Minsouah — Gestion immobilière
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ProtectedRoute({ children, allowedRoles }) {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   if (state._bootstrapping) return <BootstrapScreen />;
   const user = state.currentUser;
   if (!user) return <Navigate to="/login" replace />;
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <Navigate to={ROLE_HOME[user.role] || '/'} replace />;
+  }
+  // License guard — SUPER_ADMIN is always exempt
+  if (user.role !== 'SUPER_ADMIN') {
+    const license = (state.licenses || []).find(l => l.orgId === user.orgId);
+    if (license && !isLicenseValid(license)) {
+      return <SuspendedScreen license={license} onLogout={() => dispatch({ type: 'LOGOUT' })} />;
+    }
   }
   return children;
 }
