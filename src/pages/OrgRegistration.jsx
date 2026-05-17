@@ -62,6 +62,10 @@ export default function OrgRegistration() {
       setResendMsg("Email pas encore vérifié. Cliquez sur le lien reçu par email.");
       return;
     }
+    // Force-refresh the ID token so Firestore rules see email_verified: true.
+    // reload() updates the User object client-side but the JWT token is cached —
+    // without this call, rules checking email_verified would still see false.
+    await fbUserRef.current.getIdToken(true);
     const { orgId, orgData, adminId, adminData, license, now } = pendingDataRef.current;
     const fbUser = fbUserRef.current;
     await setDoc(wsDoc('organizations', orgId), orgData);
