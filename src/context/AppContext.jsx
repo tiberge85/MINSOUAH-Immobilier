@@ -323,7 +323,23 @@ export function AppProvider({ children }) {
     });
   }, [state._bootstrapping]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 6. Auto-suspend expired licenses ─────────────────────────────────────
+  // ── 6. Auto-logout if current user was deleted from Firestore ───────────
+  // Catches platform reset, manual user deletion, or org deletion.
+  // Runs whenever the users list updates (real-time via onSnapshot).
+  useEffect(() => {
+    if (state._bootstrapping) return;
+    const cu = state.currentUser;
+    if (!cu) return;
+    if (cu.role === 'SUPER_ADMIN') return; // SUPER_ADMIN is never auto-logged out
+    // If the logged-in user no longer exists in Firestore → force logout immediately
+    const stillExists = (state.users || []).some(u => String(u.id) === String(cu.id));
+    if (!stillExists) {
+      localStorage.removeItem(SESSION_KEY);
+      window.location.reload();
+    }
+  }, [state._bootstrapping, state.users]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 7. Auto-suspend expired licenses ─────────────────────────────────────
   // Runs whenever the licenses list changes. If a trial or active license has
   // passed expiresAt, set its status to 'suspended' and deactivate the org.
   useEffect(() => {

@@ -116,10 +116,12 @@ function ProtectedRoute({ children, allowedRoles }) {
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <Navigate to={ROLE_HOME[user.role] || '/'} replace />;
   }
-  // License guard — SUPER_ADMIN is always exempt
+  // License + org guard — SUPER_ADMIN is always exempt
   if (user.role !== 'SUPER_ADMIN') {
-    const license = (state.licenses || []).find(l => l.orgId === user.orgId);
-    if (license && !isLicenseValid(license)) {
+    const org     = (state.organizations || []).find(o => o.id === user.orgId);
+    const license = (state.licenses     || []).find(l => l.orgId === user.orgId);
+    // Block if: org deleted, no license at all, or license invalid/expired/suspended
+    if (!org || !license || !isLicenseValid(license)) {
       return <SuspendedScreen license={license} onLogout={() => dispatch({ type: 'LOGOUT' })} />;
     }
   }
