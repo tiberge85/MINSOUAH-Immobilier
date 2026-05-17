@@ -219,8 +219,10 @@ export default function Login() {
         } catch { /* ignore */ }
       }
 
-      // ── 2FA: required for SUPER_ADMIN and twoFaEnabled ORGANIZATION_ADMIN ──
-      const needs2FA = user.role === 'SUPER_ADMIN' || (user.role === 'ORGANIZATION_ADMIN' && user.twoFaEnabled);
+      // ── 2FA: opt-in for any role via twoFaEnabled flag ──────────────────────
+      // SUPER_ADMIN 2FA is not forced — it must be explicitly enabled in their
+      // user doc (twoFaEnabled: true) once email delivery is confirmed working.
+      const needs2FA = !!user.twoFaEnabled;
       if (needs2FA) {
         pendingLoginRef.current = { user, firebaseUid };
         await sendOTP({ userId: user.id, email: user.email, name: user.name });
