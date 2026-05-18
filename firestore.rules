@@ -27,9 +27,16 @@ service cloud.firestore {
       return callerOrgId(wsId) == docOrgId;
     }
 
-    // Determine orgId from an existing doc or from a create payload
     function orgIdOf(resource, request) {
       return resource == null ? request.resource.data.orgId : resource.data.orgId;
+    }
+
+    // Non-anonymous authenticated user with a verified email address.
+    // Called before writing to sensitive live collections (organizations, licenses, users).
+    function isVerifiedNonAnon() {
+      return request.auth != null
+             && request.auth.token.firebase.sign_in_provider != 'anonymous'
+             && request.auth.token.email_verified == true;
     }
 
     // ── usersByUid — written at login ─────────────────────────────────────────
@@ -39,37 +46,43 @@ service cloud.firestore {
     }
 
     // ── Organizations ─────────────────────────────────────────────────────────
-    // Read: any non-anonymous authenticated user (avoids callerMeta chicken-and-egg).
-    // Create: any authenticated user — the app enforces email verification before
-    //   calling commitToFirestore (checked via fbUser.emailVerified + getIdToken).
-    //   We don't enforce email_verified in rules because the refreshed token may
-    //   not be picked up synchronously by the Firestore SDK.
+    // Read: any non-anonymous authenticated user.
+    // Create: verified email (self-registration after email confirmation)
+    //         OR SUPER_ADMIN (admin-provisioned — their own email is verified at login).
     // Update/delete: SUPER_ADMIN only.
     match /workspaces/{wsId}/organizations/{orgId} {
       allow read:   if request.auth != null
                     && request.auth.token.firebase.sign_in_provider != 'anonymous';
+      allow create: if isVerifiedNonAnon()
+                    || (request.auth != null && isSuperAdmin(wsId));
+      allow update, delete: if request.auth != null && isSuperAdmin(wsId);
+    }
+
+    // ── Pending organizations (held in limbo until email is verified) ─────────
+    // Created immediately after Firebase Auth account is made (email_verified: false OK).
+    // Only the creating user can read or delete their own pending record.
+    match /workspaces/{wsId}/pendingOrganizations/{orgId} {
       allow create: if request.auth != null
                     && request.auth.token.firebase.sign_in_provider != 'anonymous';
-      allow update, delete: if request.auth != null && isSuperAdmin(wsId);
+      allow read, delete: if request.auth != null
+                          && request.auth.uid == resource.data.fbUid;
+      allow update: if false;
     }
 
     // ── Licenses ──────────────────────────────────────────────────────────────
     match /workspaces/{wsId}/licenses/{licId} {
-      allow read:  if request.auth != null
-                   && request.auth.token.firebase.sign_in_provider != 'anonymous';
-      allow create: if request.auth != null
+      allow read:   if request.auth != null
                     && request.auth.token.firebase.sign_in_provider != 'anonymous';
+      allow create: if isVerifiedNonAnon()
+                    || (request.auth != null && isSuperAdmin(wsId));
       allow update, delete: if request.auth != null && isSuperAdmin(wsId);
     }
 
     // ── Users ─────────────────────────────────────────────────────────────────
     match /workspaces/{wsId}/users/{userId} {
-      // All authenticated users can read (needed for login cross-org lookup)
       allow read: if request.auth != null;
-      // Create: any non-anonymous authenticated user (self-registration + org-admin adding staff)
-      allow create: if request.auth != null
-                    && request.auth.token.firebase.sign_in_provider != 'anonymous';
-      // Update/delete: SUPER_ADMIN, own-org admin, or the user themselves
+      allow create: if isVerifiedNonAnon()
+                    || (request.auth != null && isSuperAdmin(wsId));
       allow update, delete: if request.auth != null
                             && (isSuperAdmin(wsId)
                                 || (isOrgAdmin(wsId)
@@ -77,9 +90,7 @@ service cloud.firestore {
                                 || resource.data.id == callerMeta(wsId).userId);
     }
 
-    // ── System settings — split by sub-document ───────────────────────────────
-    // 'systemSettings' doc (SMTP, platform) = SUPER_ADMIN only
-    // All other settings docs (org preferences) = org-admin of matching org
+    // ── System settings ───────────────────────────────────────────────────────
     match /workspaces/{wsId}/settings/{settingId} {
       allow read: if request.auth != null && isStaff(wsId);
       allow write: if request.auth != null
@@ -88,13 +99,12 @@ service cloud.firestore {
     }
 
     // ── Mail queue (Firebase Trigger Email extension) ─────────────────────────
-    // Any authenticated user can enqueue a mail; only server-side functions read
     match /mail/{mailId} {
       allow create: if request.auth != null;
-      allow read, update, delete: if false; // handled by extension service account
+      allow read, update, delete: if false;
     }
 
-    // ── Org-scoped collections — staff within own org only ────────────────────
+    // ── Org-scoped collections ────────────────────────────────────────────────
     function allowOrgDoc(wsId) {
       return request.auth != null
              && (isSuperAdmin(wsId) || isStaff(wsId))
@@ -111,19 +121,19 @@ service cloud.firestore {
     match /workspaces/{wsId}/persons/{id}       { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/avenants/{id}      { allow read, write: if allowOrgDoc(wsId); }
 
-    // ── OTP (2FA) — user reads/writes own doc; deleted on verify ─────────────────
+    // ── OTP (2FA) ─────────────────────────────────────────────────────────────
     match /workspaces/{wsId}/otps/{userId} {
       allow read, write, delete: if request.auth != null;
     }
 
-    // ── Security logs — any auth can create; SUPER_ADMIN reads; immutable ────────
+    // ── Security logs ─────────────────────────────────────────────────────────
     match /workspaces/{wsId}/security_logs/{logId} {
       allow create: if request.auth != null;
       allow read:   if request.auth != null && isSuperAdmin(wsId);
       allow update, delete: if false;
     }
 
-    // ── Backups — SUPER_ADMIN only (metadata + all sub-collections) ───────────
+    // ── Backups ───────────────────────────────────────────────────────────────
     match /workspaces/{wsId}/backups/{backupId} {
       allow read, write: if request.auth != null && isSuperAdmin(wsId);
     }
@@ -131,13 +141,13 @@ service cloud.firestore {
       allow read, write: if request.auth != null && isSuperAdmin(wsId);
     }
 
-    // ── Activity log — staff read; system write ───────────────────────────────
+    // ── Activity log ──────────────────────────────────────────────────────────
     match /workspaces/{wsId}/activityLog/{id} {
       allow read:  if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
       allow write: if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
     }
 
-    // ── Tenants / owners — org-scoped ─────────────────────────────────────────
+    // ── Tenants / owners ──────────────────────────────────────────────────────
     match /workspaces/{wsId}/tenants/{id}  { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/owners/{id}   { allow read, write: if allowOrgDoc(wsId); }
 

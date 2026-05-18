@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
-import { isLicenseValid, getDaysRemaining } from './lib/licenses';
+import { isLicenseValid } from './lib/licenses';
+import { sendEmailVerification } from 'firebase/auth';
+import { auth } from './lib/firebase';
 import Layout from './components/Layout';
 import Icon from './components/Icon';
 
@@ -108,11 +111,103 @@ function SuspendedScreen({ license, onLogout }) {
   );
 }
 
+function EmailVerificationBlockedScreen({ onLogout }) {
+  const [checking, setChecking] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const handleCheck = async () => {
+    setChecking(true);
+    setMsg('');
+    try {
+      const fbUser = auth.currentUser;
+      if (!fbUser) { onLogout(); return; }
+      await fbUser.reload();
+      if (fbUser.emailVerified) {
+        window.location.reload();
+      } else {
+        setMsg("Email pas encore vérifié. Cliquez sur le lien dans votre boîte mail.");
+      }
+    } catch {
+      setMsg("Erreur de connexion. Réessayez.");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setSending(true);
+    setMsg('');
+    try {
+      const fbUser = auth.currentUser;
+      if (fbUser) await sendEmailVerification(fbUser);
+      setMsg("Email de vérification renvoyé !");
+    } catch {
+      setMsg("Erreur lors de l'envoi — réessayez dans 1 minute.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="w-full max-w-md text-center">
+        <div className="w-20 h-20 bg-amber-100 rounded-3xl flex items-center justify-center mx-auto mb-4">
+          <Icon name="mark_email_unread" size={36} className="text-amber-700" />
+        </div>
+        <h1 className="font-black text-2xl text-on-surface mb-2">Email non vérifié</h1>
+        <p className="text-on-surface-variant text-sm mb-6">
+          Votre adresse email doit être vérifiée avant d'accéder au tableau de bord.<br />
+          Consultez votre boîte mail et cliquez sur le lien de confirmation.
+        </p>
+        <div className="bg-surface rounded-2xl border border-outline-variant/20 p-5 mb-4 flex flex-col gap-3">
+          <button
+            onClick={handleCheck}
+            disabled={checking}
+            className="w-full py-3 bg-primary text-on-primary font-bold rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+          >
+            {checking
+              ? <><Icon name="progress_activity" size={18} className="animate-spin" /> Vérification…</>
+              : <><Icon name="check_circle" size={18} /> J'ai cliqué sur le lien</>}
+          </button>
+          <button
+            onClick={handleResend}
+            disabled={sending}
+            className="w-full py-3 bg-surface border border-outline-variant/30 text-on-surface-variant font-semibold rounded-xl hover:bg-surface-container flex items-center justify-center gap-2 disabled:opacity-60"
+          >
+            <Icon name="refresh" size={18} /> {sending ? 'Envoi…' : 'Renvoyer l\'email'}
+          </button>
+          <button
+            onClick={onLogout}
+            className="w-full py-3 text-sm text-on-surface-variant hover:text-on-surface flex items-center justify-center gap-2 transition-colors"
+          >
+            <Icon name="logout" size={16} /> Se déconnecter
+          </button>
+        </div>
+        {msg && (
+          <p className={`text-sm font-semibold ${msg.startsWith('Email de') ? 'text-green-700' : 'text-amber-700'}`}>{msg}</p>
+        )}
+        <p className="text-xs text-on-surface-variant mt-4">© {new Date().getFullYear()} Minsouah</p>
+      </div>
+    </div>
+  );
+}
+
 function ProtectedRoute({ children, allowedRoles }) {
   const { state, dispatch } = useApp();
   if (state._bootstrapping) return <BootstrapScreen />;
   const user = state.currentUser;
   if (!user) return <Navigate to="/login" replace />;
+
+  // Block dashboard if email verification is required but not yet done.
+  // Only applies to accounts explicitly marked emailVerificationRequired: true.
+  if (user.role !== 'SUPER_ADMIN' && !!user.emailVerificationRequired) {
+    const fbUser = auth.currentUser;
+    if (fbUser && !fbUser.emailVerified) {
+      return <EmailVerificationBlockedScreen onLogout={() => dispatch({ type: 'LOGOUT' })} />;
+    }
+  }
+
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <Navigate to={ROLE_HOME[user.role] || '/'} replace />;
   }
