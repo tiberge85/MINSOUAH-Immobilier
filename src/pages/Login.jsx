@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import { verifyPwd } from '../lib/auth';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDocFromServer } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { sendOTP, verifyOTP } from '../lib/otp';
 import { logSec, SEC } from '../lib/securityLog';
@@ -86,22 +86,33 @@ export default function Login() {
   useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
 
   const completeLogin = async (user, firebaseUid) => {
-    // Must await so usersByUid exists in Firestore BEFORE the page reloads.
-    // Firestore rules for orgs/licenses/users depend on this doc — without it
-    // all collection snapshots return empty and the user sees "Accès suspendu".
     if (firebaseUid) {
       try {
-        await setDoc(doc(db, 'workspaces', WS, 'usersByUid', firebaseUid), {
+        const ubRef = doc(db, 'workspaces', WS, 'usersByUid', firebaseUid);
+        await setDoc(ubRef, {
           userId: String(user.id), orgId: user.orgId || 'default',
           role: user.role, updatedAt: new Date().toISOString(),
         }, { merge: true });
+        // Wait for the write to reach the server before the page reloads.
+        // Firestore rules read usersByUid server-side; the local cache write
+        // resolves immediately but the server may not have the doc yet.
+        await getDocFromServer(ubRef);
       } catch (e) {
         console.warn('[usersByUid write]', e);
       }
+      // Force JWT refresh so Firestore rules see email_verified and any
+      // updated custom claims from the server.
+      try {
+        const fbUser = auth.currentUser;
+        if (fbUser) {
+          await fbUser.reload();
+          await fbUser.getIdToken(true);
+        }
+      } catch (e) {
+        console.warn('[token refresh]', e);
+      }
     }
     dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: user.email, success: true } });
-    // LOGIN saves the session to localStorage then calls window.location.reload().
-    // Navigation after reload is handled by AppRoutes based on the session.
     dispatch({
       type: 'LOGIN',
       payload: {

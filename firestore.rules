@@ -5,10 +5,11 @@ service cloud.firestore {
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     function callerMeta(wsId) {
-      return get(/databases/$(database)/documents/workspaces/$(wsId)/usersByUid/$(request.auth.uid)).data;
+      let p = /databases/$(database)/documents/workspaces/$(wsId)/usersByUid/$(request.auth.uid);
+      return exists(p) ? get(p).data : {};
     }
-    function callerRole(wsId)  { return callerMeta(wsId).role; }
-    function callerOrgId(wsId) { return callerMeta(wsId).orgId; }
+    function callerRole(wsId)  { return callerMeta(wsId).get('role', ''); }
+    function callerOrgId(wsId) { return callerMeta(wsId).get('orgId', ''); }
 
     function isSuperAdmin(wsId) { return callerRole(wsId) == 'SUPER_ADMIN'; }
 
