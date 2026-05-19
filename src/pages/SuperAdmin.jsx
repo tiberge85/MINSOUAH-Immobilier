@@ -24,6 +24,23 @@ const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
 const fmt = n => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
 const PLAN_COLORS = { standard: '#3b82f6', pro: '#8b5cf6', enterprise: '#f59e0b' };
 
+async function sendVerificationEmail(user) {
+  const continueUrl = `${window.location.origin}/`;
+  try {
+    await sendEmailVerification(user, { url: continueUrl, handleCodeInApp: false });
+    console.log('[email] verification sent to', user.email, '| continueUrl:', continueUrl);
+  } catch (err) {
+    if (err.code === 'auth/unauthorized-continue-uri') {
+      console.warn('[email] domain not in Firebase authorized list — sending without continueUrl. Fix: Firebase Console → Authentication → Settings → Authorized domains → add', window.location.hostname);
+      await sendEmailVerification(user);
+      console.log('[email] verification sent (no continueUrl) to', user.email);
+    } else {
+      console.error('[email] sendEmailVerification failed:', err.code, err.message);
+      throw err;
+    }
+  }
+}
+
 // ── Shared small components ────────────────────────────────────────────────
 function StatCard({ label, value, sub, icon, color }) {
   return (
@@ -299,7 +316,7 @@ export default function SuperAdmin() {
       const fbCred = await createUserWithEmailAndPassword(getAuth(secondaryApp), emailLow, adminPassword);
       secondaryUser = fbCred.user;
       firebaseUid = fbCred.user.uid;
-      await sendEmailVerification(fbCred.user);
+      await sendVerificationEmail(fbCred.user);
     } catch (fbErr) {
       if (fbErr.code === 'auth/email-already-in-use') {
         showToast('Cet email est déjà associé à un compte existant');

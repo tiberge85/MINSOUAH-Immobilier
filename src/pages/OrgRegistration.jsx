@@ -12,6 +12,27 @@ import Icon from '../components/Icon';
 const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
 const wsDoc = (col, id) => doc(db, 'workspaces', WS, col, String(id));
 
+// Send a verification email — tries with continueUrl first (redirects user back to app
+// after clicking the link), falls back to no continueUrl if the domain isn't yet authorized
+// in Firebase Console → Authentication → Settings → Authorized domains.
+async function sendVerificationEmail(user) {
+  const continueUrl = `${window.location.origin}/`;
+  try {
+    await sendEmailVerification(user, { url: continueUrl, handleCodeInApp: false });
+    console.log('[email] verification sent to', user.email, '| continueUrl:', continueUrl);
+  } catch (err) {
+    if (err.code === 'auth/unauthorized-continue-uri') {
+      console.warn('[email] domain not in Firebase authorized list — sending without continueUrl.',
+        'Fix: Firebase Console → Authentication → Settings → Authorized domains → add', window.location.hostname);
+      await sendEmailVerification(user);
+      console.log('[email] verification sent (no continueUrl) to', user.email);
+    } else {
+      console.error('[email] sendEmailVerification failed:', err.code, err.message);
+      throw err;
+    }
+  }
+}
+
 const PLAN_CARDS = [
   {
     id: 'standard',
@@ -181,12 +202,17 @@ export default function OrgRegistration() {
     if (!email || !password) { setResendMsg("Informations manquantes."); return; }
     try {
       const cred = await signInWithEmailAndPassword(auth, email, password);
-      await sendEmailVerification(cred.user);
-      setResendMsg("Email renvoyé !");
+      await sendVerificationEmail(cred.user);
+      setResendMsg("Email renvoyé ! Vérifiez aussi votre dossier Spam.");
       await signOut(auth);
-    } catch {
+    } catch (err) {
+      console.error('[resend] sendEmailVerification error:', err?.code, err?.message);
       try { await signOut(auth); } catch { }
-      setResendMsg("Erreur lors de l'envoi — réessayez dans 1 minute.");
+      if (err?.code === 'auth/too-many-requests') {
+        setResendMsg("Trop d'envois — attendez quelques minutes avant de réessayer.");
+      } else {
+        setResendMsg("Erreur lors de l'envoi — réessayez dans 1 minute.");
+      }
     }
   };
 
@@ -246,7 +272,7 @@ export default function OrgRegistration() {
       fbUserRef.current = fbCred.user;
 
       // 3. Send verification email — user must click before commitToFirestore runs
-      await sendEmailVerification(fbCred.user);
+      await sendVerificationEmail(fbCred.user);
 
       // 4. Prepare Firestore payload in memory — nothing goes to live collections yet
       const orgId     = `org_${Date.now()}`;
@@ -351,18 +377,32 @@ export default function OrgRegistration() {
               <div className="w-20 h-20 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
                 <Icon name="mark_email_unread" size={40} className="text-amber-700" />
               </div>
-              <h2 className="text-2xl font-black text-on-surface mb-2">Vérifiez votre email</h2>
-              <p className="text-on-surface-variant mb-2">
-                Un lien de confirmation a été envoyé à{' '}
-                <strong className="text-on-surface">{adminForm.email}</strong>.
-              </p>
-              <p className="text-sm text-on-surface-variant mb-6">
-                Cliquez sur le lien dans l'email puis revenez ici. Votre espace sera créé automatiquement dès la vérification.
-              </p>
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-left text-sm text-amber-800">
-                <p className="font-bold mb-1 flex items-center gap-1.5"><Icon name="shield" size={15} /> Pourquoi cette étape ?</p>
-                <p>Nous vérifions que l'adresse email est réelle et vous appartient. Cela protège votre compte et empêche toute usurpation.</p>
+              <h2 className="text-2xl font-black text-on-surface mb-2">Confirmez votre email</h2>
+
+              {/* Email address — prominent */}
+              <div className="bg-surface border border-outline-variant/30 rounded-xl px-4 py-3 mb-4 inline-flex items-center gap-2 text-sm">
+                <Icon name="email" size={16} className="text-primary flex-shrink-0" />
+                <span className="font-bold text-on-surface">{adminForm.email}</span>
               </div>
+
+              <p className="text-sm text-on-surface-variant mb-4">
+                Un email de confirmation vient d'être envoyé.<br />
+                Cliquez sur le lien dans l'email, puis revenez ici.
+              </p>
+
+              {/* Spam warning — most important */}
+              <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-4 text-left text-sm text-amber-900">
+                <p className="font-bold mb-1.5 flex items-center gap-1.5">
+                  <Icon name="warning" size={15} /> Vous ne trouvez pas l'email ?
+                </p>
+                <ul className="flex flex-col gap-1 text-amber-800">
+                  <li className="flex items-start gap-2"><Icon name="folder" size={13} className="mt-0.5 flex-shrink-0" /> Vérifiez votre dossier <strong>Spam / Courrier indésirable</strong></li>
+                  <li className="flex items-start gap-2"><Icon name="folder" size={13} className="mt-0.5 flex-shrink-0" /> Vérifiez l'onglet <strong>Promotions</strong> (Gmail)</li>
+                  <li className="flex items-start gap-2"><Icon name="schedule" size={13} className="mt-0.5 flex-shrink-0" /> L'email peut prendre <strong>1 à 5 minutes</strong> à arriver</li>
+                  <li className="flex items-start gap-2"><Icon name="info" size={13} className="mt-0.5 flex-shrink-0" /> Expéditeur : <strong>noreply@minsouah-7d698.firebaseapp.com</strong></li>
+                </ul>
+              </div>
+
               <div className="flex flex-col gap-3">
                 <button onClick={handleCheckNow} disabled={loading}
                   className="w-full py-3 bg-primary text-on-primary rounded-xl font-bold text-sm hover:bg-primary/90 flex items-center justify-center gap-2 disabled:opacity-60">
@@ -380,12 +420,12 @@ export default function OrgRegistration() {
                 </button>
               </div>
               {resendMsg && (
-                <p className={`text-sm mt-4 font-semibold ${resendMsg.startsWith('Email renvoyé') ? 'text-green-700' : 'text-amber-700'}`}>
+                <p className={`text-sm mt-4 font-semibold ${resendMsg.startsWith('Email renvoyé') || resendMsg.startsWith('Email') ? 'text-green-700' : 'text-amber-700'}`}>
                   {resendMsg}
                 </p>
               )}
-              <div className="mt-6 flex items-center justify-center gap-2 text-xs text-on-surface-variant">
-                <Icon name="progress_activity" size={14} className="animate-spin text-primary" />
+              <div className="mt-5 flex items-center justify-center gap-2 text-xs text-on-surface-variant">
+                <Icon name="progress_activity" size={13} className="animate-spin text-primary" />
                 Vérification automatique en cours…
               </div>
             </div>
