@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import { verifyPwd } from '../lib/auth';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, getDocFromServer } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { sendOTP, verifyOTP } from '../lib/otp';
@@ -17,7 +17,6 @@ export default function Login() {
   const [showPass, setShowPass] = useState(false);
   const [error, setError]             = useState('');
   const [loading, setLoading]         = useState(false);
-  const [verifyEmail, setVerifyEmail] = useState(null); // { fbUser, email }
   const [resendMsg, setResendMsg]     = useState('');
 
   // ── 2FA OTP state ────────────────────────────────────────────────────
@@ -189,10 +188,6 @@ export default function Login() {
       try {
         const cred = await signInWithEmailAndPassword(auth, emailLow, password);
         firebaseUid = cred.user.uid;
-        if (!cred.user.emailVerified && user.emailVerificationRequired && user.role !== 'SUPER_ADMIN') {
-          setVerifyEmail({ fbUser: cred.user, email: emailLow });
-          return;
-        }
       } catch (fbErr) {
         const isUnknown = ['auth/user-not-found', 'auth/invalid-credential', 'auth/wrong-password',
           'auth/invalid-email', 'auth/user-disabled'].includes(fbErr.code);
@@ -217,12 +212,6 @@ export default function Login() {
         try {
           const newCred = await createUserWithEmailAndPassword(auth, emailLow, password);
           firebaseUid = newCred.user.uid;
-          // Also block unverified accounts created via this legacy fallback path
-          if (user.emailVerificationRequired && user.role !== 'SUPER_ADMIN') {
-            await sendEmailVerification(newCred.user).catch(() => {});
-            setVerifyEmail({ fbUser: newCred.user, email: emailLow });
-            return;
-          }
         } catch (createErr) {
           if (createErr.code === 'auth/email-already-in-use') {
             // Firebase Auth account exists but with a different password than the app's stored hash.
@@ -436,43 +425,6 @@ export default function Login() {
                 </div>
               </div>
 
-              {verifyEmail && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col gap-2">
-                  <div className="flex items-start gap-2">
-                    <Icon name="mark_email_unread" size={18} className="text-amber-700 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-bold text-amber-800 text-sm">Email non vérifié</p>
-                      <p className="text-xs text-amber-700 mt-0.5">
-                        Vérifiez votre boîte mail <strong>{verifyEmail.email}</strong> et cliquez sur le lien de confirmation.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 mt-1">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          await sendEmailVerification(verifyEmail.fbUser);
-                          setResendMsg('Email de vérification renvoyé !');
-                        } catch {
-                          setResendMsg("Erreur lors de l'envoi — réessayez dans 1 min.");
-                        }
-                      }}
-                      className="text-xs text-amber-800 underline font-semibold"
-                    >
-                      Renvoyer l'email
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setVerifyEmail(null); setResendMsg(''); }}
-                      className="text-xs text-on-surface-variant underline"
-                    >
-                      Retour
-                    </button>
-                  </div>
-                  {resendMsg && <p className="text-xs text-green-700 font-semibold">{resendMsg}</p>}
-                </div>
-              )}
               {error && (
                 <div className="flex items-start gap-2 bg-error/10 border border-error/20 rounded-xl px-3 py-2.5">
                   <Icon name="error" size={16} className="text-error flex-shrink-0 mt-0.5" />

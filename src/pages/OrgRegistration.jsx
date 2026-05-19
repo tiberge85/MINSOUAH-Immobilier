@@ -1,36 +1,45 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { doc, setDoc, deleteDoc, getDocFromServer } from 'firebase/firestore';
-import { createUserWithEmailAndPassword, sendEmailVerification, deleteUser, signOut, signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, setDoc, deleteDoc, updateDoc, getDocFromServer } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, deleteUser, signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
 import { hashPwd } from '../lib/auth';
 import { createLicensePayload } from '../lib/licenses';
 import { PLANS, getPlan } from '../lib/planLimits';
 import { validateEmailFull } from '../lib/disposableEmails';
+import { sendEmail } from '../lib/email';
 import Icon from '../components/Icon';
 
 const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
 const wsDoc = (col, id) => doc(db, 'workspaces', WS, col, String(id));
 
-// Send a verification email — tries with continueUrl first (redirects user back to app
-// after clicking the link), falls back to no continueUrl if the domain isn't yet authorized
-// in Firebase Console → Authentication → Settings → Authorized domains.
-async function sendVerificationEmail(user) {
-  const continueUrl = `${window.location.origin}/`;
-  try {
-    await sendEmailVerification(user, { url: continueUrl, handleCodeInApp: false });
-    console.log('[email] verification sent to', user.email, '| continueUrl:', continueUrl);
-  } catch (err) {
-    if (err.code === 'auth/unauthorized-continue-uri') {
-      console.warn('[email] domain not in Firebase authorized list — sending without continueUrl.',
-        'Fix: Firebase Console → Authentication → Settings → Authorized domains → add', window.location.hostname);
-      await sendEmailVerification(user);
-      console.log('[email] verification sent (no continueUrl) to', user.email);
-    } else {
-      console.error('[email] sendEmailVerification failed:', err.code, err.message);
-      throw err;
-    }
-  }
+function genOTP() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function buildOtpHtml({ name, code }) {
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"/></head>
+<body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:0">
+<div style="max-width:480px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.10)">
+  <div style="background:#1a2e4a;color:#fff;padding:28px 32px">
+    <p style="margin:0;font-size:13px;opacity:.75;letter-spacing:2px;text-transform:uppercase">Minsouah — Inscription</p>
+    <h1 style="margin:8px 0 0;font-size:22px;font-weight:800">Confirmez votre adresse email</h1>
+  </div>
+  <div style="padding:32px">
+    <p style="color:#374151;font-size:15px">Bonjour <strong>${name}</strong>,</p>
+    <p style="color:#374151;font-size:15px">Votre code de vérification pour activer votre espace Minsouah :</p>
+    <div style="font-size:44px;font-weight:900;letter-spacing:14px;color:#1a2e4a;background:#f0f4ff;border:2px solid #c7d2fe;border-radius:14px;padding:22px;text-align:center;margin:24px 0">${code}</div>
+    <p style="color:#6b7280;font-size:13px;margin:0">⏱ Ce code expire dans <strong>10 minutes</strong>.</p>
+    <p style="color:#6b7280;font-size:13px">🔒 Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>
+  </div>
+  <div style="padding:14px 32px;font-size:12px;color:#9ca3af;border-top:1px solid #f3f4f6">
+    Minsouah · Gestion immobilière Côte d'Ivoire
+  </div>
+</div>
+</body>
+</html>`;
 }
 
 const PLAN_CARDS = [
@@ -65,183 +74,166 @@ export default function OrgRegistration() {
   const [adminForm, setAdminForm] = useState({ name: '', email: '', password: '', confirm: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [emailSent, setEmailSent] = useState(false);
-  const [waitingVerification, setWaitingVerification] = useState(false);
+
+  // OTP verification screen
+  const [otpStep, setOtpStep] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState('');
+  const [resendLoading, setResendLoading] = useState(false);
   const [resendMsg, setResendMsg] = useState('');
+  const [emailSentOk, setEmailSentOk] = useState(false);
+  const [success, setSuccess] = useState(false);
 
-  // In-memory payload — never written to live collections until email is verified
-  const pendingDataRef   = useRef(null);
-  // Firebase user ref — repopulated on each re-auth cycle during verification polling
-  const fbUserRef        = useRef(null);
-  // Credentials stored for re-auth (needed after signOut during verification wait)
-  const pendingAuthRef   = useRef(null);
+  const pendingDataRef = useRef(null);
   const pendingOrgDocRef = useRef(null);
-  const pollingRef       = useRef(null);
-
-  useEffect(() => () => { if (pollingRef.current) clearInterval(pollingRef.current); }, []);
 
   const plan = getPlan(selectedPlan);
 
-  // ── Commit to Firestore once email is verified ────────────────────────────
-  const commitToFirestore = async () => {
-    const fbUser = fbUserRef.current;
-    console.log('[commit] start', { uid: fbUser?.uid, emailVerified: fbUser?.emailVerified });
+  // ── Write OTP to pendingOrg + send email ──────────────────────────────────
+  const dispatchOTP = async (emailLow, adminName, pendingRef) => {
+    const code = genOTP();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-    if (!fbUser?.emailVerified) {
-      setResendMsg("Email pas encore vérifié. Cliquez sur le lien dans votre boîte mail.");
+    await updateDoc(pendingRef, {
+      otp: { code, expiresAt, attempts: 0 },
+      otpVerified: false,
+    });
+
+    const result = await sendEmail({
+      to: emailLow,
+      subject: 'Code de vérification Minsouah',
+      html: buildOtpHtml({ name: adminName, code }),
+    });
+
+    console.log('[otp] dispatched to', emailLow, '| sendEmail result:', result);
+    setEmailSentOk(result.ok);
+    return result;
+  };
+
+  // ── Commit to Firestore after OTP verified ────────────────────────────────
+  const commitToFirestore = async () => {
+    const fbUser = auth.currentUser;
+    if (!fbUser) {
+      setOtpError('Session expirée. Rechargez la page et recommencez.');
       return;
     }
 
-    // Clear the flag FIRST — AppContext can resume normal operation from this point
-    sessionStorage.removeItem('_minsouah_regpending');
-    console.log('[commit] regpending flag cleared');
+    console.log('[commit] start — uid:', fbUser.uid);
 
-    // Force JWT refresh so rules see email_verified: true before ANY write
+    // Force JWT refresh before writes
     await fbUser.getIdToken(true);
-    console.log('[commit] token refreshed (email_verified should be true in JWT claims)');
+    console.log('[commit] token refreshed');
 
-    // Write usersByUid first and confirm on server — callerMeta() in Firestore rules
-    // reads this doc to determine role; must exist before org/license/user writes.
+    const { orgId, orgData, adminId, adminData, license, now } = pendingDataRef.current;
+
+    // Write usersByUid first — needed for isSuperAdmin/isOrgAdmin rules
     const ubRef = doc(db, 'workspaces', WS, 'usersByUid', fbUser.uid);
-    console.log('[commit] writing usersByUid →', ubRef.path);
     await setDoc(ubRef, {
-      userId: String(pendingDataRef.current.adminId),
-      orgId:  pendingDataRef.current.orgId,
-      role:   'ORGANIZATION_ADMIN',
-      updatedAt: pendingDataRef.current.now,
+      userId: String(adminId),
+      orgId,
+      role: 'ORGANIZATION_ADMIN',
+      updatedAt: now,
     }, { merge: true });
     await getDocFromServer(ubRef);
-    console.log('[commit] usersByUid confirmed by server');
+    console.log('[commit] usersByUid confirmed');
 
-    const { orgId, orgData, adminId, adminData, license } = pendingDataRef.current;
-
-    // These writes require isVerifiedNonAnon() (sign_in_provider != anonymous + email_verified)
-    console.log('[commit] writing organization →', `workspaces/${WS}/organizations/${orgId}`);
     await setDoc(wsDoc('organizations', orgId), orgData);
     console.log('[commit] organization OK');
 
-    console.log('[commit] writing license →', `workspaces/${WS}/licenses/${license.key}`);
     await setDoc(wsDoc('licenses', license.key), { ...license, id: license.key });
     console.log('[commit] license OK');
 
-    console.log('[commit] writing user →', `workspaces/${WS}/users/${adminId}`);
     await setDoc(wsDoc('users', adminId), adminData);
     console.log('[commit] user OK');
 
     if (pendingOrgDocRef.current) deleteDoc(pendingOrgDocRef.current).catch(() => {});
-    console.log('[commit] complete ✓ — all documents written successfully');
 
-    setEmailSent(true);
-    setWaitingVerification(false);
+    // Sign out — user must log in properly through Login.jsx
+    await signOut(auth).catch(() => {});
+    console.log('[commit] complete ✓');
+
+    setSuccess(true);
+    setOtpStep(false);
   };
 
-  // ── Auto-poll every 30 s — re-auth, then check emailVerified ────────────────
-  // We re-auth on each cycle because the user was signed out after registration.
-  // If not yet verified we sign out again to avoid AppContext opening subscriptions
-  // with a token that fails the sign_in_provider != 'anonymous' read guard.
-  const startPolling = () => {
-    if (pollingRef.current) clearInterval(pollingRef.current);
-    pollingRef.current = setInterval(async () => {
-      const { email, password } = pendingAuthRef.current || {};
-      if (!email || !password) return;
-      try {
-        console.log('[poll] re-authenticating…');
-        const cred = await signInWithEmailAndPassword(auth, email, password);
-        fbUserRef.current = cred.user;
-        await cred.user.reload();
-        console.log('[poll] emailVerified:', cred.user.emailVerified);
-        if (cred.user.emailVerified) {
-          clearInterval(pollingRef.current);
-          pollingRef.current = null;
-          await commitToFirestore();
-        } else {
-          // Not verified yet — sign out to keep AppContext flag-skipping active
-          await signOut(auth);
-        }
-      } catch (err) {
-        console.warn('[poll] error', err?.code || err);
-        try { await signOut(auth); } catch { }
-      }
-    }, 30_000);
-  };
+  // ── Verify OTP entered by user ────────────────────────────────────────────
+  const handleVerifyOTP = async () => {
+    const code = otpCode.replace(/\D/g, '').trim();
+    if (code.length !== 6) { setOtpError('Entrez le code à 6 chiffres reçu par email.'); return; }
 
-  const handleCheckNow = async () => {
-    setLoading(true);
-    setResendMsg('');
-    const { email, password } = pendingAuthRef.current || {};
-    if (!email || !password) {
-      setResendMsg("Informations de connexion manquantes. Recommencez l'inscription.");
-      setLoading(false);
-      return;
-    }
+    setOtpLoading(true);
+    setOtpError('');
+
     try {
-      console.log('[check] re-authenticating…');
-      const cred = await signInWithEmailAndPassword(auth, email, password);
-      fbUserRef.current = cred.user;
-      await cred.user.reload();
-      console.log('[check] emailVerified:', cred.user.emailVerified);
-      if (cred.user.emailVerified) {
-        if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-        await commitToFirestore();
-      } else {
-        await signOut(auth);
-        setResendMsg("Email pas encore vérifié. Cliquez sur le lien dans votre boîte mail.");
+      const snap = await getDocFromServer(pendingOrgDocRef.current);
+      if (!snap.exists()) { setOtpError('Session expirée. Rechargez et recommencez.'); return; }
+
+      const { otp } = snap.data();
+      if (!otp) { setOtpError('Code introuvable. Renvoyez le code.'); return; }
+
+      if (new Date(otp.expiresAt) < new Date()) {
+        setOtpError('Code expiré. Cliquez "Renvoyer un code" pour recevoir un nouveau code.');
+        return;
       }
+
+      const attempts = otp.attempts || 0;
+      if (attempts >= 3) {
+        setOtpError('Trop de tentatives. Cliquez "Renvoyer un code" pour recevoir un nouveau code.');
+        return;
+      }
+
+      if (code !== String(otp.code)) {
+        await updateDoc(pendingOrgDocRef.current, { 'otp.attempts': attempts + 1 });
+        const remaining = 2 - attempts;
+        setOtpError(`Code incorrect. ${remaining > 0 ? `${remaining} tentative(s) restante(s).` : 'Renvoyez un nouveau code.'}`);
+        return;
+      }
+
+      // Code correct — mark as verified then commit
+      await updateDoc(pendingOrgDocRef.current, { otpVerified: true });
+      console.log('[otp] verified ✓');
+      await commitToFirestore();
     } catch (err) {
-      console.warn('[check] error', err?.code || err);
-      try { await signOut(auth); } catch { }
-      setResendMsg("Erreur de connexion. Réessayez.");
+      console.error('[otp] verify error:', err?.code, err?.message);
+      setOtpError('Erreur de vérification. Réessayez.');
     } finally {
-      setLoading(false);
+      setOtpLoading(false);
     }
   };
 
-  const handleResendVerification = async () => {
+  // ── Resend OTP ────────────────────────────────────────────────────────────
+  const handleResendOTP = async () => {
     setResendMsg('');
-    const { email, password } = pendingAuthRef.current || {};
-    if (!email || !password) { setResendMsg("Informations manquantes."); return; }
+    setResendLoading(true);
+    const emailLow = adminForm.email.trim().toLowerCase();
     try {
-      const cred = await signInWithEmailAndPassword(auth, email, password);
-      await sendVerificationEmail(cred.user);
-      setResendMsg("Email renvoyé ! Vérifiez aussi votre dossier Spam.");
-      await signOut(auth);
+      await dispatchOTP(emailLow, adminForm.name.trim(), pendingOrgDocRef.current);
+      setOtpCode('');
+      setOtpError('');
+      setResendMsg('Nouveau code envoyé ! Vérifiez votre boîte mail et le dossier Spam.');
     } catch (err) {
-      console.error('[resend] sendEmailVerification error:', err?.code, err?.message);
-      try { await signOut(auth); } catch { }
-      if (err?.code === 'auth/too-many-requests') {
-        setResendMsg("Trop d'envois — attendez quelques minutes avant de réessayer.");
-      } else {
-        setResendMsg("Erreur lors de l'envoi — réessayez dans 1 minute.");
-      }
+      console.error('[otp] resend error:', err);
+      setResendMsg('Erreur lors du renvoi. Réessayez dans 1 minute.');
+    } finally {
+      setResendLoading(false);
     }
   };
 
-  const handleCancelVerification = async () => {
-    if (pollingRef.current) clearInterval(pollingRef.current);
-    // Delete the pending Firestore record (no auth required for creator)
-    try { if (pendingOrgDocRef.current) await deleteDoc(pendingOrgDocRef.current); } catch { }
-    // Re-auth to delete the Firebase Auth account (requires recent sign-in)
-    const { email, password } = pendingAuthRef.current || {};
-    if (email && password) {
-      try {
-        const cred = await signInWithEmailAndPassword(auth, email, password);
-        // Clear flag before deleteUser — onAuthStateChanged null fires → signInAnonymously resumes
-        sessionStorage.removeItem('_minsouah_regpending');
-        await deleteUser(cred.user);
-      } catch {
-        sessionStorage.removeItem('_minsouah_regpending');
-        try { await signOut(auth); } catch { }
-      }
-    } else {
-      sessionStorage.removeItem('_minsouah_regpending');
-      try { await signOut(auth); } catch { }
+  // ── Cancel registration ───────────────────────────────────────────────────
+  const handleCancel = async () => {
+    if (pendingOrgDocRef.current) deleteDoc(pendingOrgDocRef.current).catch(() => {});
+    const fbUser = auth.currentUser;
+    if (fbUser) {
+      try { await deleteUser(fbUser); } catch { try { await signOut(auth); } catch { } }
     }
-    fbUserRef.current      = null;
     pendingDataRef.current = null;
     pendingOrgDocRef.current = null;
-    pendingAuthRef.current = null;
-    setWaitingVerification(false);
+    setOtpStep(false);
+    setOtpCode('');
+    setOtpError('');
     setResendMsg('');
+    setStep(3);
   };
 
   // ── Main registration handler ─────────────────────────────────────────────
@@ -265,20 +257,33 @@ export default function OrgRegistration() {
         return;
       }
 
-      // 2. Create Firebase Auth account (user is now signed in briefly — we sign them
-      //    out immediately after writing pendingOrganizations, with a sessionStorage flag
-      //    that tells AppContext to skip signInAnonymously during the verification wait)
-      const fbCred = await createUserWithEmailAndPassword(auth, emailLow, adminForm.password);
-      fbUserRef.current = fbCred.user;
+      // 2. Create Firebase Auth account (or recover existing pending registration)
+      let fbUser = null;
+      try {
+        const cred = await createUserWithEmailAndPassword(auth, emailLow, adminForm.password);
+        fbUser = cred.user;
+        console.log('[register] Firebase Auth account created:', fbUser.uid);
+      } catch (fbErr) {
+        if (fbErr.code === 'auth/email-already-in-use') {
+          // Try to sign in — user may have a pending registration they can continue
+          try {
+            const retryCred = await signInWithEmailAndPassword(auth, emailLow, adminForm.password);
+            fbUser = retryCred.user;
+            console.log('[register] recovered existing Firebase account:', fbUser.uid);
+          } catch {
+            setError("Un compte existe déjà avec cet email. Connectez-vous sur la page de connexion, ou utilisez un autre email pour créer une nouvelle organisation.");
+            return;
+          }
+        } else {
+          throw fbErr;
+        }
+      }
 
-      // 3. Send verification email — user must click before commitToFirestore runs
-      await sendVerificationEmail(fbCred.user);
-
-      // 4. Prepare Firestore payload in memory — nothing goes to live collections yet
-      const orgId     = `org_${Date.now()}`;
-      const adminId   = Date.now() + 1;
-      const now       = new Date().toISOString();
-      const initials  = adminForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+      // 3. Build Firestore payload (all in memory — nothing committed until OTP verified)
+      const orgId   = `org_${Date.now()}`;
+      const adminId = Date.now() + 1;
+      const now     = new Date().toISOString();
+      const initials = adminForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
       const hashedPwd = await hashPwd(adminForm.password);
       const license   = createLicensePayload({ orgId, plan: 'trial' });
 
@@ -296,39 +301,37 @@ export default function OrgRegistration() {
           color: 'bg-primary-container text-on-primary-container',
           personId: null, firstLogin: false, suspended: false, createdAt: now,
           lastLogin: null, failedAttempts: 0, lockedUntil: null,
-          emailVerificationRequired: true,
+          // OTP verified at registration — no additional email gate needed at login
+          emailVerificationRequired: false,
         },
         license,
         now,
       };
 
-      // 5. Write a minimal pending record while the user IS authenticated
-      //    (rule: request.auth != null && sign_in_provider != 'anonymous')
+      // 4. Write pendingOrganizations with a placeholder otp field (dispatchOTP updates it)
       const pendingRef = wsDoc('pendingOrganizations', orgId);
       pendingOrgDocRef.current = pendingRef;
       await setDoc(pendingRef, {
-        fbUid: fbCred.user.uid, orgId, adminEmail: emailLow, createdAt: now,
+        fbUid: fbUser.uid, orgId, adminEmail: emailLow, createdAt: now,
+        otp: { code: '', expiresAt: '', attempts: 0 },
+        otpVerified: false,
       });
 
-      // 6. Store credentials for re-auth, set flag so AppContext skips signInAnonymously,
-      //    then sign out immediately — user has no access until email is verified.
-      pendingAuthRef.current = { email: emailLow, password: adminForm.password };
-      sessionStorage.setItem('_minsouah_regpending', '1');
-      await signOut(auth);
-      fbUserRef.current = null; // will be repopulated on each re-auth cycle
+      // 5. Generate OTP, write it to Firestore, and send email
+      await dispatchOTP(emailLow, adminForm.name.trim(), pendingRef);
 
-      // 7. Show verification screen + start background polling
-      setWaitingVerification(true);
-      startPolling();
+      // 6. Show OTP verification screen
+      setOtpStep(true);
     } catch (err) {
-      // Clean up in case the user was already created before the error
-      sessionStorage.removeItem('_minsouah_regpending');
-      if (fbUserRef.current) {
-        try { await deleteUser(fbUserRef.current); } catch { }
-        fbUserRef.current = null;
+      console.error('[register] error:', err?.code, err?.message);
+      // Clean up Firebase Auth account if created
+      if (auth.currentUser && !auth.currentUser.isAnonymous) {
+        try { await deleteUser(auth.currentUser); } catch { try { await signOut(auth); } catch { } }
       }
       if (err.code === 'auth/email-already-in-use') {
         setError("Cet email est déjà associé à un compte. Connectez-vous ou utilisez un autre email.");
+      } else if (err.code === 'auth/weak-password') {
+        setError("Mot de passe trop faible. Utilisez au moins 8 caractères.");
       } else {
         setError("Erreur lors de la création : " + (err.message || 'Réessayez.'));
       }
@@ -337,6 +340,158 @@ export default function OrgRegistration() {
     }
   };
 
+  // ── OTP verification screen ───────────────────────────────────────────────
+  if (otpStep && !success) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
+              <Icon name="mark_email_unread" size={32} className="text-on-primary" />
+            </div>
+            <h1 className="font-black text-3xl text-primary tracking-tight">Minsouah</h1>
+            <p className="text-on-surface-variant text-sm mt-1">Vérification de votre adresse email</p>
+          </div>
+
+          <div className="bg-surface rounded-3xl shadow-xl overflow-hidden border border-outline-variant/20">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Icon name="email" size={20} className="text-primary" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-on-surface leading-tight">Code de vérification</h2>
+                  <p className="text-xs text-on-surface-variant mt-0.5">
+                    Envoyé à <strong>{adminForm.email}</strong>
+                  </p>
+                </div>
+              </div>
+
+              {emailSentOk ? (
+                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2 mb-4 text-sm text-green-800">
+                  <Icon name="check_circle" size={16} className="text-green-600 flex-shrink-0" />
+                  Email envoyé avec succès. Vérifiez votre boîte mail.
+                </div>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm text-amber-800">
+                  <p className="font-bold mb-1 flex items-center gap-1">
+                    <Icon name="warning" size={14} /> Problème d'envoi email
+                  </p>
+                  <p className="text-xs">L'envoi d'email a échoué. Cliquez <strong>Renvoyer</strong> ci-dessous, ou contactez votre administrateur système pour configurer le service email.</p>
+                </div>
+              )}
+
+              <div className="bg-surface-container/60 rounded-xl p-3 mb-5 text-xs text-on-surface-variant flex flex-col gap-1">
+                <p className="flex items-center gap-1.5"><Icon name="folder" size={12} className="flex-shrink-0" /> Vérifiez aussi votre dossier <strong>Spam</strong> et l'onglet <strong>Promotions</strong> (Gmail)</p>
+                <p className="flex items-center gap-1.5"><Icon name="schedule" size={12} className="flex-shrink-0" /> Le code est valable <strong>10 minutes</strong></p>
+              </div>
+
+              <div className="flex flex-col gap-1.5 mb-4">
+                <label className="text-sm font-semibold text-on-surface">Code à 6 chiffres</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={otpCode}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, '').slice(0, 6);
+                    setOtpCode(v);
+                    if (otpError) setOtpError('');
+                  }}
+                  placeholder="— — — — — —"
+                  autoFocus
+                  className="w-full px-4 py-4 rounded-xl border-2 border-outline-variant/40 bg-surface-container focus:outline-none focus:border-primary text-on-surface text-center text-2xl font-black tracking-[0.6em] placeholder:tracking-normal placeholder:text-on-surface-variant/40 placeholder:text-base placeholder:font-normal"
+                />
+              </div>
+
+              {otpError && (
+                <div className="flex items-start gap-2 bg-error/10 border border-error/20 rounded-xl px-3 py-2.5 mb-4">
+                  <Icon name="error" size={16} className="text-error flex-shrink-0 mt-0.5" />
+                  <p className="text-error text-sm">{otpError}</p>
+                </div>
+              )}
+
+              <button
+                onClick={handleVerifyOTP}
+                disabled={otpLoading || otpCode.length < 6}
+                className="w-full py-3.5 bg-primary text-on-primary font-bold rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-60 mb-3"
+              >
+                {otpLoading
+                  ? <><Icon name="progress_activity" size={20} className="animate-spin" /> Vérification…</>
+                  : <><Icon name="verified_user" size={20} /> Confirmer le code</>}
+              </button>
+
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={handleResendOTP}
+                  disabled={resendLoading}
+                  className="text-sm font-semibold text-primary disabled:text-on-surface-variant disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  <Icon name="refresh" size={16} />
+                  {resendLoading ? 'Envoi…' : 'Renvoyer un code'}
+                </button>
+                <button
+                  onClick={handleCancel}
+                  className="text-sm text-on-surface-variant hover:text-on-surface underline"
+                >
+                  Annuler
+                </button>
+              </div>
+
+              {resendMsg && (
+                <p className={`text-xs mt-3 font-semibold ${resendMsg.startsWith('Nouveau') ? 'text-green-700' : 'text-error'}`}>
+                  {resendMsg}
+                </p>
+              )}
+            </div>
+
+            <div className="border-t border-outline-variant/10 px-6 py-3 flex items-center justify-center gap-2">
+              <Icon name="lock" size={14} className="text-on-surface-variant" />
+              <span className="text-xs text-on-surface-variant">Vérification de sécurité Minsouah</span>
+            </div>
+          </div>
+
+          <p className="text-center text-xs text-on-surface-variant mt-6">
+            © {new Date().getFullYear()} Minsouah — Gestion immobilière Côte d'Ivoire
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Success screen ────────────────────────────────────────────────────────
+  if (success) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-md text-center">
+          <div className="w-20 h-20 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <Icon name="verified" size={40} className="text-green-700" />
+          </div>
+          <h2 className="text-2xl font-black text-on-surface mb-2">Email vérifié — Espace créé !</h2>
+          <p className="text-on-surface-variant mb-6">
+            Votre organisation <strong className="text-on-surface">{orgForm.name}</strong> est prête.
+          </p>
+          <div className="bg-primary/5 border border-primary/20 rounded-2xl p-5 text-sm text-on-surface-variant mb-6 text-left flex flex-col gap-1.5">
+            <p className="font-bold text-primary text-base mb-1 flex items-center gap-2">
+              <Icon name="check_circle" size={18} /> Organisation créée avec succès
+            </p>
+            <p><strong className="text-on-surface">{orgForm.name}</strong></p>
+            <p>Plan {plan.name} · Essai {plan.trialDays} jours gratuits</p>
+            <p>Admin : {adminForm.name}</p>
+          </div>
+          <button
+            onClick={() => navigate('/login', { state: { registered: true, email: adminForm.email, orgName: orgForm.name } })}
+            className="w-full py-3 bg-primary text-on-primary rounded-xl font-bold text-sm hover:bg-primary/90 flex items-center justify-center gap-2"
+          >
+            <Icon name="login" size={18} /> Se connecter maintenant
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Registration form (Steps 1-3) ─────────────────────────────────────────
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
@@ -371,94 +526,6 @@ export default function OrgRegistration() {
       <main className="flex-1 px-4 py-8 overflow-y-auto">
         <div className="max-w-4xl mx-auto">
 
-          {/* ── Waiting for email verification ── */}
-          {waitingVerification && !emailSent && (
-            <div className="max-w-lg mx-auto text-center">
-              <div className="w-20 h-20 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                <Icon name="mark_email_unread" size={40} className="text-amber-700" />
-              </div>
-              <h2 className="text-2xl font-black text-on-surface mb-2">Confirmez votre email</h2>
-
-              {/* Email address — prominent */}
-              <div className="bg-surface border border-outline-variant/30 rounded-xl px-4 py-3 mb-4 inline-flex items-center gap-2 text-sm">
-                <Icon name="email" size={16} className="text-primary flex-shrink-0" />
-                <span className="font-bold text-on-surface">{adminForm.email}</span>
-              </div>
-
-              <p className="text-sm text-on-surface-variant mb-4">
-                Un email de confirmation vient d'être envoyé.<br />
-                Cliquez sur le lien dans l'email, puis revenez ici.
-              </p>
-
-              {/* Spam warning — most important */}
-              <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-4 text-left text-sm text-amber-900">
-                <p className="font-bold mb-1.5 flex items-center gap-1.5">
-                  <Icon name="warning" size={15} /> Vous ne trouvez pas l'email ?
-                </p>
-                <ul className="flex flex-col gap-1 text-amber-800">
-                  <li className="flex items-start gap-2"><Icon name="folder" size={13} className="mt-0.5 flex-shrink-0" /> Vérifiez votre dossier <strong>Spam / Courrier indésirable</strong></li>
-                  <li className="flex items-start gap-2"><Icon name="folder" size={13} className="mt-0.5 flex-shrink-0" /> Vérifiez l'onglet <strong>Promotions</strong> (Gmail)</li>
-                  <li className="flex items-start gap-2"><Icon name="schedule" size={13} className="mt-0.5 flex-shrink-0" /> L'email peut prendre <strong>1 à 5 minutes</strong> à arriver</li>
-                  <li className="flex items-start gap-2"><Icon name="info" size={13} className="mt-0.5 flex-shrink-0" /> Expéditeur : <strong>noreply@minsouah-7d698.firebaseapp.com</strong></li>
-                </ul>
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <button onClick={handleCheckNow} disabled={loading}
-                  className="w-full py-3 bg-primary text-on-primary rounded-xl font-bold text-sm hover:bg-primary/90 flex items-center justify-center gap-2 disabled:opacity-60">
-                  {loading
-                    ? <><Icon name="progress_activity" size={18} className="animate-spin" /> Vérification…</>
-                    : <><Icon name="check_circle" size={18} /> J'ai cliqué sur le lien</>}
-                </button>
-                <button onClick={handleResendVerification}
-                  className="w-full py-3 bg-surface border border-outline-variant/30 text-on-surface-variant rounded-xl font-semibold text-sm hover:bg-surface-container flex items-center justify-center gap-2">
-                  <Icon name="refresh" size={18} /> Renvoyer l'email
-                </button>
-                <button onClick={handleCancelVerification}
-                  className="text-sm text-on-surface-variant hover:text-on-surface underline mt-1">
-                  Annuler et recommencer
-                </button>
-              </div>
-              {resendMsg && (
-                <p className={`text-sm mt-4 font-semibold ${resendMsg.startsWith('Email renvoyé') || resendMsg.startsWith('Email') ? 'text-green-700' : 'text-amber-700'}`}>
-                  {resendMsg}
-                </p>
-              )}
-              <div className="mt-5 flex items-center justify-center gap-2 text-xs text-on-surface-variant">
-                <Icon name="progress_activity" size={13} className="animate-spin text-primary" />
-                Vérification automatique en cours…
-              </div>
-            </div>
-          )}
-
-          {/* ── Success ── */}
-          {emailSent && (
-            <div className="max-w-lg mx-auto text-center">
-              <div className="w-20 h-20 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                <Icon name="verified" size={40} className="text-green-700" />
-              </div>
-              <h2 className="text-2xl font-black text-on-surface mb-2">Email vérifié — Espace créé !</h2>
-              <p className="text-on-surface-variant mb-4">
-                Votre organisation <strong className="text-on-surface">{orgForm.name}</strong> est prête.
-              </p>
-              <div className="bg-primary/5 border border-primary/20 rounded-2xl p-5 text-sm text-on-surface-variant mb-6 text-left flex flex-col gap-1.5">
-                <p className="font-bold text-primary text-base mb-1 flex items-center gap-2">
-                  <Icon name="check_circle" size={18} /> Organisation créée avec succès
-                </p>
-                <p><strong className="text-on-surface">{orgForm.name}</strong></p>
-                <p>Plan {plan.name} · Essai {plan.trialDays} jours gratuits</p>
-                <p>Admin : {adminForm.name}</p>
-              </div>
-              <button
-                onClick={() => navigate('/login', { state: { registered: true, email: adminForm.email, orgName: orgForm.name } })}
-                className="w-full py-3 bg-primary text-on-primary rounded-xl font-bold text-sm hover:bg-primary/90 flex items-center justify-center gap-2">
-                <Icon name="login" size={18} /> Se connecter maintenant
-              </button>
-            </div>
-          )}
-
-          {!emailSent && !waitingVerification && (
-          <>
           {/* ── STEP 1 — Plan ── */}
           {step === 1 && (
             <div>
@@ -576,7 +643,7 @@ export default function OrgRegistration() {
           {step === 3 && (
             <div className="max-w-lg mx-auto">
               <h2 className="text-2xl font-black text-on-surface mb-2">Compte administrateur</h2>
-              <p className="text-on-surface-variant mb-6">Ce compte aura accès complet à votre espace. Un email de vérification sera envoyé.</p>
+              <p className="text-on-surface-variant mb-6">Ce compte aura accès complet à votre espace. Un code de vérification sera envoyé par email.</p>
               <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-4">
                 <div>
                   <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Nom complet *</label>
@@ -589,7 +656,7 @@ export default function OrgRegistration() {
                   <input type="email" value={adminForm.email} onChange={e => setAdminForm(f => ({ ...f, email: e.target.value }))}
                     className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30 text-on-surface"
                     placeholder="admin@votreagence.ci" />
-                  <p className="text-xs text-on-surface-variant mt-1">Les adresses email temporaires ne sont pas acceptées.</p>
+                  <p className="text-xs text-on-surface-variant mt-1">Un code à 6 chiffres vous sera envoyé pour vérifier cet email.</p>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1 block">Mot de passe * (min. 8 caractères)</label>
@@ -619,8 +686,7 @@ export default function OrgRegistration() {
               </div>
             </div>
           )}
-          </>
-          )}
+
         </div>
       </main>
 

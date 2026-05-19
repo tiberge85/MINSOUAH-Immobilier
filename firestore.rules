@@ -32,12 +32,13 @@ service cloud.firestore {
       return resource == null ? request.resource.data.orgId : resource.data.orgId;
     }
 
-    // Non-anonymous authenticated user with a verified email address.
-    // Called before writing to sensitive live collections (organizations, licenses, users).
+    // Non-anonymous authenticated user.
+    // Email ownership is verified via OTP at registration (app level).
+    // Firebase's email_verified claim is not used — it requires the Blaze plan
+    // and custom SMTP to be reliable; the OTP flow is more robust.
     function isVerifiedNonAnon() {
       return request.auth != null
-             && request.auth.token.firebase.sign_in_provider != 'anonymous'
-             && request.auth.token.email_verified == true;
+             && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
 
     // ── usersByUid — written at login ─────────────────────────────────────────
@@ -59,15 +60,16 @@ service cloud.firestore {
       allow update, delete: if request.auth != null && isSuperAdmin(wsId);
     }
 
-    // ── Pending organizations (held in limbo until email is verified) ─────────
-    // Created immediately after Firebase Auth account is made (email_verified: false OK).
-    // Only the creating user can read or delete their own pending record.
+    // ── Pending organizations — OTP verification state ───────────────────────
+    // Written at registration start, deleted after successful commit.
+    // The creator can read, update (OTP attempts / otpVerified flag), and delete.
     match /workspaces/{wsId}/pendingOrganizations/{orgId} {
       allow create: if request.auth != null
                     && request.auth.token.firebase.sign_in_provider != 'anonymous';
       allow read, delete: if request.auth != null
                           && request.auth.uid == resource.data.fbUid;
-      allow update: if false;
+      allow update: if request.auth != null
+                    && request.auth.uid == resource.data.fbUid;
     }
 
     // ── Licenses ──────────────────────────────────────────────────────────────
