@@ -223,7 +223,21 @@ export default function Login() {
             setVerifyEmail({ fbUser: newCred.user, email: emailLow });
             return;
           }
-        } catch { /* ignore */ }
+        } catch (createErr) {
+          if (createErr.code === 'auth/email-already-in-use') {
+            // Firebase Auth account exists but with a different password than the app's stored hash.
+            // The user proved their identity via the in-app password check above.
+            // Re-try sign-in with the same password — in case the SDK cached a stale error earlier.
+            try {
+              const retryCred = await signInWithEmailAndPassword(auth, emailLow, password);
+              firebaseUid = retryCred.user.uid;
+            } catch {
+              // Still fails — passwords genuinely differ. Log but don't block the user.
+              console.warn('[Login] Firebase Auth password out of sync for', emailLow, '— usersByUid will not be written at login. SUPER_ADMIN should log out and log in again to trigger resync.');
+            }
+          }
+          // Other create errors are ignored — user still gets in-app access
+        }
       }
 
       // ── 2FA: opt-in for any role via twoFaEnabled flag ──────────────────────

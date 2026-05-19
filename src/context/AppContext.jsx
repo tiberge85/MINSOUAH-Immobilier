@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc,
-  writeBatch, getDocs, query, where,
+  writeBatch, getDocs, query, where, getDocFromServer,
 } from 'firebase/firestore';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
@@ -599,8 +599,31 @@ export function AppProvider({ children }) {
 
         // ── ORGANIZATIONS ─────────────────────────────────────────────────────
         case 'ADD_ORGANIZATION': {
+          const fbUid = auth.currentUser?.uid;
+          const isAnon = auth.currentUser?.isAnonymous ?? true;
+          console.log('[ADD_ORG] auth.currentUser uid:', fbUid, '| isAnonymous:', isAnon, '| appRole:', st.currentUser?.role);
+
+          // Anonymous token fails isSuperAdmin rule — session expired, must log in again
+          if (!fbUid || isAnon) {
+            throw new Error("Session Firebase expirée. Déconnectez-vous et reconnectez-vous.");
+          }
+
+          // Safety net: refresh usersByUid before writing so isSuperAdmin(wsId) passes.
+          // This covers cases where the login-time write was missed (e.g. auth/email-already-in-use fallback).
+          const ubRef = wsDoc('usersByUid', fbUid);
+          console.log('[ADD_ORG] writing usersByUid →', ubRef.path, '| role:', st.currentUser?.role);
+          await setDoc(ubRef, {
+            userId: String(st.currentUser?.id),
+            orgId:  st.currentUser?.orgId || 'default',
+            role:   st.currentUser?.role || '',
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+          await getDocFromServer(ubRef);
+          console.log('[ADD_ORG] usersByUid confirmed — writing organization');
+
           const id = payload.id || `org_${Date.now()}`;
           await setDoc(wsDoc('organizations', id), { ...payload, id, createdAt: new Date().toISOString() });
+          console.log('[ADD_ORG] organization written OK:', id);
           break;
         }
         case 'UPDATE_ORGANIZATION':
