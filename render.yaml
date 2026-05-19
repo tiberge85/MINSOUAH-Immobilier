@@ -2,7 +2,7 @@ services:
   - type: web
     name: minsouah-immobilier-cy30
     runtime: static
-    buildCommand: npm install && npm run build
+    buildCommand: npm install && NODE_OPTIONS=--max-old-space-size=1536 npm run build
     staticPublishPath: ./dist
     envVars:
       - key: NODE_VERSION
