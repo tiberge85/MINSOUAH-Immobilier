@@ -1,12 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { createUserWithEmailAndPassword, sendEmailVerification, deleteUser } from 'firebase/auth';
+import {
+  createUserWithEmailAndPassword, sendEmailVerification,
+  deleteUser, signInWithEmailAndPassword, signOut,
+} from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
 import { hashPwd } from '../lib/auth';
 import { createLicensePayload } from '../lib/licenses';
 import { PLANS, getPlan } from '../lib/planLimits';
-import { isDisposableEmail } from '../lib/disposableEmails';
+import { validateEmailFull } from '../lib/disposableEmails';
 import Icon from '../components/Icon';
 
 const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
@@ -51,8 +54,10 @@ export default function OrgRegistration() {
   // Data held in memory until email is verified — never write live records before verification
   const pendingDataRef    = useRef(null);
   const fbUserRef         = useRef(null);
-  const pendingOrgDocRef  = useRef(null); // Firestore ref for cleanup on cancel
+  const pendingOrgDocRef  = useRef(null);
   const pollingRef        = useRef(null);
+  // Stored after immediate sign-out so we can re-authenticate to check / resend / cancel
+  const pendingAuthRef    = useRef(null); // { email, password }
 
   useEffect(() => () => { if (pollingRef.current) clearInterval(pollingRef.current); }, []);
 
@@ -85,29 +90,48 @@ export default function OrgRegistration() {
     setWaitingVerification(false);
   };
 
+  // Sign in temporarily to check verification status, then sign out if still unverified.
+  // We signed out immediately after sending the email — this re-auth pattern prevents
+  // any unverified session from persisting while the user waits for the link.
+  const reAuthAndCheck = async () => {
+    if (!pendingAuthRef.current) return null;
+    const { email, password } = pendingAuthRef.current;
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    await cred.user.reload();
+    return cred.user;
+  };
+
+  // Auto-poll every 30 s (longer than before because each poll requires a sign-in round-trip)
   const startPolling = () => {
     if (pollingRef.current) clearInterval(pollingRef.current);
     pollingRef.current = setInterval(async () => {
       try {
-        await fbUserRef.current?.reload();
-        if (fbUserRef.current?.emailVerified) {
+        const fbUser = await reAuthAndCheck();
+        if (!fbUser) return;
+        if (fbUser.emailVerified) {
           clearInterval(pollingRef.current);
           pollingRef.current = null;
+          fbUserRef.current = fbUser;
           await commitToFirestore();
+        } else {
+          await signOut(auth);
         }
       } catch { /* ignore network blips */ }
-    }, 4000);
+    }, 30000);
   };
 
   const handleCheckNow = async () => {
     setLoading(true);
     setResendMsg('');
     try {
-      await fbUserRef.current?.reload();
-      if (fbUserRef.current?.emailVerified) {
+      const fbUser = await reAuthAndCheck();
+      if (!fbUser) { setResendMsg("Erreur de connexion. Réessayez."); return; }
+      if (fbUser.emailVerified) {
         if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+        fbUserRef.current = fbUser;
         await commitToFirestore();
       } else {
+        await signOut(auth);
         setResendMsg("Email pas encore vérifié. Cliquez sur le lien dans votre boîte mail.");
       }
     } catch {
@@ -118,8 +142,12 @@ export default function OrgRegistration() {
   };
 
   const handleResendVerification = async () => {
+    setResendMsg('');
     try {
-      await sendEmailVerification(fbUserRef.current);
+      const fbUser = await reAuthAndCheck();
+      if (!fbUser) { setResendMsg("Erreur de connexion. Réessayez."); return; }
+      await sendEmailVerification(fbUser);
+      await signOut(auth);
       setResendMsg("Email renvoyé !");
     } catch {
       setResendMsg("Erreur lors de l'envoi — réessayez dans 1 minute.");
@@ -128,16 +156,22 @@ export default function OrgRegistration() {
 
   const handleCancelVerification = async () => {
     if (pollingRef.current) clearInterval(pollingRef.current);
-    try { if (pendingOrgDocRef.current) await deleteDoc(pendingOrgDocRef.current); } catch { /* ignore */ }
-    try { if (fbUserRef.current) await deleteUser(fbUserRef.current); } catch { /* ignore */ }
+    // Delete pending Firestore record
+    try { if (pendingOrgDocRef.current) await deleteDoc(pendingOrgDocRef.current); } catch { }
+    // Re-authenticate to delete the Firebase Auth account
+    try {
+      const fbUser = await reAuthAndCheck();
+      if (fbUser) await deleteUser(fbUser);
+    } catch { /* ignore — account may not exist or re-auth may fail */ }
     fbUserRef.current = null;
     pendingDataRef.current = null;
     pendingOrgDocRef.current = null;
+    pendingAuthRef.current = null;
     setWaitingVerification(false);
     setResendMsg('');
   };
 
-  // ── Step 1: create Firebase Auth + write pendingOrg + start polling ────────
+  // ── Step 1: validate email → Firebase Auth → send email → sign out immediately ──
   const handleRegister = async () => {
     if (adminForm.password.length < 8) { setError('Mot de passe : 8 caractères minimum.'); return; }
     if (adminForm.password !== adminForm.confirm) { setError('Les mots de passe ne correspondent pas.'); return; }
@@ -145,29 +179,33 @@ export default function OrgRegistration() {
     if (!orgForm.name.trim()) { setError("Nom de l'organisation requis."); return; }
 
     const emailLow = adminForm.email.trim().toLowerCase();
-
-    if (isDisposableEmail(emailLow)) {
-      setError("Les adresses email temporaires/jetables ne sont pas acceptées. Utilisez une adresse professionnelle valide.");
-      return;
-    }
-
     setLoading(true);
     setError('');
+
     try {
-      // Step 1: Firebase Auth account (signs in as the new user)
+      // 1. Validate email (static blocklist + Abstract API if key is set)
+      const emailCheck = await validateEmailFull(emailLow);
+      if (!emailCheck.valid) {
+        setError(emailCheck.reason === 'undeliverable'
+          ? "Cette adresse email est invalide ou inexistante. Utilisez une adresse professionnelle réelle."
+          : "Les adresses email temporaires/jetables ne sont pas acceptées. Utilisez une adresse professionnelle valide.");
+        return;
+      }
+
+      // 2. Create Firebase Auth account (signs in as the new user)
       const fbCred = await createUserWithEmailAndPassword(auth, emailLow, adminForm.password);
       fbUserRef.current = fbCred.user;
 
-      // Step 2: Send verification email — login is blocked until this link is clicked
+      // 3. Send verification email
       await sendEmailVerification(fbCred.user);
 
-      // Step 3: Prepare Firestore payload — held in memory until email is verified
-      const orgId    = `org_${Date.now()}`;
-      const adminId  = Date.now() + 1;
-      const now      = new Date().toISOString();
-      const initials = adminForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+      // 4. Prepare Firestore payload in memory (never written to live collections until email_verified)
+      const orgId     = `org_${Date.now()}`;
+      const adminId   = Date.now() + 1;
+      const now       = new Date().toISOString();
+      const initials  = adminForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
       const hashedPwd = await hashPwd(adminForm.password);
-      const license  = createLicensePayload({ orgId, plan: 'trial' });
+      const license   = createLicensePayload({ orgId, plan: 'trial' });
 
       pendingDataRef.current = {
         orgId,
@@ -189,13 +227,17 @@ export default function OrgRegistration() {
         now,
       };
 
-      // Step 4: Write a minimal pending record to Firestore
-      // This only requires sign_in_provider != 'anonymous' (no email_verified check)
+      // 5. Write the pending record WHILE still authenticated (Firestore rules require auth)
       const pendingRef = wsDoc('pendingOrganizations', orgId);
       pendingOrgDocRef.current = pendingRef;
       await setDoc(pendingRef, {
         fbUid: fbCred.user.uid, orgId, adminEmail: emailLow, createdAt: now,
       });
+
+      // 6. Sign out immediately — no session allowed until email is verified.
+      //    Store credentials so re-auth can happen on manual check / resend / cancel.
+      pendingAuthRef.current = { email: emailLow, password: adminForm.password };
+      await signOut(auth);
 
       setWaitingVerification(true);
       startPolling();

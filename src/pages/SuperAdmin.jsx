@@ -10,7 +10,7 @@ import {
 import { getApp, initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, sendEmailVerification, deleteUser } from 'firebase/auth';
 import { db } from '../lib/firebase';
-import { isDisposableEmail } from '../lib/disposableEmails';
+import { validateEmailFull } from '../lib/disposableEmails';
 import { useApp } from '../context/AppContext';
 import { getPlan, PLANS, fmtLimit } from '../lib/planLimits';
 import { getLicenseStatusInfo, getDaysRemaining, createLicensePayload } from '../lib/licenses';
@@ -276,7 +276,14 @@ export default function SuperAdmin() {
     if (!adminName.trim() || !adminEmail.trim()) { showToast('Nom et email admin requis'); return; }
     if (adminPassword.length < 8) { showToast('Mot de passe : 8 caractères minimum'); return; }
     const emailLow = adminEmail.trim().toLowerCase();
-    if (isDisposableEmail(emailLow)) { showToast('Adresse email temporaire non acceptée — utilisez une adresse professionnelle'); return; }
+    const emailCheck = await validateEmailFull(emailLow);
+    if (!emailCheck.valid) {
+      showToast(emailCheck.reason === 'undeliverable'
+        ? 'Email invalide ou inexistant — utilisez une adresse réelle'
+        : 'Adresse email temporaire non acceptée — utilisez une adresse professionnelle');
+      setCreateOrgLoading(false);
+      return;
+    }
     if (users.some(u => u.email === emailLow)) { showToast('Cet email est déjà utilisé'); return; }
 
     setCreateOrgLoading(true);
