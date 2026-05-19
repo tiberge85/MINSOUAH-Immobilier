@@ -284,7 +284,19 @@ export function AppProvider({ children }) {
         unsubFirestoreRef.current.forEach((u) => u());
         unsubFirestoreRef.current = unsubs;
       } else {
-        // Not signed in — try anonymous
+        // Close stale subscriptions (e.g., from a brief re-auth during verification polling)
+        unsubFirestoreRef.current.forEach((u) => u());
+        unsubFirestoreRef.current = [];
+
+        // While org registration is pending email verification, skip anonymous sign-in.
+        // An anonymous token fails the sign_in_provider != 'anonymous' read guard and
+        // causes "Missing or insufficient permissions" on organizations/licenses snapshots.
+        if (sessionStorage.getItem('_minsouah_regpending')) {
+          console.log('[AppContext] registration pending — skipping signInAnonymously');
+          setState((s) => ({ ...s, _bootstrapping: false }));
+          return;
+        }
+
         signInAnonymously(auth).catch((err) => {
           console.error('[Firebase anon auth]', err);
           setState((s) => ({ ...s, _networkError: true, _bootstrapping: false }));

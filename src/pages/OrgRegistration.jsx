@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { doc, setDoc, deleteDoc, getDocFromServer } from 'firebase/firestore';
-import { createUserWithEmailAndPassword, sendEmailVerification, deleteUser } from 'firebase/auth';
+import { createUserWithEmailAndPassword, sendEmailVerification, deleteUser, signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
 import { hashPwd } from '../lib/auth';
 import { createLicensePayload } from '../lib/licenses';
@@ -50,13 +50,10 @@ export default function OrgRegistration() {
 
   // In-memory payload — never written to live collections until email is verified
   const pendingDataRef   = useRef(null);
-  // Firebase user ref — kept signed in during the verification wait.
-  // Signing out would trigger AppContext's signInAnonymously fallback which
-  // causes "Missing or insufficient permissions" on Firestore subscriptions.
-  // Security is enforced server-side: Firestore rules require email_verified == true
-  // for org/license/user creates, and state.currentUser stays null so the dashboard
-  // is unreachable (no LOGIN dispatch has been made).
+  // Firebase user ref — repopulated on each re-auth cycle during verification polling
   const fbUserRef        = useRef(null);
+  // Credentials stored for re-auth (needed after signOut during verification wait)
+  const pendingAuthRef   = useRef(null);
   const pendingOrgDocRef = useRef(null);
   const pollingRef       = useRef(null);
 
@@ -67,69 +64,111 @@ export default function OrgRegistration() {
   // ── Commit to Firestore once email is verified ────────────────────────────
   const commitToFirestore = async () => {
     const fbUser = fbUserRef.current;
+    console.log('[commit] start', { uid: fbUser?.uid, emailVerified: fbUser?.emailVerified });
+
     if (!fbUser?.emailVerified) {
       setResendMsg("Email pas encore vérifié. Cliquez sur le lien dans votre boîte mail.");
       return;
     }
 
-    // Force JWT refresh so rules see email_verified: true before ANY write.
-    // Without this, the cached token (issued before verification) would fail
-    // the isVerifiedNonAnon() check in Firestore security rules.
-    await fbUser.getIdToken(true);
+    // Clear the flag FIRST — AppContext can resume normal operation from this point
+    sessionStorage.removeItem('_minsouah_regpending');
+    console.log('[commit] regpending flag cleared');
 
-    // Confirm the token has been refreshed by forcing a server read of usersByUid.
-    // This also ensures the Firestore SDK connection is using the fresh token.
+    // Force JWT refresh so rules see email_verified: true before ANY write
+    await fbUser.getIdToken(true);
+    console.log('[commit] token refreshed (email_verified should be true in JWT claims)');
+
+    // Write usersByUid first and confirm on server — callerMeta() in Firestore rules
+    // reads this doc to determine role; must exist before org/license/user writes.
     const ubRef = doc(db, 'workspaces', WS, 'usersByUid', fbUser.uid);
+    console.log('[commit] writing usersByUid →', ubRef.path);
     await setDoc(ubRef, {
       userId: String(pendingDataRef.current.adminId),
       orgId:  pendingDataRef.current.orgId,
       role:   'ORGANIZATION_ADMIN',
       updatedAt: pendingDataRef.current.now,
     }, { merge: true });
-    // Wait for server confirmation — rules evaluate server-side
     await getDocFromServer(ubRef);
+    console.log('[commit] usersByUid confirmed by server');
 
     const { orgId, orgData, adminId, adminData, license } = pendingDataRef.current;
 
-    // These writes require email_verified == true in Firestore rules
+    // These writes require isVerifiedNonAnon() (sign_in_provider != anonymous + email_verified)
+    console.log('[commit] writing organization →', `workspaces/${WS}/organizations/${orgId}`);
     await setDoc(wsDoc('organizations', orgId), orgData);
-    await setDoc(wsDoc('licenses', license.key), { ...license, id: license.key });
-    await setDoc(wsDoc('users', adminId), adminData);
+    console.log('[commit] organization OK');
 
-    // Delete the pending record — no longer needed
+    console.log('[commit] writing license →', `workspaces/${WS}/licenses/${license.key}`);
+    await setDoc(wsDoc('licenses', license.key), { ...license, id: license.key });
+    console.log('[commit] license OK');
+
+    console.log('[commit] writing user →', `workspaces/${WS}/users/${adminId}`);
+    await setDoc(wsDoc('users', adminId), adminData);
+    console.log('[commit] user OK');
+
     if (pendingOrgDocRef.current) deleteDoc(pendingOrgDocRef.current).catch(() => {});
+    console.log('[commit] complete ✓ — all documents written successfully');
 
     setEmailSent(true);
     setWaitingVerification(false);
   };
 
-  // ── Auto-poll every 4 s — reload() checks Firebase Auth server for verification ──
+  // ── Auto-poll every 30 s — re-auth, then check emailVerified ────────────────
+  // We re-auth on each cycle because the user was signed out after registration.
+  // If not yet verified we sign out again to avoid AppContext opening subscriptions
+  // with a token that fails the sign_in_provider != 'anonymous' read guard.
   const startPolling = () => {
     if (pollingRef.current) clearInterval(pollingRef.current);
     pollingRef.current = setInterval(async () => {
+      const { email, password } = pendingAuthRef.current || {};
+      if (!email || !password) return;
       try {
-        await fbUserRef.current?.reload();
-        if (fbUserRef.current?.emailVerified) {
+        console.log('[poll] re-authenticating…');
+        const cred = await signInWithEmailAndPassword(auth, email, password);
+        fbUserRef.current = cred.user;
+        await cred.user.reload();
+        console.log('[poll] emailVerified:', cred.user.emailVerified);
+        if (cred.user.emailVerified) {
           clearInterval(pollingRef.current);
           pollingRef.current = null;
           await commitToFirestore();
+        } else {
+          // Not verified yet — sign out to keep AppContext flag-skipping active
+          await signOut(auth);
         }
-      } catch { /* ignore network blips */ }
-    }, 4000);
+      } catch (err) {
+        console.warn('[poll] error', err?.code || err);
+        try { await signOut(auth); } catch { }
+      }
+    }, 30_000);
   };
 
   const handleCheckNow = async () => {
     setLoading(true);
     setResendMsg('');
+    const { email, password } = pendingAuthRef.current || {};
+    if (!email || !password) {
+      setResendMsg("Informations de connexion manquantes. Recommencez l'inscription.");
+      setLoading(false);
+      return;
+    }
     try {
-      await fbUserRef.current?.reload();
-      if (fbUserRef.current?.emailVerified) {
+      console.log('[check] re-authenticating…');
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      fbUserRef.current = cred.user;
+      await cred.user.reload();
+      console.log('[check] emailVerified:', cred.user.emailVerified);
+      if (cred.user.emailVerified) {
         if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
         await commitToFirestore();
       } else {
+        await signOut(auth);
         setResendMsg("Email pas encore vérifié. Cliquez sur le lien dans votre boîte mail.");
       }
-    } catch {
+    } catch (err) {
+      console.warn('[check] error', err?.code || err);
+      try { await signOut(auth); } catch { }
       setResendMsg("Erreur de connexion. Réessayez.");
     } finally {
       setLoading(false);
@@ -138,21 +177,43 @@ export default function OrgRegistration() {
 
   const handleResendVerification = async () => {
     setResendMsg('');
+    const { email, password } = pendingAuthRef.current || {};
+    if (!email || !password) { setResendMsg("Informations manquantes."); return; }
     try {
-      if (fbUserRef.current) await sendEmailVerification(fbUserRef.current);
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      await sendEmailVerification(cred.user);
       setResendMsg("Email renvoyé !");
+      await signOut(auth);
     } catch {
+      try { await signOut(auth); } catch { }
       setResendMsg("Erreur lors de l'envoi — réessayez dans 1 minute.");
     }
   };
 
   const handleCancelVerification = async () => {
     if (pollingRef.current) clearInterval(pollingRef.current);
+    // Delete the pending Firestore record (no auth required for creator)
     try { if (pendingOrgDocRef.current) await deleteDoc(pendingOrgDocRef.current); } catch { }
-    try { if (fbUserRef.current) await deleteUser(fbUserRef.current); } catch { }
-    fbUserRef.current   = null;
+    // Re-auth to delete the Firebase Auth account (requires recent sign-in)
+    const { email, password } = pendingAuthRef.current || {};
+    if (email && password) {
+      try {
+        const cred = await signInWithEmailAndPassword(auth, email, password);
+        // Clear flag before deleteUser — onAuthStateChanged null fires → signInAnonymously resumes
+        sessionStorage.removeItem('_minsouah_regpending');
+        await deleteUser(cred.user);
+      } catch {
+        sessionStorage.removeItem('_minsouah_regpending');
+        try { await signOut(auth); } catch { }
+      }
+    } else {
+      sessionStorage.removeItem('_minsouah_regpending');
+      try { await signOut(auth); } catch { }
+    }
+    fbUserRef.current      = null;
     pendingDataRef.current = null;
     pendingOrgDocRef.current = null;
+    pendingAuthRef.current = null;
     setWaitingVerification(false);
     setResendMsg('');
   };
@@ -178,9 +239,9 @@ export default function OrgRegistration() {
         return;
       }
 
-      // 2. Create Firebase Auth account (user is now signed in — we keep them signed in
-      //    so AppContext's onAuthStateChanged doesn't fall back to signInAnonymously,
-      //    which would cause Firestore permission errors on collection subscriptions)
+      // 2. Create Firebase Auth account (user is now signed in briefly — we sign them
+      //    out immediately after writing pendingOrganizations, with a sessionStorage flag
+      //    that tells AppContext to skip signInAnonymously during the verification wait)
       const fbCred = await createUserWithEmailAndPassword(auth, emailLow, adminForm.password);
       fbUserRef.current = fbCred.user;
 
@@ -223,10 +284,23 @@ export default function OrgRegistration() {
         fbUid: fbCred.user.uid, orgId, adminEmail: emailLow, createdAt: now,
       });
 
-      // 6. Show verification screen + start polling
+      // 6. Store credentials for re-auth, set flag so AppContext skips signInAnonymously,
+      //    then sign out immediately — user has no access until email is verified.
+      pendingAuthRef.current = { email: emailLow, password: adminForm.password };
+      sessionStorage.setItem('_minsouah_regpending', '1');
+      await signOut(auth);
+      fbUserRef.current = null; // will be repopulated on each re-auth cycle
+
+      // 7. Show verification screen + start background polling
       setWaitingVerification(true);
       startPolling();
     } catch (err) {
+      // Clean up in case the user was already created before the error
+      sessionStorage.removeItem('_minsouah_regpending');
+      if (fbUserRef.current) {
+        try { await deleteUser(fbUserRef.current); } catch { }
+        fbUserRef.current = null;
+      }
       if (err.code === 'auth/email-already-in-use') {
         setError("Cet email est déjà associé à un compte. Connectez-vous ou utilisez un autre email.");
       } else {
