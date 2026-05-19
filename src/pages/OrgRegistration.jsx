@@ -1,10 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { doc, setDoc, deleteDoc } from 'firebase/firestore';
-import {
-  createUserWithEmailAndPassword, sendEmailVerification,
-  deleteUser, signInWithEmailAndPassword, signOut,
-} from 'firebase/auth';
+import { doc, setDoc, deleteDoc, getDocFromServer } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, sendEmailVerification, deleteUser } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
 import { hashPwd } from '../lib/auth';
 import { createLicensePayload } from '../lib/licenses';
@@ -51,87 +48,85 @@ export default function OrgRegistration() {
   const [waitingVerification, setWaitingVerification] = useState(false);
   const [resendMsg, setResendMsg] = useState('');
 
-  // Data held in memory until email is verified — never write live records before verification
-  const pendingDataRef    = useRef(null);
-  const fbUserRef         = useRef(null);
-  const pendingOrgDocRef  = useRef(null);
-  const pollingRef        = useRef(null);
-  // Stored after immediate sign-out so we can re-authenticate to check / resend / cancel
-  const pendingAuthRef    = useRef(null); // { email, password }
+  // In-memory payload — never written to live collections until email is verified
+  const pendingDataRef   = useRef(null);
+  // Firebase user ref — kept signed in during the verification wait.
+  // Signing out would trigger AppContext's signInAnonymously fallback which
+  // causes "Missing or insufficient permissions" on Firestore subscriptions.
+  // Security is enforced server-side: Firestore rules require email_verified == true
+  // for org/license/user creates, and state.currentUser stays null so the dashboard
+  // is unreachable (no LOGIN dispatch has been made).
+  const fbUserRef        = useRef(null);
+  const pendingOrgDocRef = useRef(null);
+  const pollingRef       = useRef(null);
 
   useEffect(() => () => { if (pollingRef.current) clearInterval(pollingRef.current); }, []);
 
   const plan = getPlan(selectedPlan);
 
-  // ── Step 3: move pending → live collections once email is verified ────────
+  // ── Commit to Firestore once email is verified ────────────────────────────
   const commitToFirestore = async () => {
-    if (!fbUserRef.current?.emailVerified) {
+    const fbUser = fbUserRef.current;
+    if (!fbUser?.emailVerified) {
       setResendMsg("Email pas encore vérifié. Cliquez sur le lien dans votre boîte mail.");
       return;
     }
-    // Force JWT refresh so Firestore rules see email_verified: true
-    await fbUserRef.current.getIdToken(true);
 
-    const { orgId, orgData, adminId, adminData, license, now } = pendingDataRef.current;
-    const fbUser = fbUserRef.current;
+    // Force JWT refresh so rules see email_verified: true before ANY write.
+    // Without this, the cached token (issued before verification) would fail
+    // the isVerifiedNonAnon() check in Firestore security rules.
+    await fbUser.getIdToken(true);
 
-    // These writes are now gated by email_verified == true in Firestore rules
+    // Confirm the token has been refreshed by forcing a server read of usersByUid.
+    // This also ensures the Firestore SDK connection is using the fresh token.
+    const ubRef = doc(db, 'workspaces', WS, 'usersByUid', fbUser.uid);
+    await setDoc(ubRef, {
+      userId: String(pendingDataRef.current.adminId),
+      orgId:  pendingDataRef.current.orgId,
+      role:   'ORGANIZATION_ADMIN',
+      updatedAt: pendingDataRef.current.now,
+    }, { merge: true });
+    // Wait for server confirmation — rules evaluate server-side
+    await getDocFromServer(ubRef);
+
+    const { orgId, orgData, adminId, adminData, license } = pendingDataRef.current;
+
+    // These writes require email_verified == true in Firestore rules
     await setDoc(wsDoc('organizations', orgId), orgData);
     await setDoc(wsDoc('licenses', license.key), { ...license, id: license.key });
     await setDoc(wsDoc('users', adminId), adminData);
-    await setDoc(doc(db, 'workspaces', WS, 'usersByUid', fbUser.uid), {
-      userId: String(adminId), orgId, role: 'ORGANIZATION_ADMIN', updatedAt: now,
-    }, { merge: true }).catch(console.warn);
 
-    // Remove the pending record
+    // Delete the pending record — no longer needed
     if (pendingOrgDocRef.current) deleteDoc(pendingOrgDocRef.current).catch(() => {});
 
     setEmailSent(true);
     setWaitingVerification(false);
   };
 
-  // Sign in temporarily to check verification status, then sign out if still unverified.
-  // We signed out immediately after sending the email — this re-auth pattern prevents
-  // any unverified session from persisting while the user waits for the link.
-  const reAuthAndCheck = async () => {
-    if (!pendingAuthRef.current) return null;
-    const { email, password } = pendingAuthRef.current;
-    const cred = await signInWithEmailAndPassword(auth, email, password);
-    await cred.user.reload();
-    return cred.user;
-  };
-
-  // Auto-poll every 30 s (longer than before because each poll requires a sign-in round-trip)
+  // ── Auto-poll every 4 s — reload() checks Firebase Auth server for verification ──
   const startPolling = () => {
     if (pollingRef.current) clearInterval(pollingRef.current);
     pollingRef.current = setInterval(async () => {
       try {
-        const fbUser = await reAuthAndCheck();
-        if (!fbUser) return;
-        if (fbUser.emailVerified) {
+        await fbUserRef.current?.reload();
+        if (fbUserRef.current?.emailVerified) {
           clearInterval(pollingRef.current);
           pollingRef.current = null;
-          fbUserRef.current = fbUser;
           await commitToFirestore();
-        } else {
-          await signOut(auth);
         }
       } catch { /* ignore network blips */ }
-    }, 30000);
+    }, 4000);
   };
 
   const handleCheckNow = async () => {
     setLoading(true);
     setResendMsg('');
     try {
-      const fbUser = await reAuthAndCheck();
-      if (!fbUser) { setResendMsg("Erreur de connexion. Réessayez."); return; }
-      if (fbUser.emailVerified) {
+      await fbUserRef.current?.reload();
+      if (fbUserRef.current?.emailVerified) {
         if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-        fbUserRef.current = fbUser;
         await commitToFirestore();
       } else {
-        await signOut(auth);
         setResendMsg("Email pas encore vérifié. Cliquez sur le lien dans votre boîte mail.");
       }
     } catch {
@@ -144,10 +139,7 @@ export default function OrgRegistration() {
   const handleResendVerification = async () => {
     setResendMsg('');
     try {
-      const fbUser = await reAuthAndCheck();
-      if (!fbUser) { setResendMsg("Erreur de connexion. Réessayez."); return; }
-      await sendEmailVerification(fbUser);
-      await signOut(auth);
+      if (fbUserRef.current) await sendEmailVerification(fbUserRef.current);
       setResendMsg("Email renvoyé !");
     } catch {
       setResendMsg("Erreur lors de l'envoi — réessayez dans 1 minute.");
@@ -156,22 +148,16 @@ export default function OrgRegistration() {
 
   const handleCancelVerification = async () => {
     if (pollingRef.current) clearInterval(pollingRef.current);
-    // Delete pending Firestore record
     try { if (pendingOrgDocRef.current) await deleteDoc(pendingOrgDocRef.current); } catch { }
-    // Re-authenticate to delete the Firebase Auth account
-    try {
-      const fbUser = await reAuthAndCheck();
-      if (fbUser) await deleteUser(fbUser);
-    } catch { /* ignore — account may not exist or re-auth may fail */ }
-    fbUserRef.current = null;
+    try { if (fbUserRef.current) await deleteUser(fbUserRef.current); } catch { }
+    fbUserRef.current   = null;
     pendingDataRef.current = null;
     pendingOrgDocRef.current = null;
-    pendingAuthRef.current = null;
     setWaitingVerification(false);
     setResendMsg('');
   };
 
-  // ── Step 1: validate email → Firebase Auth → send email → sign out immediately ──
+  // ── Main registration handler ─────────────────────────────────────────────
   const handleRegister = async () => {
     if (adminForm.password.length < 8) { setError('Mot de passe : 8 caractères minimum.'); return; }
     if (adminForm.password !== adminForm.confirm) { setError('Les mots de passe ne correspondent pas.'); return; }
@@ -183,7 +169,7 @@ export default function OrgRegistration() {
     setError('');
 
     try {
-      // 1. Validate email (static blocklist + Abstract API if key is set)
+      // 1. Validate email — blocklist + Abstract API (if key configured)
       const emailCheck = await validateEmailFull(emailLow);
       if (!emailCheck.valid) {
         setError(emailCheck.reason === 'undeliverable'
@@ -192,14 +178,16 @@ export default function OrgRegistration() {
         return;
       }
 
-      // 2. Create Firebase Auth account (signs in as the new user)
+      // 2. Create Firebase Auth account (user is now signed in — we keep them signed in
+      //    so AppContext's onAuthStateChanged doesn't fall back to signInAnonymously,
+      //    which would cause Firestore permission errors on collection subscriptions)
       const fbCred = await createUserWithEmailAndPassword(auth, emailLow, adminForm.password);
       fbUserRef.current = fbCred.user;
 
-      // 3. Send verification email
+      // 3. Send verification email — user must click before commitToFirestore runs
       await sendEmailVerification(fbCred.user);
 
-      // 4. Prepare Firestore payload in memory (never written to live collections until email_verified)
+      // 4. Prepare Firestore payload in memory — nothing goes to live collections yet
       const orgId     = `org_${Date.now()}`;
       const adminId   = Date.now() + 1;
       const now       = new Date().toISOString();
@@ -227,18 +215,15 @@ export default function OrgRegistration() {
         now,
       };
 
-      // 5. Write the pending record WHILE still authenticated (Firestore rules require auth)
+      // 5. Write a minimal pending record while the user IS authenticated
+      //    (rule: request.auth != null && sign_in_provider != 'anonymous')
       const pendingRef = wsDoc('pendingOrganizations', orgId);
       pendingOrgDocRef.current = pendingRef;
       await setDoc(pendingRef, {
         fbUid: fbCred.user.uid, orgId, adminEmail: emailLow, createdAt: now,
       });
 
-      // 6. Sign out immediately — no session allowed until email is verified.
-      //    Store credentials so re-auth can happen on manual check / resend / cancel.
-      pendingAuthRef.current = { email: emailLow, password: adminForm.password };
-      await signOut(auth);
-
+      // 6. Show verification screen + start polling
       setWaitingVerification(true);
       startPolling();
     } catch (err) {
@@ -286,7 +271,7 @@ export default function OrgRegistration() {
       <main className="flex-1 px-4 py-8 overflow-y-auto">
         <div className="max-w-4xl mx-auto">
 
-          {/* Waiting for email verification */}
+          {/* ── Waiting for email verification ── */}
           {waitingVerification && !emailSent && (
             <div className="max-w-lg mx-auto text-center">
               <div className="w-20 h-20 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
@@ -332,7 +317,7 @@ export default function OrgRegistration() {
             </div>
           )}
 
-          {/* Success */}
+          {/* ── Success ── */}
           {emailSent && (
             <div className="max-w-lg mx-auto text-center">
               <div className="w-20 h-20 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
@@ -360,7 +345,7 @@ export default function OrgRegistration() {
 
           {!emailSent && !waitingVerification && (
           <>
-          {/* STEP 1 — Plan */}
+          {/* ── STEP 1 — Plan ── */}
           {step === 1 && (
             <div>
               <h2 className="text-2xl font-black text-on-surface text-center mb-2">Choisissez votre plan</h2>
@@ -424,7 +409,7 @@ export default function OrgRegistration() {
             </div>
           )}
 
-          {/* STEP 2 — Organisation */}
+          {/* ── STEP 2 — Organisation ── */}
           {step === 2 && (
             <div className="max-w-lg mx-auto">
               <h2 className="text-2xl font-black text-on-surface mb-2">Votre organisation</h2>
@@ -473,7 +458,7 @@ export default function OrgRegistration() {
             </div>
           )}
 
-          {/* STEP 3 — Admin */}
+          {/* ── STEP 3 — Admin ── */}
           {step === 3 && (
             <div className="max-w-lg mx-auto">
               <h2 className="text-2xl font-black text-on-surface mb-2">Compte administrateur</h2>
