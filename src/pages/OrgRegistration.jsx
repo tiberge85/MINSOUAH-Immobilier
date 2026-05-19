@@ -83,6 +83,7 @@ export default function OrgRegistration() {
   const [resendLoading, setResendLoading] = useState(false);
   const [resendMsg, setResendMsg] = useState('');
   const [emailSentOk, setEmailSentOk] = useState(false);
+  const [fallbackCode, setFallbackCode] = useState(''); // shown on screen when email fails
   const [success, setSuccess] = useState(false);
 
   const pendingDataRef = useRef(null);
@@ -108,6 +109,9 @@ export default function OrgRegistration() {
 
     console.log('[otp] dispatched to', emailLow, '| sendEmail result:', result);
     setEmailSentOk(result.ok);
+    // If email delivery failed (service not configured), show code on screen
+    if (!result.ok) setFallbackCode(code);
+    else setFallbackCode('');
     return result;
   };
 
@@ -205,13 +209,14 @@ export default function OrgRegistration() {
   // ── Resend OTP ────────────────────────────────────────────────────────────
   const handleResendOTP = async () => {
     setResendMsg('');
+    setFallbackCode('');
     setResendLoading(true);
     const emailLow = adminForm.email.trim().toLowerCase();
     try {
       await dispatchOTP(emailLow, adminForm.name.trim(), pendingOrgDocRef.current);
       setOtpCode('');
       setOtpError('');
-      setResendMsg('Nouveau code envoyé ! Vérifiez votre boîte mail et le dossier Spam.');
+      setResendMsg('Nouveau code généré !');
     } catch (err) {
       console.error('[otp] resend error:', err);
       setResendMsg('Erreur lors du renvoi. Réessayez dans 1 minute.');
@@ -370,14 +375,21 @@ export default function OrgRegistration() {
               {emailSentOk ? (
                 <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2 mb-4 text-sm text-green-800">
                   <Icon name="check_circle" size={16} className="text-green-600 flex-shrink-0" />
-                  Email envoyé avec succès. Vérifiez votre boîte mail.
+                  Email envoyé. Vérifiez votre boîte mail et le dossier Spam.
                 </div>
               ) : (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm text-amber-800">
-                  <p className="font-bold mb-1 flex items-center gap-1">
-                    <Icon name="warning" size={14} /> Problème d'envoi email
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+                  <p className="font-bold text-amber-900 text-sm mb-1 flex items-center gap-1.5">
+                    <Icon name="info" size={15} /> Service email non configuré
                   </p>
-                  <p className="text-xs">L'envoi d'email a échoué. Cliquez <strong>Renvoyer</strong> ci-dessous, ou contactez votre administrateur système pour configurer le service email.</p>
+                  <p className="text-xs text-amber-800 mb-3">
+                    L'email n'a pas pu être envoyé (service non configuré). Utilisez le code ci-dessous directement :
+                  </p>
+                  <div className="bg-white border-2 border-amber-300 rounded-xl py-4 px-6 text-center mb-2">
+                    <p className="text-xs text-amber-700 mb-1 font-semibold uppercase tracking-wide">Votre code de vérification</p>
+                    <div className="text-4xl font-black tracking-[0.3em] text-amber-900 select-all">{fallbackCode}</div>
+                  </div>
+                  <p className="text-[11px] text-amber-700">Copiez ce code et collez-le dans le champ ci-dessous.</p>
                 </div>
               )}
 
