@@ -17,7 +17,6 @@ export default function Login() {
   const [showPass, setShowPass] = useState(false);
   const [error, setError]             = useState('');
   const [loading, setLoading]         = useState(false);
-  const [resendMsg, setResendMsg]     = useState('');
 
   // ── 2FA OTP state ────────────────────────────────────────────────────
   const [otpStep, setOtpStep]         = useState(false);   // show OTP screen

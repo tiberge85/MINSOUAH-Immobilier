@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Component } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider, useApp } from './context/AppContext';
@@ -266,18 +266,44 @@ function AppRoutes() {
   );
 }
 
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', fontFamily: 'Arial, sans-serif', background: '#f5f5f5' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '32px', maxWidth: '600px', width: '100%', boxShadow: '0 4px 24px rgba(0,0,0,.1)' }}>
+            <h1 style={{ color: '#dc2626', marginBottom: '12px', fontSize: '20px' }}>Erreur de l'application</h1>
+            <p style={{ color: '#374151', marginBottom: '16px', fontSize: '14px' }}>Une erreur inattendue s'est produite. Copiez le message ci-dessous et contactez le support.</p>
+            <pre style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '12px', fontSize: '12px', overflowX: 'auto', color: '#1f2937', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {this.state.error?.message || String(this.state.error)}{'\n\n'}{this.state.error?.stack}
+            </pre>
+            <button onClick={() => window.location.reload()} style={{ marginTop: '16px', padding: '10px 20px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+              Recharger la page
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
-    <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <AppProvider>
-          <ToastProvider>
-            <HashRouter>
-              <AppRoutes />
-            </HashRouter>
-          </ToastProvider>
-        </AppProvider>
-      </QueryClientProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <AppProvider>
+            <ToastProvider>
+              <HashRouter>
+                <AppRoutes />
+              </HashRouter>
+            </ToastProvider>
+          </AppProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
