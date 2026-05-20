@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import SignaturePad from '../components/SignaturePad';
@@ -29,6 +30,12 @@ export default function Rental() {
   const [target, setTarget] = useState(null);
   const [step, setStep] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState(null);
+
+  // ── Import locataires ──────────────────────────────────────────────────────
+  const [importRows, setImportRows] = useState([]);
+  const [importResult, setImportResult] = useState(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const fileInputRef = useRef(null);
 
   // ── Formulaires ────────────────────────────────────────────────────────────
   const [cForm, setCForm] = useState({});
@@ -216,6 +223,97 @@ export default function Rental() {
     setDeleteTarget(null);
   };
 
+  // ── Import locataires ──────────────────────────────────────────────────────
+  const COL_MAP = {
+    'nom complet': 'name', nom: 'name', name: 'name', locataire: 'name', prenom: 'name', prénom: 'name',
+    email: 'email', courriel: 'email', 'adresse email': 'email',
+    téléphone: 'phone', telephone: 'phone', tel: 'phone', phone: 'phone', mobile: 'phone', 'n° tel': 'phone', 'numero tel': 'phone',
+    bien: 'property', propriété: 'property', immeuble: 'property', logement: 'property',
+    'bien / logement': 'property', property: 'property', appartement: 'property', adresse: 'property',
+    'depuis (date)': 'since', depuis: 'since', date: 'since', since: 'since',
+    "date d'entree": 'since', 'date entree': 'since', 'date entrée': 'since',
+    statut: 'status', status: 'status', état: 'status', etat: 'status',
+  };
+
+  const normalize = (s) =>
+    String(s || '').toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+  const downloadTemplate = () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['Nom complet', 'Email', 'Téléphone', 'Bien / Logement', 'Depuis (date)', 'Statut'],
+      ['Kouamé Konan', 'kouame@email.com', '+225 07 12 34 56 78', 'Villa Azur', '01/01/2024', 'Actif'],
+      ['Ama Yao', 'ama.yao@email.com', '+225 05 98 76 54 32', 'Résidence Les Cocotiers - Apt 3B', '15/06/2023', 'Actif'],
+    ]);
+    ws['!cols'] = [{ wch: 24 }, { wch: 28 }, { wch: 22 }, { wch: 34 }, { wch: 16 }, { wch: 10 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Locataires');
+    XLSX.writeFile(wb, 'modele_locataires.xlsx');
+  };
+
+  const parseImportFile = (file) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+        const mapped = rows.map(row => {
+          const out = {};
+          Object.entries(row).forEach(([key, val]) => {
+            const field = COL_MAP[normalize(key)];
+            if (field) out[field] = String(val).trim();
+          });
+          return out;
+        }).filter(r => r.name);
+
+        if (mapped.length === 0) {
+          alert("Aucun locataire trouvé dans le fichier.\nVérifiez que le fichier contient une colonne « Nom complet » ou « Nom ».");
+          return;
+        }
+        setImportRows(mapped);
+        setImportResult(null);
+        setModal('import');
+      } catch {
+        alert("Impossible de lire le fichier. Utilisez un fichier Excel (.xlsx) ou CSV.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const runImport = async () => {
+    setImportLoading(true);
+    const ok = [];
+    const errors = [];
+
+    for (let i = 0; i < importRows.length; i++) {
+      const row = importRows[i];
+      try {
+        const initials = row.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+        await dispatch({
+          type: 'ADD_TENANT',
+          payload: {
+            name: row.name,
+            email: row.email || '',
+            phone: row.phone || '',
+            property: row.property || '',
+            since: row.since || '',
+            status: row.status || 'Actif',
+            initials,
+            color: COLORS[i % COLORS.length],
+          },
+        });
+        ok.push(row.name);
+      } catch (err) {
+        errors.push({ name: row.name, reason: err.message || 'Erreur inconnue' });
+      }
+    }
+
+    setImportResult({ ok, errors });
+    setImportLoading(false);
+  };
+
   // ── Rendu ──────────────────────────────────────────────────────────────────
   return (
     <div className="px-4 md:px-6 pt-6 pb-20 max-w-7xl mx-auto">
@@ -258,7 +356,14 @@ export default function Rental() {
         </div>
         <div className="pb-1 flex-shrink-0 flex gap-2">
           {tab === 'Contrats' && <Btn icon="note_add" onClick={openAddContract}>Nouveau Contrat</Btn>}
-          {tab === 'Locataires' && <Btn icon="person_add" onClick={openAddTenant}>Ajouter Locataire</Btn>}
+          {tab === 'Locataires' && (
+            <>
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) parseImportFile(f); e.target.value = ''; }} />
+              <BtnSecondary icon="upload_file" onClick={() => fileInputRef.current?.click()}>Importer</BtnSecondary>
+              <Btn icon="person_add" onClick={openAddTenant}>Ajouter Locataire</Btn>
+            </>
+          )}
           {tab === 'Propriétaires' && <Btn icon="add_business" onClick={openAddOwner}>Ajouter Propriétaire</Btn>}
         </div>
       </div>
@@ -408,6 +513,130 @@ export default function Rental() {
       {/* ═══════════════════════════════════════════════════════════════════════
           MODALES
       ═══════════════════════════════════════════════════════════════════════ */}
+
+      {/* ── Import locataires ───────────────────────────────────────────── */}
+      {modal === 'import' && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget && !importLoading) setModal(null); }}>
+          <div className="bg-surface rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="sticky top-0 bg-surface border-b border-outline-variant/20 px-6 py-4 flex justify-between items-center rounded-t-3xl flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-primary-container rounded-xl flex items-center justify-center">
+                  <Icon name="upload_file" size={18} className="text-on-primary-container" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-on-surface text-sm">Importer des locataires</h2>
+                  <p className="text-xs text-on-surface-variant">{importRows.length} ligne(s) détectée(s)</p>
+                </div>
+              </div>
+              {!importLoading && !importResult && (
+                <button onClick={downloadTemplate} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-primary border border-primary/30 rounded-xl hover:bg-primary/5 transition-colors">
+                  <Icon name="download" size={14} />Télécharger le modèle
+                </button>
+              )}
+              {!importLoading && <button onClick={() => setModal(null)} className="text-on-surface-variant hover:text-on-surface ml-2"><Icon name="close" size={20} /></button>}
+            </div>
+
+            {/* Body */}
+            <div className="overflow-y-auto flex-1 p-6">
+
+              {/* Résultat import */}
+              {importResult ? (
+                <div className="flex flex-col gap-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-green-50 border border-green-200 rounded-2xl p-4 text-center">
+                      <p className="text-3xl font-black text-green-700">{importResult.ok.length}</p>
+                      <p className="text-xs text-green-600 font-semibold mt-1">Importé(s) avec succès</p>
+                    </div>
+                    <div className={`${importResult.errors.length > 0 ? 'bg-red-50 border-red-200' : 'bg-surface-container border-outline-variant/20'} border rounded-2xl p-4 text-center`}>
+                      <p className={`text-3xl font-black ${importResult.errors.length > 0 ? 'text-red-600' : 'text-on-surface-variant'}`}>{importResult.errors.length}</p>
+                      <p className={`text-xs font-semibold mt-1 ${importResult.errors.length > 0 ? 'text-red-500' : 'text-on-surface-variant'}`}>Erreur(s)</p>
+                    </div>
+                  </div>
+
+                  {importResult.ok.length > 0 && (
+                    <div className="bg-green-50 rounded-2xl p-4">
+                      <p className="text-xs font-bold text-green-700 mb-2">Locataires importés :</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {importResult.ok.map(name => (
+                          <span key={name} className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full font-medium">{name}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {importResult.errors.length > 0 && (
+                    <div className="bg-red-50 rounded-2xl p-4">
+                      <p className="text-xs font-bold text-red-700 mb-2">Erreurs :</p>
+                      {importResult.errors.map((e, i) => (
+                        <p key={i} className="text-xs text-red-600 mb-1"><strong>{e.name}</strong> — {e.reason}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  <button onClick={() => setModal(null)}
+                    className="w-full py-3 bg-primary text-on-primary font-bold rounded-xl text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+                    <Icon name="check_circle" size={16} />Terminer
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Prévisualisation */}
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 flex items-start gap-2">
+                    <Icon name="info" size={15} className="text-amber-700 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-700">
+                      Vérifiez les données ci-dessous avant de confirmer l'import.
+                      Les colonnes reconnues sont : <strong>Nom complet, Email, Téléphone, Bien / Logement, Depuis (date), Statut</strong>.
+                    </p>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-xl border border-outline-variant/20">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-primary text-on-primary">
+                        <tr>
+                          {['Nom', 'Email', 'Téléphone', 'Logement', 'Depuis', 'Statut'].map(h => (
+                            <th key={h} className="px-3 py-2.5 font-bold uppercase tracking-wide whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-outline-variant/10">
+                        {importRows.map((r, i) => (
+                          <tr key={i} className={i % 2 === 0 ? 'bg-surface' : 'bg-surface-container-low'}>
+                            <td className="px-3 py-2 font-semibold text-on-surface whitespace-nowrap">{r.name}</td>
+                            <td className="px-3 py-2 text-on-surface-variant">{r.email || '—'}</td>
+                            <td className="px-3 py-2 text-on-surface-variant whitespace-nowrap">{r.phone || '—'}</td>
+                            <td className="px-3 py-2 text-on-surface-variant max-w-[160px] truncate">{r.property || '—'}</td>
+                            <td className="px-3 py-2 text-on-surface-variant whitespace-nowrap">{r.since || '—'}</td>
+                            <td className="px-3 py-2">
+                              <span className={`px-2 py-0.5 rounded-full font-semibold ${STATUS_BADGE[r.status || 'Actif'] || 'bg-green-100 text-green-800'}`}>
+                                {r.status || 'Actif'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Boutons */}
+                  <div className="flex gap-3 mt-5">
+                    <button onClick={() => setModal(null)}
+                      className="flex-1 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors">
+                      Annuler
+                    </button>
+                    <button onClick={runImport} disabled={importLoading}
+                      className="flex-1 py-2.5 text-sm font-bold text-on-primary bg-primary rounded-xl hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                      {importLoading
+                        ? <><Icon name="progress_activity" size={16} className="animate-spin" />Import en cours…</>
+                        : <><Icon name="upload_file" size={16} />Importer {importRows.length} locataire(s)</>}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Contrat ─────────────────────────────────────────────────────── */}
       {modal === 'contract' && (
@@ -680,6 +909,13 @@ export default function Rental() {
 function Btn({ icon, onClick, children }) {
   return (
     <button onClick={onClick} className="flex items-center gap-1.5 px-4 py-2 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors whitespace-nowrap">
+      <Icon name={icon} size={16} />{children}
+    </button>
+  );
+}
+function BtnSecondary({ icon, onClick, children }) {
+  return (
+    <button onClick={onClick} className="flex items-center gap-1.5 px-4 py-2 bg-surface border border-outline-variant/40 text-on-surface-variant rounded-xl text-sm font-semibold hover:bg-surface-container-high transition-colors whitespace-nowrap">
       <Icon name={icon} size={16} />{children}
     </button>
   );
