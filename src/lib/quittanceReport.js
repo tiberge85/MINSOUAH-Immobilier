@@ -1,4 +1,4 @@
-export function buildReceiptHTML(payment, orgSettings, signatures = {}) {
+export function buildReceiptHTML(payment, orgSettings, signatures = {}, nextPaymentDate = null) {
   const org = orgSettings || {};
   const receiptNum = `QUI-${payment.id}-${Date.now().toString().slice(-5)}`;
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -89,6 +89,16 @@ export function buildReceiptHTML(payment, orgSettings, signatures = {}) {
     <div class="details-row"><span>Référence</span><span>${receiptNum}</span></div>
     <div class="details-row"><span>Statut</span><span style="color:#166534;font-weight:700">✓ Paiement confirmé</span></div>
   </div>
+
+  ${nextPaymentDate ? `
+  <div style="background:#fff8f2;border:1.5px solid #e3d9cc;border-radius:10px;padding:14px 18px;margin-bottom:24px;display:flex;align-items:center;gap:14px">
+    <div style="font-size:22px">📅</div>
+    <div>
+      <div style="font-size:10px;color:#817662;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:4px">Prochain loyer attendu</div>
+      <div style="font-size:17px;font-weight:900;color:#785a00">${nextPaymentDate}</div>
+      <div style="font-size:11px;color:#817662;margin-top:2px">Période de règlement : du 5 au 10 du mois</div>
+    </div>
+  </div>` : ''}
 
   <div class="signatures">
     <div class="sig-box">

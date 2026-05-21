@@ -516,6 +516,9 @@ export function AppProvider({ children }) {
         case 'UPDATE_PAYMENT':
           await setDoc(wsDoc('payments', payload.id), payload);
           break;
+        case 'DELETE_PAYMENT':
+          await deleteDoc(wsDoc('payments', payload));
+          break;
         case 'MARK_PAYMENT_PAID':
           await updateDoc(wsDoc('payments', payload), {
             status: 'Payé',

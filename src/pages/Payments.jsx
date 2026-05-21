@@ -14,8 +14,9 @@ const statusColor = {
   'Payé':      'text-green-700 bg-green-100',
   'Impayé':    'text-red-700 bg-red-100',
   'En retard': 'text-amber-700 bg-amber-100',
+  'Annulé':    'text-on-surface-variant bg-surface-container',
 };
-const statusIcon = { 'Payé': 'check_circle', 'Impayé': 'cancel', 'En retard': 'schedule' };
+const statusIcon = { 'Payé': 'check_circle', 'Impayé': 'cancel', 'En retard': 'schedule', 'Annulé': 'block' };
 
 /* ── Receipt HTML ─────────────────────────────────────────────────────────── */
 function buildReceiptHTML(payment, orgSettings, signatures = {}) {
@@ -287,8 +288,26 @@ export default function Payments() {
   const [payForm, setPayForm] = useState({ propertyKey: '', tenantId: '', amount: '', month: currentMonthLabel, dueDate: '', method: 'Espèces' });
   const [quittancePayment, setQuittancePayment] = useState(null);
 
+  /* ── Edit / delete / cancel modals ── */
+  const [editModal, setEditModal]     = useState(null); // payment object
+  const [editForm, setEditForm]       = useState({});
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // payment object
+
   /* ── Reminder modal ── */
   const [reminderModal, setReminderModal] = useState(null);
+
+  /* ── Compute next payment date for quittance ── */
+  const computeNextPaymentDate = useCallback((payment) => {
+    const tenant = (tenants || []).find(t => String(t.id) === String(payment.tenantId));
+    const dueDay = parseInt(tenant?.paymentDueDay || '5', 10);
+    const parts = (payment.month || '').split(' ');
+    const mIdx = MONTH_NAMES.indexOf(parts[0]);
+    const yr = parseInt(parts[1], 10);
+    if (mIdx === -1 || isNaN(yr)) return null;
+    const nextMIdx = (mIdx + 1) % 12;
+    const nextYr = mIdx === 11 ? yr + 1 : yr;
+    return `${dueDay} ${MONTH_NAMES[nextMIdx]} ${nextYr}`;
+  }, [tenants]);
 
   /* ── All months (from existing payments + current) ── */
   const allMonths = useMemo(() => {
@@ -436,6 +455,22 @@ export default function Payments() {
   const handleMarkPaid = (id) => dispatch({ type: 'MARK_PAYMENT_PAID', payload: id });
   const handleReminder = (p) => { dispatch({ type: 'SEND_REMINDER', payload: p.id }); setReminderModal(null); };
 
+  const openEdit = (p) => {
+    setEditForm({ amount: p.amount, dueDate: p.dueDate || '', month: p.month, method: p.method || 'Espèces', status: p.status });
+    setEditModal(p);
+  };
+  const saveEdit = () => {
+    dispatch({ type: 'UPDATE_PAYMENT', payload: { ...editModal, ...editForm, amount: parseFloat(editForm.amount) || 0 } });
+    setEditModal(null);
+  };
+  const handleCancel = (p) => {
+    dispatch({ type: 'UPDATE_PAYMENT', payload: { ...p, status: 'Annulé', paidDate: null } });
+  };
+  const handleDelete = () => {
+    dispatch({ type: 'DELETE_PAYMENT', payload: deleteConfirm.id });
+    setDeleteConfirm(null);
+  };
+
   /* ── Quittance / Signature state ── */
   const [receiptTab, setReceiptTab]       = useState('preview');
   const [signatures, setSignatures]       = useState({ bailleur: null, locataire: null });
@@ -460,14 +495,14 @@ export default function Payments() {
   }, []);
 
   const printReceipt = useCallback(() => {
-    // Save signatures to payment state so tenant portal can show the signed quittance
     if (signatures.bailleur || signatures.locataire) {
       dispatch({ type: 'UPDATE_PAYMENT', payload: { ...quittancePayment, signatures } });
     }
-    const html = buildReceiptHTMLShared(quittancePayment, orgSettings, signatures);
+    const nextDate = computeNextPaymentDate(quittancePayment);
+    const html = buildReceiptHTMLShared(quittancePayment, orgSettings, signatures, nextDate);
     const win = window.open('', '_blank', 'width=820,height=700');
     if (win) { win.document.write(html); win.document.close(); }
-  }, [quittancePayment, orgSettings, signatures, dispatch]);
+  }, [quittancePayment, orgSettings, signatures, dispatch, computeNextPaymentDate]);
 
   const whatsappReceipt = useCallback(() => {
     const phone = phoneForWA(quittancePayment?.tenantPhone);
@@ -684,12 +719,17 @@ export default function Payments() {
                           {p.status === 'Payé' && (
                             <Btn small icon="receipt" variant="secondary" onClick={() => openReceipt(p)}>Quittance</Btn>
                           )}
-                          {p.status !== 'Payé' && (
+                          {p.status !== 'Payé' && p.status !== 'Annulé' && (
                             <>
                               <Btn small icon="check_circle" variant="green" onClick={() => handleMarkPaid(p.id)}>Payé</Btn>
                               <Btn small icon="notifications" variant="amber" onClick={() => setReminderModal(p)}>Rappel</Btn>
                             </>
                           )}
+                          <Btn small icon="edit" variant="secondary" onClick={() => openEdit(p)}>Modifier</Btn>
+                          {p.status === 'Payé' && (
+                            <Btn small icon="block" variant="amber" onClick={() => handleCancel(p)}>Annuler</Btn>
+                          )}
+                          <Btn small icon="delete" variant="danger" onClick={() => setDeleteConfirm(p)}>Supprimer</Btn>
                         </div>
                       </td>
                     </tr>
@@ -1286,6 +1326,85 @@ export default function Payments() {
           </div>
         )}
       </ModalWrap>
+
+      {/* ══════════════ MODAL: Modifier un paiement ══════════════ */}
+      <ModalWrap
+        open={!!editModal}
+        onClose={() => setEditModal(null)}
+        title="Modifier le paiement"
+        size="sm"
+        footer={
+          <>
+            <Btn variant="secondary" onClick={() => setEditModal(null)}>Annuler</Btn>
+            <Btn icon="save" onClick={saveEdit}>Enregistrer</Btn>
+          </>
+        }
+      >
+        {editModal && (
+          <div className="flex flex-col gap-4">
+            <div className="bg-surface-container rounded-xl px-4 py-3 text-sm">
+              <p className="font-semibold text-on-surface">{editModal.propertyName}</p>
+              <p className="text-on-surface-variant text-xs">{editModal.tenantName} — {editModal.month}</p>
+            </div>
+            <Field label="Montant (FCFA)" required>
+              <input type="number" value={editForm.amount} onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))} className={inputCls} />
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Mois concerné">
+                <select value={editForm.month} onChange={e => setEditForm(f => ({ ...f, month: e.target.value }))} className={inputCls}>
+                  {allMonths.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </Field>
+              <Field label="Statut">
+                <select value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))} className={inputCls}>
+                  {['Payé','Impayé','En retard','Annulé'].map(s => <option key={s}>{s}</option>)}
+                </select>
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Date d'échéance">
+                <input type="date" value={editForm.dueDate} onChange={e => setEditForm(f => ({ ...f, dueDate: e.target.value }))} className={inputCls} />
+              </Field>
+              <Field label="Mode de paiement">
+                <select value={editForm.method} onChange={e => setEditForm(f => ({ ...f, method: e.target.value }))} className={inputCls}>
+                  {['Espèces','Virement','Mobile Money','Chèque','Autre'].map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </Field>
+            </div>
+          </div>
+        )}
+      </ModalWrap>
+
+      {/* ══════════════ MODAL: Confirmer suppression ══════════════ */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDeleteConfirm(null)}>
+          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center mb-4">
+              <Icon name="delete" size={24} className="text-red-700" />
+            </div>
+            <h3 className="font-bold text-on-surface text-lg mb-1">Supprimer ce paiement ?</h3>
+            <p className="text-sm text-on-surface-variant mb-1">
+              <strong>{deleteConfirm.tenantName}</strong> — {deleteConfirm.propertyName}
+            </p>
+            <p className="text-sm text-on-surface-variant mb-5">
+              {deleteConfirm.month} · <span className="font-semibold text-red-700">{fmt(deleteConfirm.amount)}</span>
+            </p>
+            <p className="text-xs text-on-surface-variant bg-red-50 rounded-xl px-3 py-2 mb-5">
+              Cette action est irréversible. Le paiement sera définitivement supprimé.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteConfirm(null)}
+                className="flex-1 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors">
+                Annuler
+              </button>
+              <button onClick={handleDelete}
+                className="flex-1 py-2.5 text-sm font-bold text-white bg-red-600 rounded-xl hover:bg-red-700 transition-colors flex items-center justify-center gap-2">
+                <Icon name="delete" size={16} /> Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
