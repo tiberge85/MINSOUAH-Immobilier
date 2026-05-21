@@ -837,9 +837,19 @@ export default function Rental() {
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="form-label">Date d'entrée</label>
-                <input type="date" value={tForm.since} onChange={e => setTForm(f => ({ ...f, since: e.target.value }))} className="form-input" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="form-label">Date d'entrée</label>
+                  <input type="date" value={tForm.since} onChange={e => setTForm(f => ({ ...f, since: e.target.value }))} className="form-input" />
+                </div>
+                <div>
+                  <label className="form-label">Jour d'échéance du loyer</label>
+                  <select value={tForm.paymentDueDay || '5'} onChange={e => setTForm(f => ({ ...f, paymentDueDay: e.target.value }))} className="form-input">
+                    {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
+                      <option key={d} value={String(d)}>{d} du mois</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               {selectedPropId && (
                 <div className="bg-primary-container/30 rounded-xl p-3 text-sm">

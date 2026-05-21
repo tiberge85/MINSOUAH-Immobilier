@@ -269,10 +269,13 @@ const inputCls = 'w-full bg-surface-container-lowest border border-outline-varia
 /* ── Main component ─────────────────────────────────────────────────────── */
 export default function Payments() {
   const { state, dispatch } = useApp();
-  const { payments = [], properties = [], tenants = [], contracts = [], orgSettings } = state;
+  const { payments = [], properties = [], tenants = [], contracts = [], transactions = [], orgSettings } = state;
 
   const now = new Date();
   const currentMonthLabel = `${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`;
+  const todayDay = now.getDate();
+  const isReminderPeriod = todayDay >= 1 && todayDay <= 10;
+  const isAfterDeadline = todayDay > 10;
 
   const [tab, setTab] = useState('payments');
   const [selectedMonth, setSelectedMonth] = useState(currentMonthLabel);
@@ -354,8 +357,7 @@ export default function Payments() {
         (t.property || '').includes(selected.propertyName);
       return viaContract || directMatch;
     });
-    // Fallback: if no match found via contract/property, show all active tenants
-    return matched.length > 0 ? matched : (tenants || []).filter(t => t.status === 'Actif' || t.status === 'En cours' || !t.status);
+    return matched;
   }, [payForm.propertyKey, allPropertyOptions, tenants, contracts]);
 
   /* ── Filtered payments (main tab) ── */
@@ -526,7 +528,30 @@ export default function Payments() {
   };
 
   const sendBulkReminders = () => {
-    currentMonthUnpaid.forEach(p => dispatch({ type: 'SEND_REMINDER', payload: p.id }));
+    currentMonthUnpaid.forEach((p, i) => {
+      const phone = phoneForWA(p.tenantPhone);
+      if (phone) {
+        const msg = encodeURIComponent(
+          `Bonjour ${p.tenantName},\n\nNous vous rappelons que votre loyer de ${fmt(p.amount)} pour ${p.month} est en attente de règlement.\nPropriété : ${p.propertyName}\n\nMerci de procéder au paiement avant le 10 du mois.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
+        );
+        setTimeout(() => window.open(`https://wa.me/${phone}?text=${msg}`, '_blank'), i * 600);
+      }
+      dispatch({ type: 'SEND_REMINDER', payload: p.id });
+    });
+  };
+
+  const sendBulkPenalties = () => {
+    currentMonthUnpaid.forEach((p, i) => {
+      const phone = phoneForWA(p.tenantPhone);
+      const penalty = Math.round((p.amount || 0) * 0.10);
+      if (phone) {
+        const msg = encodeURIComponent(
+          `Bonjour ${p.tenantName},\n\nSans nouvelles de votre paiement de loyer pour ${p.month}, une pénalité de 10% a été appliquée.\n\n• Loyer dû : ${fmt(p.amount)}\n• Pénalité (10%) : ${fmt(penalty)}\n• Total à régler : ${fmt((p.amount || 0) + penalty)}\n\nPropriété : ${p.propertyName}\n\nMerci de régulariser sans délai.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
+        );
+        setTimeout(() => window.open(`https://wa.me/${phone}?text=${msg}`, '_blank'), i * 600);
+      }
+      dispatch({ type: 'SEND_REMINDER', payload: p.id });
+    });
   };
 
   const TABS = [
@@ -685,6 +710,25 @@ export default function Payments() {
       {/* ══════════════════ TAB: RAPPELS ══════════════════ */}
       {tab === 'reminders' && (
         <div className="flex flex-col gap-md">
+          {/* Period banner */}
+          {isReminderPeriod && (
+            <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 flex items-center gap-3">
+              <Icon name="notifications_active" size={20} className="text-amber-700 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-bold text-amber-800">Période de rappels — du 1er au 10 du mois</p>
+                <p className="text-xs text-amber-700 mt-0.5">Nous sommes le {todayDay}. Envoyez les rappels aux locataires qui n'ont pas encore payé.</p>
+              </div>
+            </div>
+          )}
+          {isAfterDeadline && currentMonthUnpaid.length > 0 && (
+            <div className="bg-red-50 border border-red-300 rounded-xl px-4 py-3 flex items-center gap-3">
+              <Icon name="warning" size={20} className="text-red-700 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-bold text-red-800">Délai dépassé — pénalité de 10% applicable</p>
+                <p className="text-xs text-red-700 mt-0.5">{currentMonthUnpaid.length} locataire(s) n'ont pas payé après le 10. La pénalité de 10% s'applique sur leur loyer.</p>
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between flex-wrap gap-sm">
             <div>
               <h3 className="font-bold text-on-surface text-base">Rappels — {currentMonthLabel}</h3>
@@ -692,11 +736,19 @@ export default function Payments() {
                 {currentMonthUnpaid.length} locataire(s) n'ont pas encore payé ce mois-ci
               </p>
             </div>
-            {currentMonthUnpaid.length > 0 && (
-              <Btn icon="notifications_active" onClick={sendBulkReminders}>
-                Envoyer tous les rappels ({currentMonthUnpaid.length})
-              </Btn>
-            )}
+            <div className="flex gap-sm flex-wrap">
+              {currentMonthUnpaid.length > 0 && (
+                <Btn icon="notifications_active" onClick={sendBulkReminders}>
+                  Rappels WhatsApp ({currentMonthUnpaid.length})
+                </Btn>
+              )}
+              {isAfterDeadline && currentMonthUnpaid.length > 0 && (
+                <Btn icon="warning" onClick={sendBulkPenalties}
+                  className="bg-red-600 text-white hover:bg-red-700">
+                  Pénalités 10% ({currentMonthUnpaid.length})
+                </Btn>
+              )}
+            </div>
           </div>
 
           {currentMonthUnpaid.length === 0 ? (
@@ -748,6 +800,19 @@ export default function Payments() {
                                 <Icon name="mail" size={12} /> Email
                               </button>
                             )}
+                            {isAfterDeadline && (() => {
+                              const phone = phoneForWA(p.tenantPhone);
+                              const penalty = Math.round((p.amount || 0) * 0.10);
+                              const msg = encodeURIComponent(
+                                `Bonjour ${p.tenantName},\n\nPénalité de 10% appliquée pour loyer impayé de ${p.month}.\n• Loyer : ${fmt(p.amount)}\n• Pénalité : ${fmt(penalty)}\n• Total : ${fmt((p.amount || 0) + penalty)}\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
+                              );
+                              return phone ? (
+                                <button onClick={() => window.open(`https://wa.me/${phone}?text=${msg}`, '_blank')}
+                                  className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-semibold hover:bg-red-200 transition-colors">
+                                  <Icon name="warning" size={12} /> +10%
+                                </button>
+                              ) : null;
+                            })()}
                             <button onClick={() => handleMarkPaid(p.id)}
                               className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-200 transition-colors">
                               <Icon name="check_circle" size={12} /> Marquer payé
@@ -765,7 +830,17 @@ export default function Payments() {
       )}
 
       {/* ══════════════════ TAB: RAPPORT MENSUEL ══════════════════ */}
-      {tab === 'report' && (
+      {tab === 'report' && (() => {
+        // Compute monthly expenses from transactions (non-positive = dépense)
+        const [reportMonthName, reportYear] = selectedMonth.split(' ');
+        const monthTransactions = transactions.filter(t => {
+          if (!t.date) return false;
+          const d = new Date(t.date);
+          return d.getFullYear() === Number(reportYear) && MONTH_NAMES[d.getMonth()] === reportMonthName;
+        });
+        const totalDepenses = monthTransactions.filter(t => !t.positive).reduce((s, t) => s + Math.abs(t.amount || 0), 0);
+        const solde = totalCollected - totalDepenses;
+        return (
         <div className="flex flex-col gap-md">
           <div className="flex items-center justify-between flex-wrap gap-sm">
             <div>
@@ -773,6 +848,31 @@ export default function Payments() {
               <p className="text-sm text-on-surface-variant mt-0.5">{reportPaid.length} payés · {reportUnpaid.length} impayés</p>
             </div>
             <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintReport}>Imprimer / Exporter</Btn>
+          </div>
+
+          {/* Financial bilan */}
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 overflow-hidden shadow-card">
+            <div className="bg-primary/10 px-5 py-3 border-b border-outline-variant/20 flex items-center gap-2">
+              <Icon name="account_balance" size={16} className="text-primary" />
+              <h4 className="font-bold text-primary text-sm">Bilan financier — {selectedMonth}</h4>
+            </div>
+            <div className="grid grid-cols-3 divide-x divide-outline-variant/20">
+              <div className="p-4 text-center">
+                <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1">Encaissements</p>
+                <p className="text-lg font-black text-green-700">{fmt(totalCollected)}</p>
+                <p className="text-xs text-on-surface-variant mt-0.5">{reportPaid.length} paiement(s) reçu(s)</p>
+              </div>
+              <div className="p-4 text-center">
+                <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1">Dépenses</p>
+                <p className="text-lg font-black text-red-700">{fmt(totalDepenses)}</p>
+                <p className="text-xs text-on-surface-variant mt-0.5">{monthTransactions.filter(t => !t.positive).length} transaction(s)</p>
+              </div>
+              <div className="p-4 text-center">
+                <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1">Solde net</p>
+                <p className={`text-lg font-black ${solde >= 0 ? 'text-primary' : 'text-error'}`}>{fmt(solde)}</p>
+                <p className="text-xs text-on-surface-variant mt-0.5">{solde >= 0 ? 'Excédent' : 'Déficit'}</p>
+              </div>
+            </div>
           </div>
 
           {/* Bar chart */}
@@ -889,7 +989,8 @@ export default function Payments() {
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* ══════════════ MODAL: Enregistrer un paiement ══════════════ */}
       <ModalWrap

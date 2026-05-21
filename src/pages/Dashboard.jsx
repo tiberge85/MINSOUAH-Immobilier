@@ -159,7 +159,7 @@ export default function Dashboard() {
   const occupancyRate = properties.length > 0
     ? Math.round((activeContracts / properties.length) * 100)
     : 0;
-  const monthlyRevenue = contracts.filter((c) => c.status === 'Actif').reduce((sum, c) => sum + (c.rent || 0), 0);
+  const monthlyRevenue = contracts.filter((c) => c.status === 'Actif').reduce((sum, c) => sum + (parseFloat(c.rent) || 0), 0);
 
   const paidPayments = payments.filter(p => p.status === 'Payé');
   const unpaidPayments = payments.filter(p => p.status !== 'Payé');
