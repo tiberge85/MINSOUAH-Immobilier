@@ -225,28 +225,47 @@ export default function Rental() {
 
   // ── Import locataires ──────────────────────────────────────────────────────
   const COL_MAP = {
-    'nom complet': 'name', nom: 'name', name: 'name', locataire: 'name', prenom: 'name', prénom: 'name',
+    // Format générique
+    'nom complet': 'name', nom: 'name', name: 'name', locataire: 'name',
     email: 'email', courriel: 'email', 'adresse email': 'email',
-    téléphone: 'phone', telephone: 'phone', tel: 'phone', phone: 'phone', mobile: 'phone', 'n° tel': 'phone', 'numero tel': 'phone',
-    bien: 'property', propriété: 'property', immeuble: 'property', logement: 'property',
-    'bien / logement': 'property', property: 'property', appartement: 'property', adresse: 'property',
-    'depuis (date)': 'since', depuis: 'since', date: 'since', since: 'since',
-    "date d'entree": 'since', 'date entree': 'since', 'date entrée': 'since',
-    statut: 'status', status: 'status', état: 'status', etat: 'status',
+    telephone: 'phone', tel: 'phone', phone: 'phone', mobile: 'phone', 'n° tel': 'phone',
+    bien: 'property', immeuble: 'property', logement: 'property',
+    'bien / logement': 'property', property: 'property', appartement: 'property',
+    'depuis (date)': 'since', depuis: 'since', since: 'since',
+    "date d'entree": 'since', 'date entree': 'since',
+    statut: 'status', status: 'status',
+    // Format "OCCUPATION DES APPARTEMENTS" (multi-feuilles)
+    occupant: 'name',
+    contact: 'phone',
+    'numero ': 'unit', numero: 'unit', 'numéro ': 'unit', numéro: 'unit',
+    'niveau ': 'floor', niveau: 'floor',
+    loyer: 'rent',
   };
 
   const normalize = (s) =>
     String(s || '').toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
   const downloadTemplate = () => {
-    const ws = XLSX.utils.aoa_to_sheet([
-      ['Nom complet', 'Email', 'Téléphone', 'Bien / Logement', 'Depuis (date)', 'Statut'],
-      ['Kouamé Konan', 'kouame@email.com', '+225 07 12 34 56 78', 'Villa Azur', '01/01/2024', 'Actif'],
-      ['Ama Yao', 'ama.yao@email.com', '+225 05 98 76 54 32', 'Résidence Les Cocotiers - Apt 3B', '15/06/2023', 'Actif'],
-    ]);
-    ws['!cols'] = [{ wch: 24 }, { wch: 28 }, { wch: 22 }, { wch: 34 }, { wch: 16 }, { wch: 10 }];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Locataires');
+    // Feuille 1 : format immeuble (comme OCCUPATION DES APPARTEMENTS)
+    const ws1 = XLSX.utils.aoa_to_sheet([
+      ['IMMEUBLE A'],
+      ['Niveau ', 'Numéro ', 'Occupant', 'Contact', '', '', 'Loyer', 'Date ', ''],
+      ['RDC', 'S1', 'Kouamé Konan', '07 12 34 56 78', '', '', '130,000 FCFA', '', ''],
+      ['', 'S2', 'Ama Yao Adjoua', '05 98 76 54 32', '', '', '130,000 FCFA', '', ''],
+      ['1er', 'S3', 'LIBRE', '', '', '', '130,000 FCFA', '', ''],
+      ['', 'S4', 'Diomandé Moussa', '07 00 11 22 33', '', '', '130,000 FCFA', '', ''],
+    ]);
+    ws1['!cols'] = [{ wch: 8 }, { wch: 10 }, { wch: 28 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, ws1, 'IMMEUBLE A');
+    // Feuille 2 : format standard (alternative)
+    const ws2 = XLSX.utils.aoa_to_sheet([
+      ['Nom complet', 'Email', 'Téléphone', 'Bien / Logement', 'Depuis (date)', 'Statut'],
+      ['Kouamé Konan', 'kouame@email.com', '+225 07 12 34 56 78', 'Résidence A - Apt S1', '01/01/2024', 'Actif'],
+      ['Ama Yao', '', '+225 05 98 76 54 32', 'Résidence B - Apt S2', '15/06/2023', 'Actif'],
+    ]);
+    ws2['!cols'] = [{ wch: 24 }, { wch: 28 }, { wch: 22 }, { wch: 34 }, { wch: 16 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Format standard');
     XLSX.writeFile(wb, 'modele_locataires.xlsx');
   };
 
@@ -256,27 +275,62 @@ export default function Rental() {
       try {
         const data = new Uint8Array(e.target.result);
         const wb = XLSX.read(data, { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        const allMapped = [];
 
-        const mapped = rows.map(row => {
-          const out = {};
-          Object.entries(row).forEach(([key, val]) => {
-            const field = COL_MAP[normalize(key)];
-            if (field) out[field] = String(val).trim();
-          });
-          return out;
-        }).filter(r => r.name);
+        for (const sheetName of wb.SheetNames) {
+          const ws = wb.Sheets[sheetName];
+          // sheet_to_json avec header:1 pour lire toutes les lignes brutes
+          const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
-        if (mapped.length === 0) {
-          alert("Aucun locataire trouvé dans le fichier.\nVérifiez que le fichier contient une colonne « Nom complet » ou « Nom ».");
+          // Trouver la ligne d'en-tête (première ligne avec "Occupant" ou "Nom" ou "Contact")
+          let headerRowIdx = -1;
+          for (let i = 0; i < Math.min(rawRows.length, 5); i++) {
+            const row = rawRows[i];
+            const norm = row.map(c => normalize(c));
+            if (norm.includes('occupant') || norm.includes('nom complet') || norm.includes('nom') || norm.includes('contact')) {
+              headerRowIdx = i;
+              break;
+            }
+          }
+
+          if (headerRowIdx === -1) continue; // feuille sans en-tête reconnu
+
+          const headers = rawRows[headerRowIdx].map(h => normalize(h));
+          const dataRows = rawRows.slice(headerRowIdx + 1);
+
+          for (const rawRow of dataRows) {
+            const row = {};
+            headers.forEach((h, i) => {
+              const field = COL_MAP[h];
+              if (field) row[field] = String(rawRow[i] ?? '').trim();
+            });
+
+            // Ignorer les lignes vides ou "LIBRE"
+            const occupantName = row.name || '';
+            if (!occupantName || occupantName.toUpperCase() === 'LIBRE') continue;
+
+            // Construire le label du bien à partir du nom de feuille + numéro d'unité
+            if (!row.property) {
+              const unit = row.unit ? ` — Apt. ${row.unit}` : '';
+              row.property = `${sheetName}${unit}`;
+            }
+
+            // Nettoyer le téléphone (peut être un nombre Excel)
+            if (row.phone) row.phone = String(row.phone).replace(/\.0$/, '');
+
+            allMapped.push(row);
+          }
+        }
+
+        if (allMapped.length === 0) {
+          alert("Aucun locataire trouvé dans le fichier.\nVérifiez que le fichier contient une colonne « Occupant », « Nom complet » ou « Nom ».");
           return;
         }
-        setImportRows(mapped);
+        setImportRows(allMapped);
         setImportResult(null);
         setModal('import');
-      } catch {
-        alert("Impossible de lire le fichier. Utilisez un fichier Excel (.xlsx) ou CSV.");
+      } catch (err) {
+        alert("Impossible de lire le fichier. Utilisez un fichier Excel (.xlsx) ou CSV.\n" + err.message);
       }
     };
     reader.readAsArrayBuffer(file);
@@ -585,8 +639,7 @@ export default function Rental() {
                   <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 flex items-start gap-2">
                     <Icon name="info" size={15} className="text-amber-700 flex-shrink-0 mt-0.5" />
                     <p className="text-xs text-amber-700">
-                      Vérifiez les données ci-dessous avant de confirmer l'import.
-                      Les colonnes reconnues sont : <strong>Nom complet, Email, Téléphone, Bien / Logement, Depuis (date), Statut</strong>.
+                      Vérifiez les données avant de confirmer. Compatible avec le format <strong>OCCUPATION DES APPARTEMENTS</strong> (multi-feuilles) et le format standard. Les locataires <strong>LIBRE</strong> sont automatiquement exclus.
                     </p>
                   </div>
 
@@ -594,7 +647,7 @@ export default function Rental() {
                     <table className="w-full text-left text-xs">
                       <thead className="bg-primary text-on-primary">
                         <tr>
-                          {['Nom', 'Email', 'Téléphone', 'Logement', 'Depuis', 'Statut'].map(h => (
+                          {['Nom', 'Téléphone', 'Bien / Appartement', 'Loyer', 'Statut'].map(h => (
                             <th key={h} className="px-3 py-2.5 font-bold uppercase tracking-wide whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
@@ -603,13 +656,12 @@ export default function Rental() {
                         {importRows.map((r, i) => (
                           <tr key={i} className={i % 2 === 0 ? 'bg-surface' : 'bg-surface-container-low'}>
                             <td className="px-3 py-2 font-semibold text-on-surface whitespace-nowrap">{r.name}</td>
-                            <td className="px-3 py-2 text-on-surface-variant">{r.email || '—'}</td>
                             <td className="px-3 py-2 text-on-surface-variant whitespace-nowrap">{r.phone || '—'}</td>
-                            <td className="px-3 py-2 text-on-surface-variant max-w-[160px] truncate">{r.property || '—'}</td>
-                            <td className="px-3 py-2 text-on-surface-variant whitespace-nowrap">{r.since || '—'}</td>
+                            <td className="px-3 py-2 text-on-surface-variant max-w-[200px] truncate">{r.property || '—'}</td>
+                            <td className="px-3 py-2 text-on-surface-variant whitespace-nowrap">{r.rent || '—'}</td>
                             <td className="px-3 py-2">
-                              <span className={`px-2 py-0.5 rounded-full font-semibold ${STATUS_BADGE[r.status || 'Actif'] || 'bg-green-100 text-green-800'}`}>
-                                {r.status || 'Actif'}
+                              <span className="px-2 py-0.5 rounded-full font-semibold bg-green-100 text-green-800">
+                                Actif
                               </span>
                             </td>
                           </tr>
