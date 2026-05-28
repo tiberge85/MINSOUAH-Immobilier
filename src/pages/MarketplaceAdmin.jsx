@@ -1,6 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../lib/firebase';
+import { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 
@@ -52,13 +50,32 @@ function ImageThumb({ url }) {
 }
 
 /* ── Image uploader ────────────────────────────────────────────────────────── */
-async function uploadToImgbb(file, apiKey) {
-  const b64 = await new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result.split(',')[1]);
-    r.onerror = rej;
-    r.readAsDataURL(file);
+async function compressToDataUrl(file, maxPx = 900, quality = 0.78) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const ratio = Math.min(1, maxPx / Math.max(img.width, img.height));
+        const w = Math.round(img.width  * ratio);
+        const h = Math.round(img.height * ratio);
+        const canvas = document.createElement('canvas');
+        canvas.width  = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
   });
+}
+
+async function uploadToImgbb(file, apiKey) {
+  const dataUrl = await compressToDataUrl(file);
+  const b64 = dataUrl.split(',')[1];
   const body = new FormData();
   body.append('key', apiKey);
   body.append('image', b64);
@@ -80,24 +97,22 @@ function ImageUploader({ images, onChange, listingId, imgbbApiKey }) {
     setUploading(true);
     setUploadError('');
     const urls = [...images];
-    const id = listingId || `lst_${Date.now()}`;
     for (const file of Array.from(files)) {
-      setProgress(`Upload ${urls.length + 1}/${Array.from(files).length}…`);
+      setProgress(`${urls.length + 1}/${Array.from(files).length}…`);
       try {
         let url;
         if (imgbbApiKey) {
           url = await uploadToImgbb(file, imgbbApiKey);
         } else {
-          const storageRef = ref(storage, `listings/${id}/${Date.now()}_${file.name}`);
-          const snap = await uploadBytes(storageRef, file);
-          url = await getDownloadURL(snap.ref);
+          // No external service configured — compress locally and store as data URL
+          url = await compressToDataUrl(file);
         }
         urls.push(url);
       } catch (err) {
         console.error('Upload error:', err);
         setUploadError(imgbbApiKey
           ? 'Erreur imgbb — vérifiez votre clé API dans Paramètres → Marketplace.'
-          : 'Firebase Storage non activé. Configurez une clé imgbb dans Paramètres → Marketplace ou activez Firebase Storage.'
+          : 'Erreur de compression. Réessayez avec un autre fichier.'
         );
         setUploading(false);
         setProgress('');
@@ -109,20 +124,10 @@ function ImageUploader({ images, onChange, listingId, imgbbApiKey }) {
     onChange(urls);
   };
 
-  const [urlWarning, setUrlWarning] = useState('');
-
   const addByUrl = () => {
     const raw = urlInput.trim();
     if (!raw) return;
-    let parsed;
-    try { parsed = new URL(raw); } catch { alert('URL invalide'); return; }
-
-    // Detect imgbb share page (ibb.co/ID) — not the direct image URL
-    if (parsed.hostname === 'ibb.co') {
-      setUrlWarning('ibb.co');
-      return;
-    }
-    setUrlWarning('');
+    try { new URL(raw); } catch { alert('URL invalide'); return; }
     onChange([...images, raw]);
     setUrlInput('');
   };
@@ -131,16 +136,6 @@ function ImageUploader({ images, onChange, listingId, imgbbApiKey }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {!imgbbApiKey && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-xs text-blue-800 flex items-start gap-2">
-          <Icon name="info" size={14} className="flex-shrink-0 mt-0.5" />
-          <div>
-            <strong>Upload de fichiers désactivé</strong> — Configurez une clé <strong>imgbb.com</strong> dans{' '}
-            <strong>Paramètres Plateforme → Marketplace</strong> pour activer l'upload direct.
-            En attendant, collez une URL d'image ci-dessous.
-          </div>
-        </div>
-      )}
       {uploadError && (
         <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-800 flex items-start gap-2">
           <Icon name="error" size={14} className="flex-shrink-0 mt-0.5" />
@@ -160,10 +155,9 @@ function ImageUploader({ images, onChange, listingId, imgbbApiKey }) {
             )}
           </div>
         ))}
-        <button onClick={() => fileRef.current?.click()}
-          disabled={uploading || !imgbbApiKey}
-          title={!imgbbApiKey ? 'Configurez d\'abord une clé imgbb dans les paramètres' : undefined}
-          className="w-24 h-20 rounded-xl border-2 border-dashed border-outline-variant flex flex-col items-center justify-center gap-1 text-on-surface-variant hover:border-primary hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+        {/* File upload — always enabled, uses canvas compression when no imgbb key */}
+        <button onClick={() => fileRef.current?.click()} disabled={uploading}
+          className="w-24 h-20 rounded-xl border-2 border-dashed border-outline-variant flex flex-col items-center justify-center gap-1 text-on-surface-variant hover:border-primary hover:text-primary transition-colors disabled:opacity-40">
           {uploading
             ? <><Icon name="progress_activity" size={18} className="animate-spin" /><span className="text-[10px]">{progress}</span></>
             : <><Icon name="add_photo_alternate" size={20} /><span className="text-[10px] font-semibold">Fichier</span></>
@@ -172,29 +166,8 @@ function ImageUploader({ images, onChange, listingId, imgbbApiKey }) {
       </div>
       <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
         onChange={e => { if (e.target.files?.length) upload(e.target.files); e.target.value = ''; }} />
-      {/* URL input */}
-      <div className="flex gap-2">
-        <input value={urlInput} onChange={e => { setUrlInput(e.target.value); setUrlWarning(''); }}
-          onKeyDown={e => e.key === 'Enter' && addByUrl()}
-          onBlur={() => { if (urlInput.trim()) addByUrl(); }}
-          placeholder="URL directe d'image (.jpg, .png, .webp…)"
-          className="flex-1 px-3 py-2 text-sm bg-surface border border-outline-variant rounded-xl focus:outline-none focus:border-primary" />
-        <button onClick={addByUrl} disabled={!urlInput.trim()}
-          className="px-3 py-2 text-sm font-semibold bg-surface-container border border-outline-variant rounded-xl hover:bg-surface-container-high disabled:opacity-40 flex items-center gap-1">
-          <Icon name="add_link" size={14} /> Ajouter
-        </button>
-      </div>
-      {urlWarning === 'ibb.co' && (
-        <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 text-xs text-amber-900 flex flex-col gap-2">
-          <p className="font-bold flex items-center gap-1.5"><Icon name="warning" size={14} />Lien de partage imgbb — pas un lien direct</p>
-          <p>Sur imgbb, après avoir uploadé, cliquez sur votre image puis cherchez <strong>"Direct link"</strong> (ou "Lien direct"). Ce lien commence par <code className="bg-amber-100 px-1 rounded">https://i.ibb.co/…</code> (avec le "i." au début).</p>
-          <p>Le lien <code className="bg-amber-100 px-1 rounded">https://ibb.co/…</code> est une page web, pas l'image elle-même.</p>
-        </div>
-      )}
-      <p className="text-[10px] text-on-surface-variant leading-relaxed">
-        L'URL doit commencer par <code>https://i.ibb.co/</code> (imgbb direct) ou pointer vers un <code>.jpg</code>/<code>.png</code>.<br />
-        <strong>Ne fonctionne pas :</strong> <code>ibb.co/…</code> (page de partage), Google Drive, Google Photos, WhatsApp.<br />
-        <strong>Fonctionne :</strong> <code>i.ibb.co/…</code> (lien direct imgbb), Imgur (<code>i.imgur.com</code>), Cloudinary.
+      <p className="text-[10px] text-on-surface-variant">
+        Cliquez <strong>Fichier</strong> pour uploader directement depuis votre appareil (recommandé).
       </p>
     </div>
   );
