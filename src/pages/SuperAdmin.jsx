@@ -1383,7 +1383,12 @@ function PlatformTab({ state, dispatch, showToast, onResetClick }) {
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState(null);
 
+  const [mktPhone,    setMktPhone]    = useState(sys.paymentPhone  || '');
+  const [imgbbKey,    setImgbbKey]    = useState(sys.imgbbApiKey   || '');
+  const [imgbbHidden, setImgbbHidden] = useState(true);
+
   const saveSmtp = () => { dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: { smtp } }); showToast('Config SMTP enregistrée'); };
+  const saveMkt  = () => { dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: { paymentPhone: mktPhone.trim(), imgbbApiKey: imgbbKey.trim() } }); showToast('Paramètres Marketplace enregistrés'); };
 
   const handleTestEmail = async () => {
     if (!testEmail.trim()) { showToast('Entrez un email de destination'); return; }
@@ -1395,8 +1400,9 @@ function PlatformTab({ state, dispatch, showToast, onResetClick }) {
   };
 
   const SECTIONS = [
-    { key: 'smtp',       label: 'SMTP / Email', icon: 'email' },
-    { key: 'monitoring', label: 'Monitoring',    icon: 'monitor_heart' },
+    { key: 'smtp',        label: 'SMTP / Email', icon: 'email' },
+    { key: 'marketplace', label: 'Marketplace',  icon: 'storefront' },
+    { key: 'monitoring',  label: 'Monitoring',   icon: 'monitor_heart' },
   ];
 
   return (
@@ -1447,6 +1453,59 @@ function PlatformTab({ state, dispatch, showToast, onResetClick }) {
             {testResult === 'ok' && <div className="mt-3 flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm"><Icon name="check_circle" size={16} />Email enregistré dans la queue Firestore.</div>}
             {testResult === 'error' && <div className="mt-3 flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-xl text-error text-sm"><Icon name="error" size={16} />Échec — vérifiez que l'extension Trigger Email est installée.</div>}
           </div>
+        </div>
+      )}
+
+      {section === 'marketplace' && (
+        <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-6">
+          <div>
+            <h3 className="font-bold text-on-surface flex items-center gap-2"><Icon name="storefront" filled />Paramètres Marketplace</h3>
+            <p className="text-xs text-on-surface-variant mt-1">Numéro de paiement mobile money et hébergement des photos d'annonces.</p>
+          </div>
+
+          {/* Payment phone */}
+          <div>
+            <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
+              Numéro Mobile Money (paiement déblocage contact)
+            </label>
+            <input value={mktPhone} onChange={e => setMktPhone(e.target.value)}
+              placeholder="+225 07 00 00 00 00"
+              className={inputCls} />
+            <p className="text-[10px] text-on-surface-variant mt-1">
+              Ce numéro s'affiche dans la fenêtre de paiement quand un visiteur veut débloquer le contact d'une annonce.
+            </p>
+          </div>
+
+          {/* imgbb API key */}
+          <div>
+            <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
+              Clé API imgbb.com (upload photos d'annonces)
+            </label>
+            <div className="flex gap-2">
+              <input value={imgbbKey} onChange={e => setImgbbKey(e.target.value)}
+                type={imgbbHidden ? 'password' : 'text'}
+                placeholder="Votre clé API imgbb (ex: abc123def456…)"
+                className={`flex-1 ${inputCls}`} />
+              <button onClick={() => setImgbbHidden(v => !v)}
+                className="px-3 py-2 border border-outline-variant/30 rounded-xl text-on-surface-variant hover:text-on-surface">
+                <Icon name={imgbbHidden ? 'visibility' : 'visibility_off'} size={16} />
+              </button>
+            </div>
+            <div className="mt-2 bg-primary/5 border border-primary/20 rounded-xl p-3 text-xs text-on-surface-variant">
+              <p className="font-semibold text-primary mb-1 flex items-center gap-1"><Icon name="tips_and_updates" size={13} />Comment obtenir une clé imgbb gratuite</p>
+              <ol className="list-decimal list-inside space-y-0.5">
+                <li>Allez sur <strong>imgbb.com</strong> → créez un compte gratuit</li>
+                <li>Menu utilisateur → <strong>API</strong></li>
+                <li>Copiez votre clé API et collez-la ci-dessus</li>
+              </ol>
+              <p className="mt-1.5">Une fois configurée, le bouton "Fichier" dans l'éditeur d'annonces sera actif et les photos s'uploadent automatiquement.</p>
+            </div>
+          </div>
+
+          <button onClick={saveMkt}
+            className="px-5 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 flex items-center gap-2 transition-colors w-fit">
+            <Icon name="save" size={16} />Enregistrer
+          </button>
         </div>
       )}
 

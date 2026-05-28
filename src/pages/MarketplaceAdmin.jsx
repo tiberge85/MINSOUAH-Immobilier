@@ -52,28 +52,53 @@ function ImageThumb({ url }) {
 }
 
 /* ── Image uploader ────────────────────────────────────────────────────────── */
-function ImageUploader({ images, onChange, listingId }) {
+async function uploadToImgbb(file, apiKey) {
+  const b64 = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+  const body = new FormData();
+  body.append('key', apiKey);
+  body.append('image', b64);
+  const resp = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body });
+  if (!resp.ok) throw new Error(`imgbb ${resp.status}`);
+  const json = await resp.json();
+  if (!json.success) throw new Error(json.error?.message || 'imgbb error');
+  return json.data.url;
+}
+
+function ImageUploader({ images, onChange, listingId, imgbbApiKey }) {
   const fileRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState('');
   const [urlInput, setUrlInput] = useState('');
-  const [storageError, setStorageError] = useState(false);
+  const [uploadError, setUploadError] = useState('');
 
   const upload = async (files) => {
     setUploading(true);
-    setStorageError(false);
+    setUploadError('');
     const urls = [...images];
     const id = listingId || `lst_${Date.now()}`;
     for (const file of Array.from(files)) {
-      setProgress(`Upload ${urls.length + 1}…`);
+      setProgress(`Upload ${urls.length + 1}/${Array.from(files).length}…`);
       try {
-        const storageRef = ref(storage, `listings/${id}/${Date.now()}_${file.name}`);
-        const snap = await uploadBytes(storageRef, file);
-        const url = await getDownloadURL(snap.ref);
+        let url;
+        if (imgbbApiKey) {
+          url = await uploadToImgbb(file, imgbbApiKey);
+        } else {
+          const storageRef = ref(storage, `listings/${id}/${Date.now()}_${file.name}`);
+          const snap = await uploadBytes(storageRef, file);
+          url = await getDownloadURL(snap.ref);
+        }
         urls.push(url);
       } catch (err) {
-        console.error('Storage upload error:', err);
-        setStorageError(true);
+        console.error('Upload error:', err);
+        setUploadError(imgbbApiKey
+          ? 'Erreur imgbb — vérifiez votre clé API dans Paramètres → Marketplace.'
+          : 'Firebase Storage non activé. Configurez une clé imgbb dans Paramètres → Marketplace ou activez Firebase Storage.'
+        );
         setUploading(false);
         setProgress('');
         return;
@@ -96,13 +121,20 @@ function ImageUploader({ images, onChange, listingId }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {storageError && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-800 flex items-start gap-2">
+      {!imgbbApiKey && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-xs text-blue-800 flex items-start gap-2">
           <Icon name="info" size={14} className="flex-shrink-0 mt-0.5" />
           <div>
-            <strong>Firebase Storage non activé</strong> — Activez Storage dans la <a href="https://console.firebase.google.com/project/minsouah-7d698/storage" target="_blank" rel="noopener noreferrer" className="underline">console Firebase</a>, puis déployez les règles.<br />
-            En attendant, utilisez des URLs d'images externes (Google Drive, Imgur, etc.).
+            <strong>Upload de fichiers désactivé</strong> — Configurez une clé <strong>imgbb.com</strong> dans{' '}
+            <strong>Paramètres Plateforme → Marketplace</strong> pour activer l'upload direct.
+            En attendant, collez une URL d'image ci-dessous.
           </div>
+        </div>
+      )}
+      {uploadError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-800 flex items-start gap-2">
+          <Icon name="error" size={14} className="flex-shrink-0 mt-0.5" />
+          <span>{uploadError}</span>
         </div>
       )}
       <div className="flex flex-wrap gap-3">
@@ -119,8 +151,9 @@ function ImageUploader({ images, onChange, listingId }) {
           </div>
         ))}
         <button onClick={() => fileRef.current?.click()}
-          disabled={uploading}
-          className="w-24 h-20 rounded-xl border-2 border-dashed border-outline-variant flex flex-col items-center justify-center gap-1 text-on-surface-variant hover:border-primary hover:text-primary transition-colors disabled:opacity-50">
+          disabled={uploading || !imgbbApiKey}
+          title={!imgbbApiKey ? 'Configurez d\'abord une clé imgbb dans les paramètres' : undefined}
+          className="w-24 h-20 rounded-xl border-2 border-dashed border-outline-variant flex flex-col items-center justify-center gap-1 text-on-surface-variant hover:border-primary hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
           {uploading
             ? <><Icon name="progress_activity" size={18} className="animate-spin" /><span className="text-[10px]">{progress}</span></>
             : <><Icon name="add_photo_alternate" size={20} /><span className="text-[10px] font-semibold">Fichier</span></>
@@ -129,21 +162,22 @@ function ImageUploader({ images, onChange, listingId }) {
       </div>
       <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
         onChange={e => { if (e.target.files?.length) upload(e.target.files); e.target.value = ''; }} />
-      {/* URL fallback */}
+      {/* URL input */}
       <div className="flex gap-2">
         <input value={urlInput} onChange={e => setUrlInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && addByUrl()}
           onBlur={() => { if (urlInput.trim()) addByUrl(); }}
-          placeholder="Coller une URL d'image (https://…)"
+          placeholder="URL directe d'image (.jpg, .png, .webp…)"
           className="flex-1 px-3 py-2 text-sm bg-surface border border-outline-variant rounded-xl focus:outline-none focus:border-primary" />
         <button onClick={addByUrl} disabled={!urlInput.trim()}
           className="px-3 py-2 text-sm font-semibold bg-surface-container border border-outline-variant rounded-xl hover:bg-surface-container-high disabled:opacity-40 flex items-center gap-1">
           <Icon name="add_link" size={14} /> Ajouter
         </button>
       </div>
-      <p className="text-[10px] text-on-surface-variant">
-        Fichier (JPG, PNG, max 10 Mo) ou URL directe vers une image. Utilisez <strong>Imgur</strong>, <strong>imgbb.com</strong> ou Cloudinary.
-        Les liens Google Drive ne fonctionnent pas — il faut une URL se terminant par .jpg/.png.
+      <p className="text-[10px] text-on-surface-variant leading-relaxed">
+        L'URL doit pointer directement vers un fichier image (se terminer par <code>.jpg</code>, <code>.png</code>, etc.).<br />
+        <strong>Ne fonctionne pas :</strong> Google Drive, Google Photos, WhatsApp, Facebook, Instagram.<br />
+        <strong>Fonctionne :</strong> <a href="https://imgbb.com" target="_blank" rel="noopener noreferrer" className="underline text-primary">imgbb.com</a> (gratuit — uploader → copier le lien direct), Imgur, Cloudinary.
       </p>
     </div>
   );
@@ -151,6 +185,8 @@ function ImageUploader({ images, onChange, listingId }) {
 
 /* ── Listing form modal ─────────────────────────────────────────────────────── */
 function ListingFormModal({ initial, onSave, onClose }) {
+  const { state } = useApp();
+  const imgbbApiKey = state.systemSettings?.imgbbApiKey || '';
   const [form, setForm] = useState(initial || EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
@@ -271,7 +307,7 @@ function ListingFormModal({ initial, onSave, onClose }) {
           {/* Photos */}
           <div>
             <label className="form-label">Photos ({form.images.length})</label>
-            <ImageUploader images={form.images} onChange={urls => set('images', urls)} listingId={initial?.id} />
+            <ImageUploader images={form.images} onChange={urls => set('images', urls)} listingId={initial?.id} imgbbApiKey={imgbbApiKey} />
           </div>
 
           {/* Contact */}

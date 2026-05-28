@@ -29,7 +29,7 @@ const PAYMENT_METHODS = [
   { id: 'cinetpay', label: 'CinetPay / Carte', icon: 'credit_card', bg: 'bg-violet-600 text-white' },
 ];
 
-function PaymentModal({ listing, onClose, onSuccess, onDispatch }) {
+function PaymentModal({ listing, onClose, onSuccess, onDispatch, paymentPhone }) {
   const [step,    setStep]    = useState('choose'); // 'choose' | 'pay' | 'done'
   const [method,  setMethod]  = useState(null);
   const [txRef,   setTxRef]   = useState('');
@@ -109,7 +109,7 @@ function PaymentModal({ listing, onClose, onSuccess, onDispatch }) {
                   <li>Envoyez <strong className="text-on-surface">{price.toLocaleString('fr-CI')} FCFA</strong> au numéro :</li>
                 </ol>
                 <p className="text-center text-lg font-black text-on-surface tracking-widest my-2">
-                  +225 07 XX XX XX XX
+                  {paymentPhone || '+225 07 XX XX XX XX'}
                 </p>
                 <p className="text-[10px] text-center text-on-surface-variant">Numéro de paiement Minsouah</p>
                 <ol className="text-xs text-on-surface-variant list-decimal list-inside mt-2 flex flex-col gap-1" start={3}>
@@ -315,7 +315,7 @@ function PropertyCard({ listing, onOpen, isFav, onToggleFav }) {
 }
 
 /* ── Detail Modal ───────────────────────────────────────────────────────────── */
-function ListingDetailModal({ listing, onClose, onToggleFav, isFav, onContact, onDispatch }) {
+function ListingDetailModal({ listing, onClose, onToggleFav, isFav, onDispatch, paymentPhone }) {
   const [imgIdx,       setImgIdx]       = useState(0);
   const [showInterest, setShowInterest] = useState(false);
   const [unlocked,     setUnlocked]     = useState(() => checkUnlocked(listing.id));
@@ -531,6 +531,7 @@ function ListingDetailModal({ listing, onClose, onToggleFav, isFav, onContact, o
         onClose={() => setShowPayment(false)}
         onSuccess={() => { setUnlocked(true); setShowPayment(false); }}
         onDispatch={onDispatch}
+        paymentPhone={paymentPhone}
       />
     )}
   </>
@@ -854,6 +855,7 @@ export default function Marketplace() {
           onToggleFav={toggleFav}
           isFav={favs.has(selectedListing.id)}
           onDispatch={dispatch}
+          paymentPhone={state.systemSettings?.paymentPhone || ''}
         />
       )}
     </div>
