@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MarketplaceAdmin from './MarketplaceAdmin';
 import MarketplaceClients from './MarketplaceClients';
@@ -103,6 +103,37 @@ export default function SuperAdmin() {
   const [resetLoading, setResetLoading] = useState(false);
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 4000); };
+
+  // ── Idle session timeout (same logic as Layout.jsx) ───────────────────
+  const [showIdleWarning, setShowIdleWarning] = useState(false);
+  const idleTimerRef = useRef(null);
+  const warningTimerRef = useRef(null);
+  const IDLE_MS = ((state.systemSettings?.sessionTimeout) || 30) * 60 * 1000;
+  const WARN_MS = 2 * 60 * 1000;
+  useEffect(() => {
+    if (!state.currentUser) return;
+    const reset = () => {
+      setShowIdleWarning(false);
+      clearTimeout(idleTimerRef.current);
+      clearTimeout(warningTimerRef.current);
+      if (IDLE_MS > WARN_MS) {
+        warningTimerRef.current = setTimeout(() => setShowIdleWarning(true), IDLE_MS - WARN_MS);
+      }
+      idleTimerRef.current = setTimeout(() => {
+        dispatch({ type: 'LOGOUT' });
+        navigate('/login');
+      }, IDLE_MS);
+    };
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach(e => window.addEventListener(e, reset, { passive: true }));
+    reset();
+    return () => {
+      clearTimeout(idleTimerRef.current);
+      clearTimeout(warningTimerRef.current);
+      events.forEach(e => window.removeEventListener(e, reset));
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.currentUser?.id, IDLE_MS]);
 
   const { organizations = [], users = [], properties = [], contracts = [], payments = [], activityLog = [] } = state;
   const licenses = state.licenses || [];
@@ -459,8 +490,25 @@ export default function SuperAdmin() {
 
   return (
     <div className="min-h-screen bg-background">
+      {showIdleWarning && (
+        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4">
+          <div className="bg-surface rounded-2xl shadow-2xl p-6 max-w-sm w-full text-center">
+            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Icon name="timer" size={32} className="text-amber-600" />
+            </div>
+            <h3 className="font-bold text-lg text-on-surface mb-2">Session inactive</h3>
+            <p className="text-sm text-on-surface-variant mb-5">
+              Vous allez être déconnecté dans 2 minutes par mesure de sécurité.
+            </p>
+            <button onClick={() => setShowIdleWarning(false)}
+              className="w-full py-3 bg-primary text-on-primary rounded-xl font-bold hover:bg-primary/90">
+              Je suis là — Continuer
+            </button>
+          </div>
+        </div>
+      )}
       {toast && (
-        <div className="fixed top-5 right-5 z-[9999] bg-tertiary text-on-tertiary px-5 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm font-semibold animate-fade-in">
+        <div className="fixed top-5 right-5 z-[9998] bg-tertiary text-on-tertiary px-5 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm font-semibold animate-fade-in">
           <Icon name="check_circle" size={16} /> {toast}
         </div>
       )}

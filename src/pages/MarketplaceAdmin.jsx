@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../lib/firebase';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
@@ -131,7 +131,9 @@ function ImageUploader({ images, onChange, listingId }) {
         onChange={e => { if (e.target.files?.length) upload(e.target.files); e.target.value = ''; }} />
       {/* URL fallback */}
       <div className="flex gap-2">
-        <input value={urlInput} onChange={e => setUrlInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && addByUrl()}
+        <input value={urlInput} onChange={e => setUrlInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && addByUrl()}
+          onBlur={() => { if (urlInput.trim()) addByUrl(); }}
           placeholder="Coller une URL d'image (https://…)"
           className="flex-1 px-3 py-2 text-sm bg-surface border border-outline-variant rounded-xl focus:outline-none focus:border-primary" />
         <button onClick={addByUrl} disabled={!urlInput.trim()}
