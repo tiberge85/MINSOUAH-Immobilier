@@ -161,6 +161,7 @@ export function AppProvider({ children }) {
     currentUser: null,
     orgSettings: DEFAULT_ORG,
     systemSettings: DEFAULT_SYSTEM,
+    publicMarketplace: {},
     _bootstrapping: true,
     _networkError: false,
   });
@@ -282,6 +283,10 @@ export function AppProvider({ children }) {
           ),
           onSnapshot(wsDoc('settings', 'system'),
             (snap) => { if (snap.exists()) setState((s) => ({ ...s, systemSettings: { ...DEFAULT_SYSTEM, ...snap.data() } })); },
+            () => {}
+          ),
+          onSnapshot(wsDoc('publicSettings', 'marketplace'),
+            (snap) => { if (snap.exists()) setState((s) => ({ ...s, publicMarketplace: snap.data() })); },
             () => {}
           )
         );
@@ -810,6 +815,13 @@ export function AppProvider({ children }) {
         case 'UPDATE_SYSTEM_SETTINGS': {
           const sysData = { ...st.systemSettings, ...payload };
           await setDoc(wsDoc('settings', 'system'), sysData);
+          // Mirror public fields (paymentPhone) so anonymous marketplace visitors can read them
+          if ('paymentPhone' in payload || 'imgbbApiKey' in payload) {
+            await setDoc(wsDoc('publicSettings', 'marketplace'), {
+              paymentPhone: sysData.paymentPhone || '',
+              updatedAt: new Date().toISOString(),
+            });
+          }
           setState((s) => ({ ...s, systemSettings: sysData }));
           break;
         }

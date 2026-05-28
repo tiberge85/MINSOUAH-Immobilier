@@ -855,7 +855,7 @@ export default function Marketplace() {
           onToggleFav={toggleFav}
           isFav={favs.has(selectedListing.id)}
           onDispatch={dispatch}
-          paymentPhone={state.systemSettings?.paymentPhone || ''}
+          paymentPhone={state.publicMarketplace?.paymentPhone || state.systemSettings?.paymentPhone || ''}
         />
       )}
     </div>

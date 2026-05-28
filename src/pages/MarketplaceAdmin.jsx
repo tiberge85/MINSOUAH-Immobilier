@@ -197,7 +197,7 @@ function ListingFormModal({ initial, onSave, onClose }) {
       onClose();
     } catch (err) {
       console.error('Save error:', err);
-      alert('Erreur lors de l\'enregistrement. Si vous avez beaucoup d\'images, essayez d\'en supprimer quelques-unes.');
+      alert(`Erreur: ${err?.code || err?.message || 'inconnue'}.\n\nSi "permission-denied" → reconnectez-vous. Si "resource-exhausted" → supprimez des images.`);
     } finally {
       setSaving(false);
     }
