@@ -50,7 +50,7 @@ function ImageThumb({ url }) {
 }
 
 /* ── Image uploader ────────────────────────────────────────────────────────── */
-async function compressToDataUrl(file, maxPx = 900, quality = 0.78) {
+async function compressToDataUrl(file, maxPx = 600, quality = 0.65) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = reject;
@@ -192,10 +192,15 @@ function ListingFormModal({ initial, onSave, onClose }) {
   const handleSave = async () => {
     if (!form.title || !form.price || !form.zone) { alert('Titre, prix et zone sont obligatoires.'); return; }
     setSaving(true);
-    // Use latestImagesRef to capture any URL added via onBlur just before save
-    await onSave({ ...form, images: latestImagesRef.current, price: parseFloat(form.price) || 0, unlockPrice: parseFloat(form.unlockPrice) ?? 500, surface: parseFloat(form.surface) || 0, rooms: parseInt(form.rooms) || 0, bedrooms: parseInt(form.bedrooms) || 0, bathrooms: parseInt(form.bathrooms) || 0, floor: form.floor ? parseInt(form.floor) : null });
-    setSaving(false);
-    onClose();
+    try {
+      await onSave({ ...form, images: latestImagesRef.current, price: parseFloat(form.price) || 0, unlockPrice: parseFloat(form.unlockPrice) ?? 500, surface: parseFloat(form.surface) || 0, rooms: parseInt(form.rooms) || 0, bedrooms: parseInt(form.bedrooms) || 0, bathrooms: parseInt(form.bathrooms) || 0, floor: form.floor ? parseInt(form.floor) : null });
+      onClose();
+    } catch (err) {
+      console.error('Save error:', err);
+      alert('Erreur lors de l\'enregistrement. Si vous avez beaucoup d\'images, essayez d\'en supprimer quelques-unes.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
