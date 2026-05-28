@@ -540,35 +540,45 @@ function ListingDetailModal({ listing, onClose, onToggleFav, isFav, onDispatch, 
 
 /* ── Interest / Register Form ───────────────────────────────────────────────── */
 function InterestForm({ listing, onClose, onDispatch }) {
-  const [form,    setForm]    = useState({ name: '', phone: '', email: '', budget: '', zone: listing.zone || '', type: listing.type || '', rooms: '', notes: '' });
-  const [sent,    setSent]    = useState(false);
-  const [sending, setSending] = useState(false);
+  const [form, setForm] = useState({ name: '', phone: '', budget: '', notes: '' });
+  const [sent, setSent] = useState(false);
 
-  const handleSend = async () => {
-    if (!form.name || !form.phone || sending) return;
-    setSending(true);
-    try {
-      await onDispatch({
-        type: 'ADD_LISTING_CLIENT',
-        payload: {
-          ...form,
-          listingId:    listing.id,
-          listingTitle: listing.title,
-          uid:          null,
-        },
-      });
-    } catch (_) { /* save failed — still show success to visitor */ }
-    try {
-      await onDispatch({ type: 'INCREMENT_LISTING_REACTION', payload: listing.id });
-    } catch (_) {}
-    setSending(false);
+  const waTarget = phoneForWA(listing.contactWhatsApp || listing.contactPhone);
+
+  const handleSend = () => {
+    if (!form.name || !form.phone) return;
+
+    // Save to Firestore in the background (no blocking await)
+    onDispatch({
+      type: 'ADD_LISTING_CLIENT',
+      payload: { ...form, listingId: listing.id, listingTitle: listing.title, uid: null },
+    }).catch(() => {});
+    onDispatch({ type: 'INCREMENT_LISTING_REACTION', payload: listing.id }).catch(() => {});
+
+    // Build WhatsApp message
+    const lines = [
+      `Bonjour, je suis intéressé(e) par votre annonce *${listing.title}* (${listing.zone}).`,
+      ``,
+      `👤 Nom : ${form.name}`,
+      `📞 Téléphone : ${form.phone}`,
+      form.budget ? `💰 Budget max : ${form.budget} FCFA` : null,
+      form.notes  ? `📝 ${form.notes}` : null,
+      ``,
+      `_(via Minsouah Immobilier)_`,
+    ].filter(l => l !== null).join('\n');
+
+    if (waTarget) {
+      window.open(`https://wa.me/${waTarget}?text=${encodeURIComponent(lines)}`, '_blank');
+    }
     setSent(true);
   };
 
   if (sent) return (
     <div className="bg-green-50 border border-green-200 rounded-2xl p-5 text-center">
       <Icon name="check_circle" size={36} className="text-green-600 mx-auto mb-2" />
-      <p className="font-bold text-green-800 text-sm">Votre demande a bien été enregistrée !</p>
+      <p className="font-bold text-green-800 text-sm">
+        {waTarget ? 'WhatsApp ouvert — votre message est prêt !' : 'Demande enregistrée !'}
+      </p>
       <p className="text-xs text-green-600 mt-1">Un conseiller vous contactera très prochainement.</p>
       <button onClick={onClose} className="mt-3 text-xs text-green-700 underline">Fermer</button>
     </div>
@@ -576,28 +586,30 @@ function InterestForm({ listing, onClose, onDispatch }) {
 
   return (
     <div className="bg-surface-container rounded-2xl p-4 flex flex-col gap-3">
-      <p className="text-xs text-on-surface-variant font-semibold">Laissez vos coordonnées — un conseiller vous recontacte :</p>
+      <p className="text-xs text-on-surface-variant font-semibold flex items-center gap-1.5">
+        <Icon name="chat" size={14} className="text-green-600" />
+        Remplissez vos coordonnées — un message WhatsApp sera préparé pour vous :
+      </p>
       <div className="grid grid-cols-2 gap-3">
         <input placeholder="Nom complet *" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))}
           className="col-span-2 px-3 py-2 bg-surface border border-outline-variant rounded-xl text-sm focus:outline-none focus:border-primary" />
         <input placeholder="Téléphone *" value={form.phone} onChange={e => setForm(f => ({...f, phone: e.target.value}))}
           className="px-3 py-2 bg-surface border border-outline-variant rounded-xl text-sm focus:outline-none focus:border-primary" />
-        <input placeholder="Email" value={form.email} onChange={e => setForm(f => ({...f, email: e.target.value}))}
-          className="px-3 py-2 bg-surface border border-outline-variant rounded-xl text-sm focus:outline-none focus:border-primary" />
         <input placeholder="Budget max (FCFA)" value={form.budget} onChange={e => setForm(f => ({...f, budget: e.target.value}))}
-          className="px-3 py-2 bg-surface border border-outline-variant rounded-xl text-sm focus:outline-none focus:border-primary" />
-        <input placeholder="Zone souhaitée" value={form.zone} onChange={e => setForm(f => ({...f, zone: e.target.value}))}
           className="px-3 py-2 bg-surface border border-outline-variant rounded-xl text-sm focus:outline-none focus:border-primary" />
         <textarea placeholder="Message ou précisions..." value={form.notes} onChange={e => setForm(f => ({...f, notes: e.target.value}))} rows={2}
           className="col-span-2 px-3 py-2 bg-surface border border-outline-variant rounded-xl text-sm focus:outline-none focus:border-primary resize-none" />
       </div>
+      {!waTarget && (
+        <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Aucun numéro WhatsApp configuré sur cette annonce. Votre demande sera tout de même enregistrée.
+        </p>
+      )}
       <div className="flex gap-2">
         <button onClick={onClose} className="flex-1 py-2 text-sm text-on-surface-variant bg-surface border border-outline-variant rounded-xl font-semibold">Annuler</button>
-        <button onClick={handleSend} disabled={!form.name || !form.phone || sending}
-          className="flex-1 py-2 text-sm text-on-primary bg-primary rounded-xl font-bold disabled:opacity-40 flex items-center justify-center gap-2">
-          {sending
-            ? <><Icon name="progress_activity" size={14} className="animate-spin" /> Envoi…</>
-            : <><Icon name="send" size={14} /> Envoyer</>}
+        <button onClick={handleSend} disabled={!form.name || !form.phone}
+          className="flex-1 py-2.5 text-sm font-black text-white bg-[#25D366] hover:bg-[#1ebe5c] rounded-xl disabled:opacity-40 flex items-center justify-center gap-2">
+          <Icon name="chat" size={15} /> Envoyer via WhatsApp
         </button>
       </div>
     </div>
