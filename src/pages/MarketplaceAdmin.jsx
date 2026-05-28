@@ -206,6 +206,9 @@ function ListingFormModal({ initial, onSave, onClose }) {
   const imgbbApiKey = state.systemSettings?.imgbbApiKey || '';
   const [form, setForm] = useState(initial || EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  // Keep a ref that's always current — needed because onBlur + click save
+  // happen in the same event loop tick and React state updates are batched
+  const latestImagesRef = useRef(form.images);
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
   const toggleAmenity = (a) => set('amenities', form.amenities.includes(a)
@@ -216,7 +219,8 @@ function ListingFormModal({ initial, onSave, onClose }) {
   const handleSave = async () => {
     if (!form.title || !form.price || !form.zone) { alert('Titre, prix et zone sont obligatoires.'); return; }
     setSaving(true);
-    await onSave({ ...form, price: parseFloat(form.price) || 0, unlockPrice: parseFloat(form.unlockPrice) ?? 500, surface: parseFloat(form.surface) || 0, rooms: parseInt(form.rooms) || 0, bedrooms: parseInt(form.bedrooms) || 0, bathrooms: parseInt(form.bathrooms) || 0, floor: form.floor ? parseInt(form.floor) : null });
+    // Use latestImagesRef to capture any URL added via onBlur just before save
+    await onSave({ ...form, images: latestImagesRef.current, price: parseFloat(form.price) || 0, unlockPrice: parseFloat(form.unlockPrice) ?? 500, surface: parseFloat(form.surface) || 0, rooms: parseInt(form.rooms) || 0, bedrooms: parseInt(form.bedrooms) || 0, bathrooms: parseInt(form.bathrooms) || 0, floor: form.floor ? parseInt(form.floor) : null });
     setSaving(false);
     onClose();
   };
@@ -324,7 +328,7 @@ function ListingFormModal({ initial, onSave, onClose }) {
           {/* Photos */}
           <div>
             <label className="form-label">Photos ({form.images.length})</label>
-            <ImageUploader images={form.images} onChange={urls => set('images', urls)} listingId={initial?.id} imgbbApiKey={imgbbApiKey} />
+            <ImageUploader images={form.images} onChange={urls => { latestImagesRef.current = urls; set('images', urls); }} listingId={initial?.id} imgbbApiKey={imgbbApiKey} />
           </div>
 
           {/* Contact */}
