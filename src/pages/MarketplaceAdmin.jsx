@@ -109,11 +109,21 @@ function ImageUploader({ images, onChange, listingId, imgbbApiKey }) {
     onChange(urls);
   };
 
+  const [urlWarning, setUrlWarning] = useState('');
+
   const addByUrl = () => {
-    const url = urlInput.trim();
-    if (!url) return;
-    try { new URL(url); } catch { alert('URL invalide'); return; }
-    onChange([...images, url]);
+    const raw = urlInput.trim();
+    if (!raw) return;
+    let parsed;
+    try { parsed = new URL(raw); } catch { alert('URL invalide'); return; }
+
+    // Detect imgbb share page (ibb.co/ID) — not the direct image URL
+    if (parsed.hostname === 'ibb.co') {
+      setUrlWarning('ibb.co');
+      return;
+    }
+    setUrlWarning('');
+    onChange([...images, raw]);
     setUrlInput('');
   };
 
@@ -164,7 +174,7 @@ function ImageUploader({ images, onChange, listingId, imgbbApiKey }) {
         onChange={e => { if (e.target.files?.length) upload(e.target.files); e.target.value = ''; }} />
       {/* URL input */}
       <div className="flex gap-2">
-        <input value={urlInput} onChange={e => setUrlInput(e.target.value)}
+        <input value={urlInput} onChange={e => { setUrlInput(e.target.value); setUrlWarning(''); }}
           onKeyDown={e => e.key === 'Enter' && addByUrl()}
           onBlur={() => { if (urlInput.trim()) addByUrl(); }}
           placeholder="URL directe d'image (.jpg, .png, .webp…)"
@@ -174,10 +184,17 @@ function ImageUploader({ images, onChange, listingId, imgbbApiKey }) {
           <Icon name="add_link" size={14} /> Ajouter
         </button>
       </div>
+      {urlWarning === 'ibb.co' && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 text-xs text-amber-900 flex flex-col gap-2">
+          <p className="font-bold flex items-center gap-1.5"><Icon name="warning" size={14} />Lien de partage imgbb — pas un lien direct</p>
+          <p>Sur imgbb, après avoir uploadé, cliquez sur votre image puis cherchez <strong>"Direct link"</strong> (ou "Lien direct"). Ce lien commence par <code className="bg-amber-100 px-1 rounded">https://i.ibb.co/…</code> (avec le "i." au début).</p>
+          <p>Le lien <code className="bg-amber-100 px-1 rounded">https://ibb.co/…</code> est une page web, pas l'image elle-même.</p>
+        </div>
+      )}
       <p className="text-[10px] text-on-surface-variant leading-relaxed">
-        L'URL doit pointer directement vers un fichier image (se terminer par <code>.jpg</code>, <code>.png</code>, etc.).<br />
-        <strong>Ne fonctionne pas :</strong> Google Drive, Google Photos, WhatsApp, Facebook, Instagram.<br />
-        <strong>Fonctionne :</strong> <a href="https://imgbb.com" target="_blank" rel="noopener noreferrer" className="underline text-primary">imgbb.com</a> (gratuit — uploader → copier le lien direct), Imgur, Cloudinary.
+        L'URL doit commencer par <code>https://i.ibb.co/</code> (imgbb direct) ou pointer vers un <code>.jpg</code>/<code>.png</code>.<br />
+        <strong>Ne fonctionne pas :</strong> <code>ibb.co/…</code> (page de partage), Google Drive, Google Photos, WhatsApp.<br />
+        <strong>Fonctionne :</strong> <code>i.ibb.co/…</code> (lien direct imgbb), Imgur (<code>i.imgur.com</code>), Cloudinary.
       </p>
     </div>
   );
