@@ -63,5 +63,13 @@ service firebase.storage {
       allow read:  if isStaff();
       allow write: if isManager() && maxSize(25);
     }
+
+    // ── Photos marketplace (annonces publiques) ───────────────────────────────
+    // Lecture publique (anonymous OK). Écriture : tout utilisateur connecté
+    // (le contrôle métier "super admin seulement" est dans l'UI + Firestore rules).
+    match /listings/{listingId}/{fileName} {
+      allow read:  if true;
+      allow write: if isAuth() && isImage() && maxSize(10);
+    }
   }
 }

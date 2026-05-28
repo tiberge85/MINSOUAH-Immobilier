@@ -43,9 +43,12 @@ function ImageUploader({ images, onChange, listingId }) {
   const fileRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState('');
+  const [urlInput, setUrlInput] = useState('');
+  const [storageError, setStorageError] = useState(false);
 
   const upload = async (files) => {
     setUploading(true);
+    setStorageError(false);
     const urls = [...images];
     const id = listingId || `lst_${Date.now()}`;
     for (const file of Array.from(files)) {
@@ -56,7 +59,11 @@ function ImageUploader({ images, onChange, listingId }) {
         const url = await getDownloadURL(snap.ref);
         urls.push(url);
       } catch (err) {
-        alert(`Erreur upload: ${err.message}`);
+        console.error('Storage upload error:', err);
+        setStorageError(true);
+        setUploading(false);
+        setProgress('');
+        return;
       }
     }
     setUploading(false);
@@ -64,26 +71,37 @@ function ImageUploader({ images, onChange, listingId }) {
     onChange(urls);
   };
 
-  const remove = async (url, idx) => {
-    try {
-      const storageRef = ref(storage, url);
-      await deleteObject(storageRef);
-    } catch (_) { /* may not exist */ }
-    onChange(images.filter((_, i) => i !== idx));
+  const addByUrl = () => {
+    const url = urlInput.trim();
+    if (!url) return;
+    try { new URL(url); } catch { alert('URL invalide'); return; }
+    onChange([...images, url]);
+    setUrlInput('');
   };
+
+  const remove = (idx) => onChange(images.filter((_, i) => i !== idx));
 
   return (
     <div className="flex flex-col gap-3">
+      {storageError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-800 flex items-start gap-2">
+          <Icon name="info" size={14} className="flex-shrink-0 mt-0.5" />
+          <div>
+            <strong>Firebase Storage non activé</strong> — Activez Storage dans la <a href="https://console.firebase.google.com/project/minsouah-7d698/storage" target="_blank" rel="noopener noreferrer" className="underline">console Firebase</a>, puis déployez les règles.<br />
+            En attendant, utilisez des URLs d'images externes (Google Drive, Imgur, etc.).
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap gap-3">
         {images.map((url, idx) => (
           <div key={idx} className="relative w-24 h-20 rounded-xl overflow-hidden border border-outline-variant group">
-            <img src={url} alt="" className="w-full h-full object-cover" />
-            <button onClick={() => remove(url, idx)}
+            <img src={url} alt="" className="w-full h-full object-cover" onError={e => { e.target.style.display='none'; }} />
+            <button onClick={() => remove(idx)}
               className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
               <Icon name="delete" size={18} />
             </button>
             {idx === 0 && (
-              <span className="absolute top-1 left-1 text-[9px] bg-primary text-on-primary px-1 py-0.5 rounded font-bold">Photo principale</span>
+              <span className="absolute top-1 left-1 text-[9px] bg-primary text-on-primary px-1 py-0.5 rounded font-bold">Principale</span>
             )}
           </div>
         ))}
@@ -92,13 +110,23 @@ function ImageUploader({ images, onChange, listingId }) {
           className="w-24 h-20 rounded-xl border-2 border-dashed border-outline-variant flex flex-col items-center justify-center gap-1 text-on-surface-variant hover:border-primary hover:text-primary transition-colors disabled:opacity-50">
           {uploading
             ? <><Icon name="progress_activity" size={18} className="animate-spin" /><span className="text-[10px]">{progress}</span></>
-            : <><Icon name="add_photo_alternate" size={20} /><span className="text-[10px] font-semibold">Ajouter</span></>
+            : <><Icon name="add_photo_alternate" size={20} /><span className="text-[10px] font-semibold">Fichier</span></>
           }
         </button>
       </div>
       <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
         onChange={e => { if (e.target.files?.length) upload(e.target.files); e.target.value = ''; }} />
-      <p className="text-[10px] text-on-surface-variant">JPG, PNG, WebP — max 5 Mo par image. La première photo est l'image principale.</p>
+      {/* URL fallback */}
+      <div className="flex gap-2">
+        <input value={urlInput} onChange={e => setUrlInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && addByUrl()}
+          placeholder="Coller une URL d'image (https://…)"
+          className="flex-1 px-3 py-2 text-sm bg-surface border border-outline-variant rounded-xl focus:outline-none focus:border-primary" />
+        <button onClick={addByUrl} disabled={!urlInput.trim()}
+          className="px-3 py-2 text-sm font-semibold bg-surface-container border border-outline-variant rounded-xl hover:bg-surface-container-high disabled:opacity-40 flex items-center gap-1">
+          <Icon name="add_link" size={14} /> Ajouter
+        </button>
+      </div>
+      <p className="text-[10px] text-on-surface-variant">Fichier (JPG, PNG, max 10 Mo) ou URL d'image. La première photo est l'image principale.</p>
     </div>
   );
 }
