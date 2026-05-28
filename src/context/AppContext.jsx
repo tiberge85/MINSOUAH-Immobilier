@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc,
-  writeBatch, getDocs, query, where, getDocFromServer,
+  writeBatch, getDocs, query, where, getDocFromServer, increment,
 } from 'firebase/firestore';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
@@ -556,13 +556,18 @@ export function AppProvider({ children }) {
           await deleteDoc(wsDoc('listings', payload));
           break;
         case 'INCREMENT_LISTING_VIEW':
-          await updateDoc(wsDoc('listings', payload), { views: (st.listings.find(l => l.id === payload)?.views || 0) + 1 });
+          await updateDoc(wsDoc('listings', payload), { views: increment(1) });
           break;
         case 'INCREMENT_LISTING_REACTION':
-          await updateDoc(wsDoc('listings', payload), { reactions: (st.listings.find(l => l.id === payload)?.reactions || 0) + 1 });
+          await updateDoc(wsDoc('listings', payload), { reactions: increment(1) });
           break;
 
         // ── LISTING CLIENTS ───────────────────────────────────────────────────
+        case 'ADD_LISTING_CLIENT': {
+          const id = `client_${Date.now()}`;
+          await setDoc(wsDoc('listingClients', id), { ...payload, id, createdAt: new Date().toISOString(), status: 'nouveau' });
+          break;
+        }
         case 'UPDATE_LISTING_CLIENT':
           await setDoc(wsDoc('listingClients', payload.id), { ...payload, updatedAt: new Date().toISOString() });
           break;

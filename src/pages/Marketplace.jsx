@@ -233,6 +233,7 @@ function PlaceholderImg({ type, className }) {
 
 /* ── Property Card ──────────────────────────────────────────────────────────── */
 function PropertyCard({ listing, onOpen, isFav, onToggleFav }) {
+  const [imgFailed, setImgFailed] = useState(false);
   const img = listing.images?.[0];
   const isUnavailable = listing.status === 'vendu' || listing.status === 'loué';
   return (
@@ -242,8 +243,8 @@ function PropertyCard({ listing, onOpen, isFav, onToggleFav }) {
     >
       {/* Image */}
       <div className="relative h-52 overflow-hidden bg-surface-container flex-shrink-0">
-        {img
-          ? <img src={img} alt={listing.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+        {img && !imgFailed
+          ? <img src={img} alt={listing.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" onError={() => setImgFailed(true)} />
           : <PlaceholderImg type={listing.type} className="w-full h-full" />
         }
         {/* Badges overlay */}
@@ -319,7 +320,9 @@ function ListingDetailModal({ listing, onClose, onToggleFav, isFav, onContact, o
   const [showInterest, setShowInterest] = useState(false);
   const [unlocked,     setUnlocked]     = useState(() => checkUnlocked(listing.id));
   const [showPayment,  setShowPayment]  = useState(false);
+  const [brokenImgs,   setBrokenImgs]   = useState(new Set());
   const images = listing.images?.length > 0 ? listing.images : [];
+  const markBroken = (i) => setBrokenImgs(prev => new Set([...prev, i]));
 
   useEffect(() => {
     onDispatch({ type: 'INCREMENT_LISTING_VIEW', payload: listing.id });
@@ -338,8 +341,8 @@ function ListingDetailModal({ listing, onClose, onToggleFav, isFav, onContact, o
 
         {/* Image gallery */}
         <div className="relative h-72 sm:h-96 bg-surface-container">
-          {images.length > 0
-            ? <img src={images[imgIdx]} alt={listing.title} className="w-full h-full object-cover" />
+          {images.length > 0 && !brokenImgs.has(imgIdx)
+            ? <img src={images[imgIdx]} alt={listing.title} className="w-full h-full object-cover" onError={() => markBroken(imgIdx)} />
             : <PlaceholderImg type={listing.type} className="w-full h-full" />
           }
           {/* Close */}
@@ -536,26 +539,28 @@ function ListingDetailModal({ listing, onClose, onToggleFav, isFav, onContact, o
 
 /* ── Interest / Register Form ───────────────────────────────────────────────── */
 function InterestForm({ listing, onClose, onDispatch }) {
-  const [form, setForm] = useState({ name: '', phone: '', email: '', budget: '', zone: listing.zone || '', type: listing.type || '', rooms: '', notes: '' });
-  const [sent, setSent] = useState(false);
-  const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
-  const { db } = window.__minsouah_firebase || {};
+  const [form,    setForm]    = useState({ name: '', phone: '', email: '', budget: '', zone: listing.zone || '', type: listing.type || '', rooms: '', notes: '' });
+  const [sent,    setSent]    = useState(false);
+  const [sending, setSending] = useState(false);
 
   const handleSend = async () => {
-    if (!form.name || !form.phone) return;
-    const { collection, addDoc } = await import('firebase/firestore');
-    const { db: fireDb } = await import('../lib/firebase');
+    if (!form.name || !form.phone || sending) return;
+    setSending(true);
     try {
-      await addDoc(collection(fireDb, 'workspaces', WS, 'listingClients'), {
-        ...form,
-        listingId: listing.id,
-        listingTitle: listing.title,
-        uid: null,
-        createdAt: new Date().toISOString(),
-        status: 'nouveau',
+      await onDispatch({
+        type: 'ADD_LISTING_CLIENT',
+        payload: {
+          ...form,
+          listingId:    listing.id,
+          listingTitle: listing.title,
+          uid:          null,
+        },
       });
-    } catch (_) { /* offline — still show success */ }
-    onDispatch({ type: 'INCREMENT_LISTING_REACTION', payload: listing.id });
+    } catch (_) { /* save failed — still show success to visitor */ }
+    try {
+      await onDispatch({ type: 'INCREMENT_LISTING_REACTION', payload: listing.id });
+    } catch (_) {}
+    setSending(false);
     setSent(true);
   };
 
@@ -587,9 +592,11 @@ function InterestForm({ listing, onClose, onDispatch }) {
       </div>
       <div className="flex gap-2">
         <button onClick={onClose} className="flex-1 py-2 text-sm text-on-surface-variant bg-surface border border-outline-variant rounded-xl font-semibold">Annuler</button>
-        <button onClick={handleSend} disabled={!form.name || !form.phone}
+        <button onClick={handleSend} disabled={!form.name || !form.phone || sending}
           className="flex-1 py-2 text-sm text-on-primary bg-primary rounded-xl font-bold disabled:opacity-40 flex items-center justify-center gap-2">
-          <Icon name="send" size={14} /> Envoyer
+          {sending
+            ? <><Icon name="progress_activity" size={14} className="animate-spin" /> Envoi…</>
+            : <><Icon name="send" size={14} /> Envoyer</>}
         </button>
       </div>
     </div>

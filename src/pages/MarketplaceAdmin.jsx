@@ -39,6 +39,18 @@ const EMPTY_FORM = {
   unlockPrice: 500,
 };
 
+/* ── Thumbnail with error state ─────────────────────────────────────────────── */
+function ImageThumb({ url }) {
+  const [err, setErr] = useState(false);
+  if (err) return (
+    <div className="w-full h-full bg-amber-50 flex flex-col items-center justify-center gap-1 p-1">
+      <Icon name="broken_image" size={18} className="text-amber-500" />
+      <span className="text-[8px] text-amber-600 text-center leading-tight">URL inaccessible</span>
+    </div>
+  );
+  return <img src={url} alt="" className="w-full h-full object-cover" onError={() => setErr(true)} />;
+}
+
 /* ── Image uploader ────────────────────────────────────────────────────────── */
 function ImageUploader({ images, onChange, listingId }) {
   const fileRef = useRef(null);
@@ -96,7 +108,7 @@ function ImageUploader({ images, onChange, listingId }) {
       <div className="flex flex-wrap gap-3">
         {images.map((url, idx) => (
           <div key={idx} className="relative w-24 h-20 rounded-xl overflow-hidden border border-outline-variant group">
-            <img src={url} alt="" className="w-full h-full object-cover" onError={e => { e.target.style.display='none'; }} />
+            <ImageThumb url={url} />
             <button onClick={() => remove(idx)}
               className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
               <Icon name="delete" size={18} />
@@ -127,7 +139,10 @@ function ImageUploader({ images, onChange, listingId }) {
           <Icon name="add_link" size={14} /> Ajouter
         </button>
       </div>
-      <p className="text-[10px] text-on-surface-variant">Fichier (JPG, PNG, max 10 Mo) ou URL d'image. La première photo est l'image principale.</p>
+      <p className="text-[10px] text-on-surface-variant">
+        Fichier (JPG, PNG, max 10 Mo) ou URL directe vers une image. Utilisez <strong>Imgur</strong>, <strong>imgbb.com</strong> ou Cloudinary.
+        Les liens Google Drive ne fonctionnent pas — il faut une URL se terminant par .jpg/.png.
+      </p>
     </div>
   );
 }

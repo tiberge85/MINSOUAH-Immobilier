@@ -154,9 +154,13 @@ service cloud.firestore {
     // ── Marketplace listings ───────────────────────────────────────────────────
     // Read: any authenticated user (includes anonymous — public marketplace)
     // Write: SUPER_ADMIN only
+    // Update views/reactions: any authenticated user (anonymous included)
     match /workspaces/{wsId}/listings/{id} {
       allow read:  if request.auth != null;
       allow write: if request.auth != null && isSuperAdmin(wsId);
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['views', 'reactions', 'updatedAt']);
     }
 
     // ── Marketplace client profiles (visitors who register interest) ──────────
