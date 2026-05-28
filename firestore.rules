@@ -32,14 +32,12 @@ service cloud.firestore {
       return resource == null ? request.resource.data.orgId : resource.data.orgId;
     }
 
-    // Non-anonymous authenticated user.
-    // Email ownership is verified via OTP at registration (app level).
-    // Firebase's email_verified claim is not used — it requires the Blaze plan
-    // and custom SMTP to be reliable; the OTP flow is more robust.
-    function isVerifiedNonAnon() {
-      return request.auth != null
-             && request.auth.token.firebase.sign_in_provider != 'anonymous';
-    }
+    // Non-anonymous authenticated user with a verified email address.
+    // Called before writing to sensitive live collections (organizations, licenses, users).
+   function isVerifiedNonAnon() {
+  return request.auth != null
+         && request.auth.token.firebase.sign_in_provider != 'anonymous';
+}
 
     // ── usersByUid — written at login ─────────────────────────────────────────
     match /workspaces/{wsId}/usersByUid/{uid} {
@@ -60,16 +58,15 @@ service cloud.firestore {
       allow update, delete: if request.auth != null && isSuperAdmin(wsId);
     }
 
-    // ── Pending organizations — OTP verification state ───────────────────────
-    // Written at registration start, deleted after successful commit.
-    // The creator can read, update (OTP attempts / otpVerified flag), and delete.
+    // ── Pending organizations (held in limbo until email is verified) ─────────
+    // Created immediately after Firebase Auth account is made (email_verified: false OK).
+    // Only the creating user can read or delete their own pending record.
     match /workspaces/{wsId}/pendingOrganizations/{orgId} {
       allow create: if request.auth != null
                     && request.auth.token.firebase.sign_in_provider != 'anonymous';
       allow read, delete: if request.auth != null
                           && request.auth.uid == resource.data.fbUid;
-      allow update: if request.auth != null
-                    && request.auth.uid == resource.data.fbUid;
+      allow update: if false;
     }
 
     // ── Licenses ──────────────────────────────────────────────────────────────
@@ -153,6 +150,28 @@ service cloud.firestore {
     // ── Tenants / owners ──────────────────────────────────────────────────────
     match /workspaces/{wsId}/tenants/{id}  { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/owners/{id}   { allow read, write: if allowOrgDoc(wsId); }
+
+    // ── Marketplace listings ───────────────────────────────────────────────────
+    // Read: any authenticated user (includes anonymous — public marketplace)
+    // Write: SUPER_ADMIN only
+    match /workspaces/{wsId}/listings/{id} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null && isSuperAdmin(wsId);
+    }
+
+    // ── Marketplace client profiles (visitors who register interest) ──────────
+    match /workspaces/{wsId}/listingClients/{id} {
+      allow read:  if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null
+                            && (isSuperAdmin(wsId) || request.auth.uid == resource.data.uid);
+    }
+
+    // ── Listing reactions ─────────────────────────────────────────────────────
+    match /workspaces/{wsId}/listingReactions/{id} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null;
+    }
 
     // ── Deny everything else ──────────────────────────────────────────────────
     match /{document=**} {

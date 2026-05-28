@@ -27,6 +27,7 @@ import Inspections    from './pages/Inspections';
 import ConciergePortal from './pages/ConciergePortal';
 import SuperAdmin     from './pages/SuperAdmin';
 import OrgRegistration from './pages/OrgRegistration';
+import Marketplace    from './pages/Marketplace';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -232,6 +233,9 @@ function AppRoutes() {
 
   return (
     <Routes>
+      {/* Public marketplace — accessible sans connexion */}
+      <Route path="/marketplace" element={<Marketplace />} />
+
       <Route path="/register" element={user ? <Navigate to={ROLE_HOME[user.role] || '/'} replace /> : <OrgRegistration />} />
       <Route
         path="/login"

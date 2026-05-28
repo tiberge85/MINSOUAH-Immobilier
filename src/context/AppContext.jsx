@@ -157,6 +157,7 @@ export function AppProvider({ children }) {
     properties: [], contracts: [], tenants: [], owners: [],
     payments: [], transactions: [], tickets: [], inspections: [],
     conversations: [], users: [], organizations: [], licenses: [], activityLog: [], revenueData: [],
+    listings: [],
     currentUser: null,
     orgSettings: DEFAULT_ORG,
     systemSettings: DEFAULT_SYSTEM,
@@ -253,6 +254,9 @@ export function AppProvider({ children }) {
         // entity collections: filtered by orgId for non-admin users
         ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
           'tickets', 'inspections', 'conversations'].forEach(c => sub(c, true));
+
+        // Listings (marketplace public — no org filter)
+        sub('listings');
 
         // Activity log
         unsubs.push(
@@ -536,6 +540,25 @@ export function AppProvider({ children }) {
           }
           break;
         }
+
+        // ── LISTINGS (marketplace) ────────────────────────────────────────────
+        case 'ADD_LISTING': {
+          const id = payload.id || `lst_${Date.now()}`;
+          await setDoc(wsDoc('listings', id), { ...payload, id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), views: 0, reactions: 0 });
+          break;
+        }
+        case 'UPDATE_LISTING':
+          await setDoc(wsDoc('listings', payload.id), { ...payload, updatedAt: new Date().toISOString() });
+          break;
+        case 'DELETE_LISTING':
+          await deleteDoc(wsDoc('listings', payload));
+          break;
+        case 'INCREMENT_LISTING_VIEW':
+          await updateDoc(wsDoc('listings', payload), { views: (st.listings.find(l => l.id === payload)?.views || 0) + 1 });
+          break;
+        case 'INCREMENT_LISTING_REACTION':
+          await updateDoc(wsDoc('listings', payload), { reactions: (st.listings.find(l => l.id === payload)?.reactions || 0) + 1 });
+          break;
 
         // ── TICKETS ───────────────────────────────────────────────────────────
         case 'ADD_TICKET': {

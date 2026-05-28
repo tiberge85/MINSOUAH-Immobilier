@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import MarketplaceAdmin from './MarketplaceAdmin';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -442,15 +443,16 @@ export default function SuperAdmin() {
 
   // ── Tabs ──────────────────────────────────────────────────────────────
   const TABS = [
-    { id: 'overview',  label: "Vue d'ensemble", icon: 'dashboard' },
-    { id: 'orgs',      label: 'Organisations',  icon: 'corporate_fare' },
-    { id: 'trials',    label: 'Essais',          icon: 'hourglass_top' },
-    { id: 'licenses',  label: 'Licences',        icon: 'verified' },
-    { id: 'stats',     label: 'Statistiques',    icon: 'bar_chart' },
-    { id: 'backups',   label: 'Backups',         icon: 'backup' },
-    { id: 'security',  label: 'Sécurité',        icon: 'security' },
-    { id: 'activity',  label: 'Activité',        icon: 'history' },
-    { id: 'platform',  label: 'Plateforme',      icon: 'settings_suggest' },
+    { id: 'overview',    label: "Vue d'ensemble", icon: 'dashboard' },
+    { id: 'orgs',        label: 'Organisations',  icon: 'corporate_fare' },
+    { id: 'trials',      label: 'Essais',          icon: 'hourglass_top' },
+    { id: 'licenses',    label: 'Licences',        icon: 'verified' },
+    { id: 'marketplace', label: 'Marketplace',     icon: 'store' },
+    { id: 'stats',       label: 'Statistiques',    icon: 'bar_chart' },
+    { id: 'backups',     label: 'Backups',         icon: 'backup' },
+    { id: 'security',    label: 'Sécurité',        icon: 'security' },
+    { id: 'activity',    label: 'Activité',        icon: 'history' },
+    { id: 'platform',    label: 'Plateforme',      icon: 'settings_suggest' },
   ];
 
   return (
@@ -990,6 +992,13 @@ export default function SuperAdmin() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── MARKETPLACE ── */}
+        {tab === 'marketplace' && (
+          <div className="px-4 sm:px-8 py-6">
+            <MarketplaceAdmin />
           </div>
         )}
 
