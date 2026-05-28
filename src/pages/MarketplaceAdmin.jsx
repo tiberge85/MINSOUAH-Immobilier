@@ -36,6 +36,7 @@ const EMPTY_FORM = {
   price: '', pricePeriod: 'mois', zone: '', city: '', surface: '', rooms: '',
   bedrooms: '', bathrooms: '', floor: '', amenities: [], images: [],
   contactPhone: '', contactWhatsApp: '', status: 'brouillon', featured: false,
+  unlockPrice: 500,
 };
 
 /* ── Image uploader ────────────────────────────────────────────────────────── */
@@ -145,7 +146,7 @@ function ListingFormModal({ initial, onSave, onClose }) {
   const handleSave = async () => {
     if (!form.title || !form.price || !form.zone) { alert('Titre, prix et zone sont obligatoires.'); return; }
     setSaving(true);
-    await onSave({ ...form, price: parseFloat(form.price) || 0, surface: parseFloat(form.surface) || 0, rooms: parseInt(form.rooms) || 0, bedrooms: parseInt(form.bedrooms) || 0, bathrooms: parseInt(form.bathrooms) || 0, floor: form.floor ? parseInt(form.floor) : null });
+    await onSave({ ...form, price: parseFloat(form.price) || 0, unlockPrice: parseFloat(form.unlockPrice) ?? 500, surface: parseFloat(form.surface) || 0, rooms: parseInt(form.rooms) || 0, bedrooms: parseInt(form.bedrooms) || 0, bathrooms: parseInt(form.bathrooms) || 0, floor: form.floor ? parseInt(form.floor) : null });
     setSaving(false);
     onClose();
   };
@@ -268,8 +269,8 @@ function ListingFormModal({ initial, onSave, onClose }) {
             </div>
           </div>
 
-          {/* Status + Featured */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Status + Unlock Price + Featured */}
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="form-label">Statut</label>
               <select value={form.status} onChange={e => set('status', e.target.value)} className="form-input">
@@ -280,7 +281,12 @@ function ListingFormModal({ initial, onSave, onClose }) {
                 <option value="loué">Loué</option>
               </select>
             </div>
-            <div className="flex flex-col justify-end">
+            <div>
+              <label className="form-label">Déblocage contact (FCFA)</label>
+              <input type="number" min="0" value={form.unlockPrice ?? 500} onChange={e => set('unlockPrice', e.target.value)} className="form-input" placeholder="500" />
+              <p className="text-[10px] text-on-surface-variant mt-1">0 = contact gratuit</p>
+            </div>
+            <div className="flex flex-col justify-start pt-5">
               <label className="flex items-center gap-2 cursor-pointer">
                 <div onClick={() => set('featured', !form.featured)}
                   className={`w-11 h-6 rounded-full transition-colors relative ${form.featured ? 'bg-amber-500' : 'bg-outline-variant'}`}>

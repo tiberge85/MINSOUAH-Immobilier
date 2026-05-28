@@ -3,6 +3,161 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 
+/* ── Unlock helpers ─────────────────────────────────────────────────────────── */
+const UNLOCK_KEY = 'minsouah_mkt_unlocks';
+
+function getUnlocked() {
+  try { return JSON.parse(localStorage.getItem(UNLOCK_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function checkUnlocked(listingId) {
+  return getUnlocked().some(u => u.listingId === listingId);
+}
+
+function markUnlocked(listingId, method) {
+  const list = getUnlocked().filter(u => u.listingId !== listingId);
+  list.push({ listingId, method, unlockedAt: new Date().toISOString() });
+  localStorage.setItem(UNLOCK_KEY, JSON.stringify(list));
+}
+
+/* ── Payment Modal ─────────────────────────────────────────────────────────── */
+const PAYMENT_METHODS = [
+  { id: 'orange', label: 'Orange Money', icon: 'phone_iphone', bg: 'bg-orange-500 text-white' },
+  { id: 'mtn',    label: 'MTN MoMo',     icon: 'phone_iphone', bg: 'bg-yellow-400 text-gray-900' },
+  { id: 'wave',   label: 'Wave',         icon: 'waves',        bg: 'bg-blue-500 text-white' },
+  { id: 'cinetpay', label: 'CinetPay / Carte', icon: 'credit_card', bg: 'bg-violet-600 text-white' },
+];
+
+function PaymentModal({ listing, onClose, onSuccess, onDispatch }) {
+  const [step,    setStep]    = useState('choose'); // 'choose' | 'pay' | 'done'
+  const [method,  setMethod]  = useState(null);
+  const [txRef,   setTxRef]   = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const price = listing.unlockPrice ?? 500;
+
+  const handleSubmit = async () => {
+    if (!txRef.trim()) return;
+    setLoading(true);
+    try {
+      await onDispatch({ type: 'ADD_LISTING_UNLOCK', payload: {
+        listingId: listing.id,
+        listingTitle: listing.title,
+        method: method.id,
+        amount: price,
+        txRef: txRef.trim(),
+        status: 'pending',
+        uid: null,
+      }});
+    } catch (_) { /* allow offline */ }
+    markUnlocked(listing.id, method.id);
+    setLoading(false);
+    setStep('done');
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}>
+      <div className="bg-surface w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden"
+        onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="bg-gradient-to-r from-primary to-secondary px-5 py-5 text-on-primary">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-bold uppercase tracking-widest opacity-75">Débloquer le contact</span>
+            <button onClick={onClose} className="opacity-70 hover:opacity-100 transition-opacity">
+              <Icon name="close" size={18} />
+            </button>
+          </div>
+          <p className="text-sm opacity-75 truncate mb-1">{listing.title}</p>
+          <p className="text-3xl font-black">{price.toLocaleString('fr-CI')} FCFA</p>
+        </div>
+
+        <div className="p-5">
+          {step === 'choose' && (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-on-surface-variant text-center mb-1">Choisissez votre mode de paiement</p>
+              {PAYMENT_METHODS.map(m => (
+                <button key={m.id} onClick={() => { setMethod(m); setStep('pay'); }}
+                  className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold text-sm transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm ${m.bg}`}>
+                  <Icon name={m.icon} size={20} />
+                  <span>{m.label}</span>
+                  <Icon name="chevron_right" size={16} className="ml-auto" />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {step === 'pay' && (
+            <div className="flex flex-col gap-4">
+              <button onClick={() => setStep('choose')}
+                className="flex items-center gap-1.5 text-xs text-on-surface-variant hover:text-on-surface transition-colors -mb-1">
+                <Icon name="arrow_back" size={14} /> Choisir un autre mode
+              </button>
+
+              <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm ${method.bg}`}>
+                <Icon name={method.icon} size={16} />{method.label}
+              </div>
+
+              <div className="bg-surface-container rounded-xl p-4">
+                <p className="text-xs font-bold text-on-surface mb-2 flex items-center gap-1.5">
+                  <Icon name="info" size={13} className="text-primary" /> Instructions
+                </p>
+                <ol className="text-xs text-on-surface-variant flex flex-col gap-1.5 list-decimal list-inside leading-relaxed">
+                  <li>Ouvrez votre application <strong>{method.label}</strong></li>
+                  <li>Envoyez <strong className="text-on-surface">{price.toLocaleString('fr-CI')} FCFA</strong> au numéro :</li>
+                </ol>
+                <p className="text-center text-lg font-black text-on-surface tracking-widest my-2">
+                  +225 07 XX XX XX XX
+                </p>
+                <p className="text-[10px] text-center text-on-surface-variant">Numéro de paiement Minsouah</p>
+                <ol className="text-xs text-on-surface-variant list-decimal list-inside mt-2 flex flex-col gap-1" start={3}>
+                  <li>Notez votre référence de transaction</li>
+                  <li>Saisissez-la ci-dessous pour déverrouiller</li>
+                </ol>
+              </div>
+
+              <input value={txRef} onChange={e => setTxRef(e.target.value)}
+                placeholder="Référence de transaction (ex: A1234567)"
+                className="px-3 py-3 border border-outline-variant rounded-xl text-sm focus:outline-none focus:border-primary" />
+
+              <button onClick={handleSubmit} disabled={!txRef.trim() || loading}
+                className="w-full py-3.5 font-black text-on-primary bg-primary rounded-2xl hover:bg-primary/90 disabled:opacity-40 flex items-center justify-center gap-2 text-sm">
+                {loading
+                  ? <><Icon name="progress_activity" size={16} className="animate-spin" /> Vérification…</>
+                  : <><Icon name="lock_open" size={16} /> Déverrouiller le contact</>
+                }
+              </button>
+              <p className="text-[10px] text-center text-on-surface-variant leading-relaxed">
+                Le contact s'affiche immédiatement après soumission. Le paiement est vérifié manuellement par notre équipe.
+              </p>
+            </div>
+          )}
+
+          {step === 'done' && (
+            <div className="flex flex-col items-center gap-4 py-4">
+              <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center">
+                <Icon name="lock_open" size={32} className="text-green-600" />
+              </div>
+              <div className="text-center">
+                <p className="font-black text-on-surface text-lg">Contact déverrouillé !</p>
+                <p className="text-sm text-on-surface-variant mt-1">
+                  Vous pouvez maintenant contacter le propriétaire.
+                </p>
+              </div>
+              <button onClick={onSuccess}
+                className="w-full py-3 bg-primary text-on-primary font-bold rounded-xl text-sm hover:bg-primary/90">
+                Voir le contact
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Constants ─────────────────────────────────────────────────────────────── */
 const TYPES = [
   { value: 'all',               label: 'Tous',             icon: 'apps' },
@@ -160,8 +315,10 @@ function PropertyCard({ listing, onOpen, isFav, onToggleFav }) {
 
 /* ── Detail Modal ───────────────────────────────────────────────────────────── */
 function ListingDetailModal({ listing, onClose, onToggleFav, isFav, onContact, onDispatch }) {
-  const [imgIdx, setImgIdx] = useState(0);
+  const [imgIdx,       setImgIdx]       = useState(0);
   const [showInterest, setShowInterest] = useState(false);
+  const [unlocked,     setUnlocked]     = useState(() => checkUnlocked(listing.id));
+  const [showPayment,  setShowPayment]  = useState(false);
   const images = listing.images?.length > 0 ? listing.images : [];
 
   useEffect(() => {
@@ -175,6 +332,7 @@ function ListingDetailModal({ listing, onClose, onToggleFav, isFav, onContact, o
   const waMsg = encodeURIComponent(`Bonjour, je suis intéressé(e) par votre annonce : ${listing.title} (${listing.zone}) — ${Number(listing.price).toLocaleString('fr-CI')} FCFA. Pouvez-vous me donner plus d'informations ?`);
 
   return (
+  <>
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="bg-surface w-full max-w-3xl rounded-3xl shadow-2xl my-8 overflow-hidden" onClick={e => e.stopPropagation()}>
 
@@ -297,36 +455,82 @@ function ListingDetailModal({ listing, onClose, onToggleFav, isFav, onContact, o
           )}
 
           {/* Contact section */}
-          <div className="border-t border-outline-variant/20 pt-4 flex flex-col gap-3">
-            <h4 className="font-bold text-on-surface text-sm">Contacter le propriétaire</h4>
+          {(() => {
+            const price = listing.unlockPrice ?? 500;
+            const hasContact = !!(waPhone || listing.contactPhone);
+            const requiresUnlock = price > 0 && hasContact;
+            return (
+              <div className="border-t border-outline-variant/20 pt-4 flex flex-col gap-3">
+                <h4 className="font-bold text-on-surface text-sm">Contacter le propriétaire</h4>
 
-            {showInterest ? (
-              <InterestForm listing={listing} onClose={() => setShowInterest(false)} onDispatch={onDispatch} />
-            ) : (
-              <div className="flex flex-col sm:flex-row gap-3">
-                {waPhone && (
-                  <a href={`https://wa.me/${waPhone}?text=${waMsg}`} target="_blank" rel="noopener noreferrer"
-                    className="flex-1 flex items-center justify-center gap-2 py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600 transition-colors text-sm"
-                    onClick={() => onDispatch({ type: 'INCREMENT_LISTING_REACTION', payload: listing.id })}>
-                    <Icon name="chat" size={18} /> WhatsApp
-                  </a>
+                {/* Paywall */}
+                {!unlocked && requiresUnlock && !showInterest && (
+                  <div className="relative rounded-2xl overflow-hidden">
+                    {/* Blurred placeholder */}
+                    <div className="blur-sm select-none pointer-events-none flex flex-col sm:flex-row gap-3">
+                      <div className="flex-1 flex items-center justify-center gap-2 py-3 bg-green-500 text-white font-bold rounded-xl text-sm">
+                        <Icon name="chat" size={18} /> +225 XX XX XX XX
+                      </div>
+                      <div className="flex-1 flex items-center justify-center gap-2 py-3 bg-primary text-on-primary font-bold rounded-xl text-sm">
+                        <Icon name="call" size={18} /> Appeler
+                      </div>
+                    </div>
+                    {/* Unlock overlay */}
+                    <div className="absolute inset-0 flex items-center justify-center bg-surface/40 backdrop-blur-[2px]">
+                      <button onClick={() => setShowPayment(true)}
+                        className="bg-primary text-on-primary px-5 py-3 rounded-xl font-bold text-sm shadow-xl flex items-center gap-2 hover:bg-primary/90 transition-all hover:scale-[1.02] active:scale-[0.98]">
+                        <Icon name="lock" size={16} />
+                        Débloquer — {price.toLocaleString('fr-CI')} FCFA
+                      </button>
+                    </div>
+                  </div>
                 )}
-                {listing.contactPhone && (
-                  <a href={`tel:${listing.contactPhone}`}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 bg-primary text-on-primary font-bold rounded-xl hover:bg-primary/90 transition-colors text-sm">
-                    <Icon name="call" size={18} /> Appeler
-                  </a>
+
+                {/* Actual contact (after unlock or free) */}
+                {(unlocked || !requiresUnlock) && !showInterest && hasContact && (
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    {waPhone && (
+                      <a href={`https://wa.me/${waPhone}?text=${waMsg}`} target="_blank" rel="noopener noreferrer"
+                        className="flex-1 flex items-center justify-center gap-2 py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600 transition-colors text-sm"
+                        onClick={() => onDispatch({ type: 'INCREMENT_LISTING_REACTION', payload: listing.id })}>
+                        <Icon name="chat" size={18} /> WhatsApp
+                      </a>
+                    )}
+                    {listing.contactPhone && (
+                      <a href={`tel:${listing.contactPhone}`}
+                        className="flex-1 flex items-center justify-center gap-2 py-3 bg-primary text-on-primary font-bold rounded-xl hover:bg-primary/90 transition-colors text-sm">
+                        <Icon name="call" size={18} /> Appeler
+                      </a>
+                    )}
+                  </div>
                 )}
-                <button onClick={() => setShowInterest(true)}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 border-2 border-primary text-primary font-bold rounded-xl hover:bg-primary/10 transition-colors text-sm">
-                  <Icon name="thumb_up" size={18} /> Je suis intéressé(e)
-                </button>
+
+                {/* Interest form — always accessible */}
+                {showInterest ? (
+                  <InterestForm listing={listing} onClose={() => setShowInterest(false)} onDispatch={onDispatch} />
+                ) : (
+                  <button onClick={() => setShowInterest(true)}
+                    className="flex items-center justify-center gap-2 py-3 border-2 border-primary text-primary font-bold rounded-xl hover:bg-primary/10 transition-colors text-sm">
+                    <Icon name="thumb_up" size={18} /> Je suis intéressé(e)
+                  </button>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
         </div>
       </div>
     </div>
+
+    {/* Payment modal — above detail modal (z-[60]) */}
+    {showPayment && (
+      <PaymentModal
+        listing={listing}
+        onClose={() => setShowPayment(false)}
+        onSuccess={() => { setUnlocked(true); setShowPayment(false); }}
+        onDispatch={onDispatch}
+      />
+    )}
+  </>
   );
 }
 

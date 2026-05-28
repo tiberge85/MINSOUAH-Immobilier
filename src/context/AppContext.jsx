@@ -157,7 +157,7 @@ export function AppProvider({ children }) {
     properties: [], contracts: [], tenants: [], owners: [],
     payments: [], transactions: [], tickets: [], inspections: [],
     conversations: [], users: [], organizations: [], licenses: [], activityLog: [], revenueData: [],
-    listings: [],
+    listings: [], listingClients: [], listingUnlocks: [],
     currentUser: null,
     orgSettings: DEFAULT_ORG,
     systemSettings: DEFAULT_SYSTEM,
@@ -255,8 +255,10 @@ export function AppProvider({ children }) {
         ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
           'tickets', 'inspections', 'conversations'].forEach(c => sub(c, true));
 
-        // Listings (marketplace public — no org filter)
+        // Listings + client profiles (marketplace — no org filter)
         sub('listings');
+        sub('listingClients');
+        sub('listingUnlocks');
 
         // Activity log
         unsubs.push(
@@ -558,6 +560,24 @@ export function AppProvider({ children }) {
           break;
         case 'INCREMENT_LISTING_REACTION':
           await updateDoc(wsDoc('listings', payload), { reactions: (st.listings.find(l => l.id === payload)?.reactions || 0) + 1 });
+          break;
+
+        // ── LISTING CLIENTS ───────────────────────────────────────────────────
+        case 'UPDATE_LISTING_CLIENT':
+          await setDoc(wsDoc('listingClients', payload.id), { ...payload, updatedAt: new Date().toISOString() });
+          break;
+        case 'DELETE_LISTING_CLIENT':
+          await deleteDoc(wsDoc('listingClients', payload));
+          break;
+
+        // ── LISTING UNLOCKS (paiements/accès contact) ─────────────────────────
+        case 'ADD_LISTING_UNLOCK': {
+          const id = payload.id || `unlock_${Date.now()}`;
+          await setDoc(wsDoc('listingUnlocks', id), { ...payload, id, createdAt: new Date().toISOString() });
+          break;
+        }
+        case 'UPDATE_LISTING_UNLOCK':
+          await setDoc(wsDoc('listingUnlocks', payload.id), { ...payload, updatedAt: new Date().toISOString() });
           break;
 
         // ── TICKETS ───────────────────────────────────────────────────────────

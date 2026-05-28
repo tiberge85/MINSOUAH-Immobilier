@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MarketplaceAdmin from './MarketplaceAdmin';
+import MarketplaceClients from './MarketplaceClients';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -448,6 +449,7 @@ export default function SuperAdmin() {
     { id: 'trials',      label: 'Essais',          icon: 'hourglass_top' },
     { id: 'licenses',    label: 'Licences',        icon: 'verified' },
     { id: 'marketplace', label: 'Marketplace',     icon: 'store' },
+    { id: 'clients',     label: 'Clients',         icon: 'people' },
     { id: 'stats',       label: 'Statistiques',    icon: 'bar_chart' },
     { id: 'backups',     label: 'Backups',         icon: 'backup' },
     { id: 'security',    label: 'Sécurité',        icon: 'security' },
@@ -999,6 +1001,13 @@ export default function SuperAdmin() {
         {tab === 'marketplace' && (
           <div className="px-4 sm:px-8 py-6">
             <MarketplaceAdmin />
+          </div>
+        )}
+
+        {/* ── CLIENTS & REVENUS ── */}
+        {tab === 'clients' && (
+          <div className="px-4 sm:px-8 py-6">
+            <MarketplaceClients />
           </div>
         )}
 
