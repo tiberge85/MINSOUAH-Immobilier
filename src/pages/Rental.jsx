@@ -72,9 +72,14 @@ export default function Rental() {
       .filter(Boolean)
   ), [contracts]);
 
-  // Pour les nouveaux contrats : seulement les biens disponibles
+  // Pour les nouveaux contrats : tous les biens, occupés marqués
   const availablePropertyOptions = useMemo(() =>
-    target ? allPropertyOptions : allPropertyOptions.filter(o => !rentedPropIds.has(String(o.buildingId))),
+    allPropertyOptions.map(o => ({
+      ...o,
+      displayLabel: (!target && rentedPropIds.has(String(o.buildingId)))
+        ? `${o.label} — (Occupé)`
+        : o.label,
+    })),
   [allPropertyOptions, rentedPropIds, target]);
 
   // ── Données filtrées ───────────────────────────────────────────────────────
@@ -140,8 +145,10 @@ export default function Rental() {
         )
       );
       if (conflict) {
-        alert(`Ce bien est déjà loué par ${conflict.tenant} (contrat ${conflict.status}).\nRésiliez d'abord ce contrat avant d'en créer un nouveau.`);
-        return;
+        const ok = window.confirm(
+          `Ce bien est déjà loué par ${conflict.tenant} (contrat ${conflict.status}).\n\nVoulez-vous quand même créer un nouveau contrat ?`
+        );
+        if (!ok) return;
       }
     }
     if (target) dispatch({ type: 'UPDATE_CONTRACT', payload: { ...payload, id: target.id } });
@@ -205,10 +212,21 @@ export default function Rental() {
     setModal(null);
   };
 
-  // ── Quand propriété sélectionnée → pré-remplir loyer dans contrat ──────────
+  // ── Quand propriété sélectionnée → pré-remplir loyer + locataire dans contrat ──
   const onContractPropChange = (e) => {
-    const opt = allPropertyOptions.find(o => String(o.value) === String(e.target.value));
-    if (opt) setCForm(f => ({ ...f, propertyId: opt.buildingId, propertyName: opt.label, rent: String(opt.rent) }));
+    const opt = availablePropertyOptions.find(o => String(o.value) === String(e.target.value));
+    if (opt) {
+      const linkedTenant = tenants.find(t =>
+        t.property === opt.label || (opt.buildingName && t.property?.includes(opt.buildingName))
+      );
+      setCForm(f => ({
+        ...f,
+        propertyId: opt.buildingId,
+        propertyName: opt.label,
+        rent: String(opt.rent),
+        ...(linkedTenant ? { tenant: linkedTenant.name } : {}),
+      }));
+    }
   };
 
   // ── Quand propriété sélectionnée → auto loyer dans tenant form ────────────
@@ -709,14 +727,11 @@ export default function Rental() {
               <div>
                 <label className="form-label">
                   Propriété *
-                  {!target && availablePropertyOptions.length < allPropertyOptions.length && (
-                    <span className="text-xs text-green-600 ml-2 font-normal">— Biens disponibles uniquement</span>
-                  )}
                 </label>
-                <select value={availablePropertyOptions.find(o => o.label === cForm.propertyName)?.value || allPropertyOptions.find(o => o.label === cForm.propertyName)?.value || ''}
+                <select value={availablePropertyOptions.find(o => o.label === cForm.propertyName)?.value || ''}
                   onChange={onContractPropChange} className="form-input">
                   <option value="">— Sélectionner un bien —</option>
-                  {availablePropertyOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  {availablePropertyOptions.map(o => <option key={o.value} value={o.value}>{o.displayLabel}</option>)}
                 </select>
               </div>
               <div>

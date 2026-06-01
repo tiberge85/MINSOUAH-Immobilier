@@ -52,6 +52,7 @@ export default function Finance() {
   const [searchTx, setSearchTx] = useState('');
   const [expenseModal, setExpenseModal] = useState(false);
   const [expenseForm, setExpenseForm] = useState({ date: '', entity: '', description: '', amount: '', type: 'Réparations' });
+  const [deleteTxTarget, setDeleteTxTarget] = useState(null);
 
   const currentYear = new Date().getFullYear();
 
@@ -196,6 +197,11 @@ export default function Finance() {
     });
     setExpenseModal(false);
     setExpenseForm({ date: '', entity: '', description: '', amount: '', type: 'Réparations' });
+  };
+
+  const handleDeleteTx = () => {
+    dispatch({ type: 'DELETE_TRANSACTION', payload: deleteTxTarget.id });
+    setDeleteTxTarget(null);
   };
 
   return (
@@ -365,11 +371,14 @@ export default function Finance() {
                 <th className="px-md py-3 text-label-sm font-label-sm uppercase tracking-wider">Type</th>
                 <th className="px-md py-3 text-label-sm font-label-sm uppercase tracking-wider">Statut</th>
                 <th className="px-md py-3 text-label-sm font-label-sm uppercase tracking-wider text-right">Montant</th>
+                <th className="px-md py-3 w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/20">
-              {filteredTx.map((tx) => (
-                <tr key={tx.id} className="hover:bg-surface-container-low transition-colors">
+              {filteredTx.map((tx) => {
+                const isManual = transactions.some(t => t.id === tx.id);
+                return (
+                <tr key={tx.id} className="hover:bg-surface-container-low transition-colors group">
                   <td className="px-md py-4 text-body-sm text-on-surface">{tx.date}</td>
                   <td className="px-md py-4">
                     <div className="flex flex-col">
@@ -391,11 +400,23 @@ export default function Finance() {
                   <td className={`px-md py-4 text-right font-label-md text-label-md ${tx.positive ? 'text-green-700' : 'text-error'}`}>
                     {tx.positive ? '+' : ''}{tx.amount.toLocaleString('fr-FR')} FCFA
                   </td>
+                  <td className="px-md py-4">
+                    {isManual && (
+                      <button
+                        onClick={() => setDeleteTxTarget(tx)}
+                        className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-full flex items-center justify-center text-error hover:bg-error/10 transition-all"
+                        title="Supprimer"
+                      >
+                        <Icon name="delete" size={14} />
+                      </button>
+                    )}
+                  </td>
                 </tr>
-              ))}
+                );
+              })}
               {filteredTx.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="text-center py-xl text-on-surface-variant">Aucune transaction trouvée</td>
+                  <td colSpan={6} className="text-center py-xl text-on-surface-variant">Aucune transaction trouvée</td>
                 </tr>
               )}
             </tbody>
@@ -418,6 +439,29 @@ export default function Finance() {
           </div>
         </div>
       </div>
+
+      {/* Delete transaction confirmation */}
+      {deleteTxTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-md">
+          <div className="bg-surface-container-lowest rounded-2xl shadow-modal w-full max-w-sm p-lg flex flex-col gap-md">
+            <div className="w-14 h-14 rounded-full bg-error/10 flex items-center justify-center mx-auto">
+              <Icon name="warning" size={28} className="text-error" />
+            </div>
+            <div className="text-center">
+              <h3 className="font-bold text-on-surface text-base mb-1">Supprimer la transaction ?</h3>
+              <p className="text-sm text-on-surface-variant">
+                <strong className="text-on-surface">{deleteTxTarget.description}</strong><br />
+                {Math.abs(deleteTxTarget.amount).toLocaleString('fr-FR')} FCFA — {deleteTxTarget.date}
+              </p>
+              <p className="text-xs text-on-surface-variant mt-2">Cette action est irréversible.</p>
+            </div>
+            <div className="flex gap-sm">
+              <Button variant="ghost" onClick={() => setDeleteTxTarget(null)}>Annuler</Button>
+              <Button icon="delete" onClick={handleDeleteTx}>Supprimer</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Expense modal */}
       {expenseModal && (
