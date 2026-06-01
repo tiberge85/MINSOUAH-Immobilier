@@ -73,6 +73,7 @@ export default function SuperAdmin() {
   const [toast, setToast] = useState('');
   const [licSearch, setLicSearch] = useState('');
   const [orgSearch, setOrgSearch] = useState('');
+  const [expandedOrg, setExpandedOrg] = useState(null);
   const [showCreateOrg, setShowCreateOrg] = useState(false);
   const [createOrgForm, setCreateOrgForm] = useState({ orgName: '', adminName: '', adminEmail: '', adminPassword: '', trialDays: 7 });
   const [createOrgLoading, setCreateOrgLoading] = useState(false);
@@ -660,56 +661,194 @@ export default function SuperAdmin() {
                 <Icon name="add_business" size={16} /> Nouvelle org
               </button>
             </div>
-            <div className="bg-surface rounded-xl border border-outline-variant/20 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-surface-container text-xs text-on-surface-variant uppercase tracking-wide">
-                    <tr><th className="px-4 py-3">Organisation</th><th className="px-4 py-3">Plan</th><th className="px-4 py-3">Users</th><th className="px-4 py-3">Biens</th><th className="px-4 py-3">Licence</th><th className="px-4 py-3">Statut</th><th className="px-4 py-3" /></tr>
-                  </thead>
-                  <tbody className="divide-y divide-outline-variant/10">
-                    {filteredOrgs.map(o => {
-                      const licInfo = getLicenseStatusInfo(o.license);
-                      const p = getPlan(o.license?.plan || o.plan || 'standard');
-                      return (
-                        <tr key={o.id} className="hover:bg-surface-container/50 transition-colors">
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center font-bold text-on-primary-container text-xs flex-shrink-0">{o.name?.[0]?.toUpperCase()}</div>
-                              <div><p className="font-semibold text-on-surface text-sm">{o.name}</p><p className="text-xs text-on-surface-variant">{o.id === 'default' ? 'Org par défaut' : ''}</p></div>
+            <div className="flex flex-col gap-3">
+              {filteredOrgs.length === 0 && (
+                <div className="bg-surface rounded-xl border border-outline-variant/20 py-12 text-center text-on-surface-variant text-sm">Aucune organisation trouvée</div>
+              )}
+              {filteredOrgs.map(o => {
+                const licInfo = getLicenseStatusInfo(o.license);
+                const p = getPlan(o.license?.plan || o.plan || 'standard');
+                const isOpen = expandedOrg === o.id;
+                const orgUsers = users.filter(u => u.orgId === o.id && u.role !== 'SUPER_ADMIN');
+                const adminUser = orgUsers.find(u => u.role === 'ORGANIZATION_ADMIN' || u.role === 'ADMIN') || orgUsers[0];
+                const orgActivity = activityLog.filter(e => e.orgId === o.id || orgUsers.some(u => u.id === e.userId)).slice(0, 6);
+                const orgProps = properties.filter(pr => pr.orgId === o.id);
+                const orgContracts = contracts.filter(c => c.orgId === o.id);
+                const orgPayments = payments.filter(pm => pm.orgId === o.id);
+                const ROLE_LABELS = { ORGANIZATION_ADMIN: 'Admin', ADMIN: 'Admin', AGENT: 'Agent', MANAGER: 'Manager', CONCIERGE: 'Concierge', TECHNICIAN: 'Technicien', ACCOUNTANT: 'Comptable', TENANT: 'Locataire', OWNER: 'Propriétaire' };
+                return (
+                  <div key={o.id} className="bg-surface rounded-2xl border border-outline-variant/20 overflow-hidden shadow-sm">
+                    {/* ── Header row (clickable) ── */}
+                    <div
+                      onClick={() => setExpandedOrg(isOpen ? null : o.id)}
+                      className="flex items-center gap-3 px-5 py-4 cursor-pointer hover:bg-surface-container/40 transition-colors select-none">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center font-black text-primary text-base flex-shrink-0">{o.name?.[0]?.toUpperCase()}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-bold text-on-surface text-sm">{o.name}</p>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${p.badgeColor}`}>{p.name}</span>
+                          {o.active === false
+                            ? <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-error/10 text-error">Suspendue</span>
+                            : <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${licInfo.color}`}>{licInfo.label}</span>}
+                        </div>
+                        <p className="text-xs text-on-surface-variant mt-0.5">
+                          {orgUsers.length} utilisateur{orgUsers.length > 1 ? 's' : ''} · {orgProps.length} biens · {orgContracts.filter(c => c.status === 'Actif').length} contrats actifs
+                          {adminUser ? ` · Admin: ${adminUser.email || adminUser.name}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="hidden sm:flex items-center gap-1">
+                          {o.license && <button onClick={e => { e.stopPropagation(); setLicenseModal({ license: o.license, action: 'extend' }); }} className="text-xs text-primary px-2 py-1 rounded-lg hover:bg-primary/10 transition-colors">Prolonger</button>}
+                          {o.id !== 'default' && (
+                            <button
+                              onClick={async e => { e.stopPropagation(); await dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...o, active: o.active === false } }); await logSec({ action: o.active === false ? SEC.ORG_ACTIVATED : SEC.ORG_SUSPENDED, userId: state.currentUser?.id, userEmail: state.currentUser?.email, role: 'SUPER_ADMIN', target: o.name }); }}
+                              className={`text-xs px-2 py-1 rounded-lg transition-colors font-semibold ${o.active === false ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}>
+                              {o.active === false ? 'Activer' : 'Suspendre'}
+                            </button>
+                          )}
+                        </div>
+                        <Icon name={isOpen ? 'keyboard_arrow_up' : 'keyboard_arrow_down'} size={20} className="text-on-surface-variant" />
+                      </div>
+                    </div>
+
+                    {/* ── Expanded detail panel ── */}
+                    {isOpen && (
+                      <div className="border-t border-outline-variant/20 bg-surface-container/30 px-5 py-5 flex flex-col gap-6">
+
+                        {/* KPIs rapides */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {[
+                            { label: 'Biens',           value: orgProps.length,                                              icon: 'apartment',  color: 'bg-primary/10 text-primary' },
+                            { label: 'Contrats actifs', value: orgContracts.filter(c => c.status === 'Actif').length,        icon: 'contract',   color: 'bg-green-100 text-green-700' },
+                            { label: 'Paiements',       value: orgPayments.length,                                           icon: 'payments',   color: 'bg-blue-100 text-blue-700' },
+                            { label: 'Impayés',         value: orgPayments.filter(pm => pm.status !== 'Payé').length,        icon: 'pending',    color: 'bg-amber-100 text-amber-700' },
+                          ].map(s => (
+                            <div key={s.label} className={`p-3 rounded-xl ${s.color.split(' ')[1]} flex items-center gap-2`}>
+                              <Icon name={s.icon} size={18} className={s.color.split(' ')[0]} />
+                              <div><p className={`font-black text-lg leading-none ${s.color.split(' ')[0]}`}>{s.value}</p><p className="text-[10px] text-on-surface-variant mt-0.5">{s.label}</p></div>
                             </div>
-                          </td>
-                          <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${p.badgeColor}`}>{p.name}</span></td>
-                          <td className="px-4 py-3 text-sm"><span className={`font-bold ${o.userCount >= p.maxUsers ? 'text-error' : 'text-on-surface'}`}>{o.userCount}</span><span className="text-on-surface-variant">/{fmtLimit(p.maxUsers)}</span></td>
-                          <td className="px-4 py-3 text-sm"><span className={`font-bold ${o.propCount >= p.maxProperties ? 'text-error' : 'text-on-surface'}`}>{o.propCount}</span><span className="text-on-surface-variant">/{fmtLimit(p.maxProperties)}</span></td>
-                          <td className="px-4 py-3"><p className="text-xs font-mono text-on-surface-variant">{o.license?.key?.slice(0, 12) || '—'}…</p></td>
-                          <td className="px-4 py-3">
-                            {o.active === false
-                              ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-error/10 text-error">Suspendue</span>
-                              : <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${licInfo.color}`}>{licInfo.label}</span>}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-1">
-                              {o.license && <button onClick={() => setLicenseModal({ license: o.license, action: 'extend' })} className="text-xs text-primary hover:underline px-2 py-1 rounded-lg hover:bg-primary/10 transition-colors">Prolonger</button>}
-                              <button onClick={() => setLicenseModal({ license: { orgId: o.id }, action: 'new' })} className="text-xs text-on-surface-variant hover:text-on-surface px-2 py-1 rounded-lg hover:bg-surface-container transition-colors">Licence</button>
-                              {o.id !== 'default' && (
-                                <>
-                                  <button
-                                    onClick={async () => { await dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...o, active: o.active === false } }); await logSec({ action: o.active === false ? SEC.ORG_ACTIVATED : SEC.ORG_SUSPENDED, userId: state.currentUser?.id, userEmail: state.currentUser?.email, role: 'SUPER_ADMIN', target: o.name }); }}
-                                    className={`text-xs px-2 py-1 rounded-lg transition-colors font-semibold ${o.active === false ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}>
-                                    {o.active === false ? 'Activer' : 'Suspendre'}
-                                  </button>
-                                  <button onClick={() => setOrgDeleteConfirm(o)} className="text-xs text-error hover:bg-error/10 px-2 py-1 rounded-lg transition-colors">Supp.</button>
-                                </>
-                              )}
+                          ))}
+                        </div>
+
+                        {/* Utilisateurs */}
+                        <div>
+                          <p className="text-xs font-bold text-on-surface uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                            <Icon name="group" size={14} className="text-primary" /> Utilisateurs ({orgUsers.length})
+                          </p>
+                          {orgUsers.length === 0
+                            ? <p className="text-xs text-on-surface-variant italic">Aucun utilisateur</p>
+                            : (
+                              <div className="bg-surface rounded-xl overflow-hidden border border-outline-variant/20">
+                                <table className="w-full text-left">
+                                  <thead className="bg-surface-container">
+                                    <tr className="text-[10px] text-on-surface-variant uppercase tracking-wide">
+                                      <th className="px-3 py-2">Nom</th>
+                                      <th className="px-3 py-2">Email</th>
+                                      <th className="px-3 py-2">Rôle</th>
+                                      <th className="px-3 py-2">Téléphone</th>
+                                      <th className="px-3 py-2">Connexion</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-outline-variant/10">
+                                    {orgUsers.map(u => (
+                                      <tr key={u.id} className="hover:bg-surface-container/40">
+                                        <td className="px-3 py-2.5">
+                                          <div className="flex items-center gap-2">
+                                            <div className="w-6 h-6 rounded-full bg-secondary/15 flex items-center justify-center text-[9px] font-bold text-secondary flex-shrink-0">{u.name?.[0]?.toUpperCase() || '?'}</div>
+                                            <span className="text-xs font-semibold text-on-surface">{u.name || '—'}</span>
+                                            {(u.role === 'ORGANIZATION_ADMIN' || u.role === 'ADMIN') && <span className="text-[8px] bg-primary/10 text-primary px-1 rounded font-bold">Admin</span>}
+                                          </div>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-xs text-on-surface-variant font-mono">{u.email || '—'}</td>
+                                        <td className="px-3 py-2.5"><span className="text-[10px] bg-surface-container px-1.5 py-0.5 rounded font-semibold text-on-surface-variant">{ROLE_LABELS[u.role] || u.role}</span></td>
+                                        <td className="px-3 py-2.5 text-xs text-on-surface-variant">{u.phone || '—'}</td>
+                                        <td className="px-3 py-2.5 text-xs text-on-surface-variant">{u.lastLogin ? new Date(u.lastLogin).toLocaleDateString('fr-FR') : '—'}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )
+                          }
+                        </div>
+
+                        {/* Accès admin */}
+                        {adminUser && (
+                          <div className="bg-surface rounded-xl border border-outline-variant/20 p-4 flex flex-col gap-2">
+                            <p className="text-xs font-bold text-on-surface uppercase tracking-widest flex items-center gap-1.5">
+                              <Icon name="manage_accounts" size={14} className="text-primary" /> Compte administrateur
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-[10px] text-on-surface-variant uppercase tracking-wide">Email de connexion</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-mono font-semibold text-on-surface">{adminUser.email || '—'}</span>
+                                  {adminUser.email && (
+                                    <button onClick={() => navigator.clipboard?.writeText(adminUser.email).then(() => showToast('Email copié'))}
+                                      className="text-on-surface-variant hover:text-primary transition-colors">
+                                      <Icon name="content_copy" size={13} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-[10px] text-on-surface-variant uppercase tracking-wide">Mot de passe</span>
+                                <span className="text-xs text-on-surface-variant italic">Géré par Firebase Auth — utilisez "Réinitialiser" pour envoyer un nouveau mot de passe.</span>
+                              </div>
                             </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {filteredOrgs.length === 0 && <tr><td colSpan={7} className="text-center py-10 text-on-surface-variant">Aucune organisation trouvée</td></tr>}
-                  </tbody>
-                </table>
-              </div>
+                          </div>
+                        )}
+
+                        {/* Récap activité */}
+                        <div>
+                          <p className="text-xs font-bold text-on-surface uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                            <Icon name="history" size={14} className="text-primary" /> Dernières activités
+                          </p>
+                          {orgActivity.length === 0
+                            ? <p className="text-xs text-on-surface-variant italic">Aucune activité enregistrée</p>
+                            : (
+                              <div className="flex flex-col divide-y divide-outline-variant/10 bg-surface rounded-xl border border-outline-variant/20 overflow-hidden">
+                                {orgActivity.map((e, i) => (
+                                  <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                                    <div className="w-6 h-6 rounded-full bg-surface-container flex items-center justify-center flex-shrink-0">
+                                      <Icon name="circle" size={8} className="text-primary" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs text-on-surface truncate">{e.details || e.action}</p>
+                                      <p className="text-[10px] text-on-surface-variant">{e.userName || e.userEmail || '—'}</p>
+                                    </div>
+                                    <p className="text-[10px] text-on-surface-variant flex-shrink-0">
+                                      {e.timestamp ? new Date(e.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          }
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex gap-2 flex-wrap pt-1 border-t border-outline-variant/20">
+                          {o.license && <button onClick={() => setLicenseModal({ license: o.license, action: 'extend' })} className="flex items-center gap-1.5 text-xs bg-primary/10 text-primary hover:bg-primary/20 px-3 py-2 rounded-xl font-semibold transition-colors"><Icon name="update" size={13} />Prolonger licence</button>}
+                          <button onClick={() => setLicenseModal({ license: { orgId: o.id }, action: 'new' })} className="flex items-center gap-1.5 text-xs bg-surface-container text-on-surface-variant hover:text-on-surface px-3 py-2 rounded-xl font-semibold transition-colors border border-outline-variant/30"><Icon name="add_card" size={13} />Nouvelle licence</button>
+                          {o.id !== 'default' && (
+                            <>
+                              <button
+                                onClick={async () => { await dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...o, active: o.active === false } }); await logSec({ action: o.active === false ? SEC.ORG_ACTIVATED : SEC.ORG_SUSPENDED, userId: state.currentUser?.id, userEmail: state.currentUser?.email, role: 'SUPER_ADMIN', target: o.name }); }}
+                                className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl transition-colors font-semibold ${o.active === false ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}>
+                                <Icon name={o.active === false ? 'play_circle' : 'pause_circle'} size={13} />
+                                {o.active === false ? 'Activer' : 'Suspendre'}
+                              </button>
+                              <button onClick={() => setOrgDeleteConfirm(o)} className="flex items-center gap-1.5 text-xs text-error hover:bg-error/10 px-3 py-2 rounded-xl transition-colors font-semibold"><Icon name="delete" size={13} />Supprimer</button>
+                            </>
+                          )}
+                        </div>
+
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
