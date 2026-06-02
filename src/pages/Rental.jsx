@@ -198,58 +198,83 @@ export default function Rental() {
       if (isNaN(dt)) return String(d);
       return dt.toLocaleDateString('fr-CI');
     };
-    const rows = filteredTenants.map(t => ({
-      name: t.name || '',
-      email: t.email || '',
-      phone: t.phone || '',
-      emergencyName: t.emergencyName || '',
-      emergencyPhone: t.emergencyPhone || '',
-      property: t.property || '',
-      since: fmtDate(t.since),
-      paymentStartDate: fmtDate(t.paymentStartDate),
-      paymentDueDay: t.paymentDueDay ? `${t.paymentDueDay} du mois` : '—',
-      status: t.status || '',
-    }));
-    const statusColor = (s) => s === 'Actif' ? '#166534;background:#dcfce7' : s === 'En cours' ? '#92400e;background:#fef3c7' : '#374151;background:#f3f4f6';
+    const fmtAmt = (n) => n ? Number(n).toLocaleString('fr-CI') + ' FCFA' : '—';
+    const org = state.orgSettings || {};
+
+    // Group tenants by building name
+    const getBldName = (t) => {
+      const opt = allPropertyOptions.find(o => o.label === t.property);
+      return opt ? opt.buildingName : (t.property || 'Non attribué');
+    };
+    const grouped = {};
+    filteredTenants.forEach(t => {
+      const bld = getBldName(t);
+      if (!grouped[bld]) grouped[bld] = [];
+      grouped[bld].push(t);
+    });
+
+    const logoHtml = org.logo
+      ? `<img src="${org.logo}" style="height:56px;object-fit:contain;margin-right:14px;border-radius:8px" />`
+      : `<div style="width:56px;height:56px;background:#785a00;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-right:14px;color:#fff;font-weight:bold;font-size:18px;flex-shrink:0">M</div>`;
+
+    const statusStyle = (s) => s === 'Actif' ? 'color:#166534;background:#dcfce7' : s === 'En cours' ? 'color:#92400e;background:#fef3c7' : 'color:#374151;background:#f3f4f6';
+
+    const sectionsHtml = Object.entries(grouped).map(([building, list]) => {
+      const rows = list.map(t => {
+        const contract = contracts.find(c => normN(c.tenant) === normN(t.name));
+        const rent = contract?.rent || allPropertyOptions.find(o => o.label === t.property)?.rent;
+        const endDate = contract?.endDate ? fmtDate(contract.endDate) : 'Indéterminée';
+        return `<tr>
+          <td><strong>${t.name || ''}</strong></td>
+          <td>${t.email ? t.email + '<br>' : ''}${t.phone || '—'}</td>
+          <td class="urg">${t.emergencyName || ''}${t.emergencyPhone ? (t.emergencyName ? '<br>' : '') + t.emergencyPhone : (t.emergencyName ? '' : '—')}</td>
+          <td>${t.property || '—'}</td>
+          <td>${fmtDate(t.since)}</td>
+          <td><strong>${fmtDate(t.paymentStartDate)}</strong></td>
+          <td style="font-weight:bold;color:#166534">${fmtAmt(rent)}</td>
+          <td>${endDate}</td>
+          <td><span class="badge" style="${statusStyle(t.status)}">${t.status || ''}</span></td>
+        </tr>`;
+      }).join('');
+      return `<div class="section">
+        <div class="sec-hdr">&#127968; ${building}<span>${list.length} locataire${list.length > 1 ? 's' : ''}</span></div>
+        <table><thead><tr>
+          <th>Locataire</th><th>Contact</th><th>Urgence</th><th>Logement</th>
+          <th>Date entrée</th><th>1er loyer</th><th>Loyer/mois</th><th>Fin de bail</th><th>Statut</th>
+        </tr></thead><tbody>${rows}</tbody></table>
+      </div>`;
+    }).join('');
+
     const html = `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8">
-<title>Locataires — ${new Date().toLocaleDateString('fr-CI')}</title>
+<title>Locataires — ${org.companyName || 'Minsouah'}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:Arial,sans-serif;padding:24px 20px;font-size:11px;color:#111}
-  .hdr{border-bottom:3px solid #785a00;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-end}
-  .hdr h1{font-size:20px;color:#785a00;font-weight:bold}
-  .hdr p{font-size:11px;color:#888;margin-top:3px}
-  table{width:100%;border-collapse:collapse;font-size:10.5px}
-  th{background:#785a00;color:#fff;padding:7px 8px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.5px}
-  td{padding:6px 8px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+  body{font-family:Arial,sans-serif;padding:18px 16px;font-size:11px;color:#111}
+  .hdr{border-bottom:3px solid #785a00;padding-bottom:12px;margin-bottom:18px;display:flex;align-items:center}
+  .hdr-txt h1{font-size:18px;color:#785a00;font-weight:bold}
+  .hdr-txt p{font-size:10.5px;color:#888;margin-top:2px}
+  .section{margin-bottom:22px;page-break-inside:avoid}
+  .sec-hdr{font-size:12.5px;font-weight:bold;color:#785a00;background:#fef9f0;border-left:4px solid #785a00;padding:6px 12px;margin-bottom:7px;border-radius:0 6px 6px 0}
+  .sec-hdr span{font-weight:normal;font-size:10px;color:#aaa;margin-left:10px}
+  table{width:100%;border-collapse:collapse;font-size:10px}
+  th{background:#785a00;color:#fff;padding:6px 7px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.4px}
+  td{padding:5px 7px;border-bottom:1px solid #e5e7eb;vertical-align:top}
   tr:nth-child(even) td{background:#fafaf8}
-  .badge{display:inline-block;padding:2px 7px;border-radius:20px;font-size:9px;font-weight:bold}
-  .urg{color:#dc2626;font-size:10px}
-  @media print{body{padding:0}@page{margin:12mm 10mm;size:A4 landscape}}
+  .badge{display:inline-block;padding:2px 6px;border-radius:20px;font-size:9px;font-weight:bold}
+  .urg{color:#dc2626}
+  @media print{body{padding:0}@page{margin:8mm 6mm;size:A4 landscape}}
 </style></head><body>
-<div class="hdr">
-  <div><h1>Liste des Locataires</h1><p>Exporté le ${new Date().toLocaleDateString('fr-CI')} — ${rows.length} locataire(s)</p></div>
+<div class="hdr">${logoHtml}
+  <div class="hdr-txt">
+    <h1>${org.companyName || 'Minsouah Immobilier'}</h1>
+    <p>Liste des locataires — Exporté le ${new Date().toLocaleDateString('fr-CI')} — ${filteredTenants.length} locataire(s)</p>
+    ${org.address ? `<p>${org.address}${org.phone ? ' &nbsp;|&nbsp; ' + org.phone : ''}</p>` : ''}
+  </div>
 </div>
-<table>
-  <thead><tr>
-    <th>Locataire</th><th>Contact</th><th>Urgence</th><th>Bien / Logement</th>
-    <th>Date entrée</th><th>1er loyer</th><th>Échéance</th><th>Statut</th>
-  </tr></thead>
-  <tbody>${rows.map(r => `
-    <tr>
-      <td><strong>${r.name}</strong></td>
-      <td>${r.email ? r.email + '<br>' : ''}${r.phone || '—'}</td>
-      <td class="urg">${r.emergencyName || ''}${r.emergencyPhone ? (r.emergencyName ? '<br>' : '') + r.emergencyPhone : (r.emergencyName ? '' : '—')}</td>
-      <td>${r.property || '—'}</td>
-      <td>${r.since}</td>
-      <td><strong>${r.paymentStartDate}</strong></td>
-      <td>${r.paymentDueDay}</td>
-      <td><span class="badge" style="color:${statusColor(r.status)}">${r.status}</span></td>
-    </tr>`).join('')}
-  </tbody>
-</table>
+${sectionsHtml}
 </body></html>`;
+
     const win = window.open('', '_blank');
     if (!win) { alert("Autorisez les popups pour exporter en PDF."); return; }
     win.document.write(html);
@@ -264,20 +289,25 @@ export default function Rental() {
       if (isNaN(dt)) return d;
       return dt.toLocaleDateString('fr-CI');
     };
-    const rows = filteredTenants.map(t => ({
-      'Nom': t.name || '',
-      'Email': t.email || '',
-      'Téléphone': t.phone || '',
-      'Contact urgence — Nom': t.emergencyName || '',
-      'Contact urgence — Tél.': t.emergencyPhone || '',
-      'Bien / Logement': t.property || '',
-      "Date d'entrée": fmtDate(t.since),
-      'Début du paiement loyer': fmtDate(t.paymentStartDate),
-      'Jour échéance': t.paymentDueDay ? `${t.paymentDueDay} du mois` : '',
-      'Statut': t.status || '',
-    }));
+    const rows = filteredTenants.map(t => {
+      const contract = contracts.find(c => normN(c.tenant) === normN(t.name));
+      const rent = contract?.rent || allPropertyOptions.find(o => o.label === t.property)?.rent;
+      return {
+        'Nom': t.name || '',
+        'Email': t.email || '',
+        'Téléphone': t.phone || '',
+        'Contact urgence — Nom': t.emergencyName || '',
+        'Contact urgence — Tél.': t.emergencyPhone || '',
+        'Bien / Logement': t.property || '',
+        "Date d'entrée": fmtDate(t.since),
+        '1er paiement loyer': fmtDate(t.paymentStartDate),
+        'Loyer/mois (FCFA)': rent ? Number(rent) : '',
+        'Fin de bail': contract?.endDate ? fmtDate(contract.endDate) : 'Indéterminée',
+        'Statut': t.status || '',
+      };
+    });
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [24, 28, 20, 26, 22, 36, 16, 22, 16, 10].map(wch => ({ wch }));
+    ws['!cols'] = [24, 28, 20, 26, 22, 36, 16, 22, 16, 18, 10].map(wch => ({ wch }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Locataires');
     XLSX.writeFile(wb, `locataires_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -617,22 +647,38 @@ export default function Rental() {
                   <IconBtn icon="delete" color="text-error" onClick={() => setDeleteTarget({ type: 'tenant', data: t })} />
                 </div>
               </div>
-              <div className="flex flex-col gap-1.5 text-xs text-on-surface-variant">
-                <span className="flex items-center gap-1.5"><Icon name="mail" size={12} />{t.email || '—'}</span>
-                <span className="flex items-center gap-1.5"><Icon name="phone" size={12} />{t.phone || '—'}</span>
-                {(t.emergencyName || t.emergencyPhone) && (
-                  <span className="flex items-center gap-1.5 text-error/80">
-                    <Icon name="emergency" size={12} />{t.emergencyName || ''}{t.emergencyPhone ? ` — ${t.emergencyPhone}` : ''}
-                  </span>
-                )}
-                <span className="flex items-center gap-1.5"><Icon name="apartment" size={12} /><span className="truncate">{t.property || '—'}</span></span>
-                <span className="flex items-center gap-1.5"><Icon name="calendar_today" size={12} />Depuis : {t.since || '—'}</span>
-                {t.paymentStartDate && (
-                  <span className="flex items-center gap-1.5 text-amber-600 font-medium">
-                    <Icon name="event_upcoming" size={12} />1er loyer : {new Date(t.paymentStartDate).toLocaleDateString('fr-CI')}
-                  </span>
-                )}
-              </div>
+              {(() => {
+                const contract = contracts.find(c => normN(c.tenant) === normN(t.name));
+                const rent = contract?.rent || allPropertyOptions.find(o => o.label === t.property)?.rent;
+                return (
+                  <div className="flex flex-col gap-1.5 text-xs text-on-surface-variant">
+                    <span className="flex items-center gap-1.5"><Icon name="mail" size={12} />{t.email || '—'}</span>
+                    <span className="flex items-center gap-1.5"><Icon name="phone" size={12} />{t.phone || '—'}</span>
+                    {(t.emergencyName || t.emergencyPhone) && (
+                      <span className="flex items-center gap-1.5 text-error/80">
+                        <Icon name="emergency" size={12} />{t.emergencyName || ''}{t.emergencyPhone ? ` — ${t.emergencyPhone}` : ''}
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1.5"><Icon name="apartment" size={12} /><span className="truncate">{t.property || '—'}</span></span>
+                    {rent && (
+                      <span className="flex items-center gap-1.5 font-semibold text-primary">
+                        <Icon name="payments" size={12} />{Number(rent).toLocaleString('fr-CI')} FCFA/mois
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1.5"><Icon name="calendar_today" size={12} />Depuis : {t.since || '—'}</span>
+                    {contract?.endDate && (
+                      <span className="flex items-center gap-1.5">
+                        <Icon name="event" size={12} />Fin bail : {new Date(contract.endDate).toLocaleDateString('fr-CI')}
+                      </span>
+                    )}
+                    {t.paymentStartDate && (
+                      <span className="flex items-center gap-1.5 text-amber-600 font-medium">
+                        <Icon name="event_upcoming" size={12} />1er loyer : {new Date(t.paymentStartDate).toLocaleDateString('fr-CI')}
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           ))}
           {filteredTenants.length === 0 && (
