@@ -64,23 +64,26 @@ export default function Rental() {
     return opts;
   }, [properties]);
 
-  // Biens déjà loués (contrat Actif ou Expirant)
-  const rentedPropIds = useMemo(() => new Set(
+  // Noms normalisés des biens déjà loués (contrat Actif ou Expirant)
+  // — compare par nom complet (inclut le numéro d'unité) pour ne pas bloquer
+  //   les autres unités du même immeuble
+  const normN = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const rentedNames = useMemo(() => new Set(
     contracts
       .filter(c => c.status === 'Actif' || c.status === 'Expirant')
-      .map(c => String(c.propertyId))
+      .map(c => normN(c.propertyName || ''))
       .filter(Boolean)
   ), [contracts]);
 
-  // Pour les nouveaux contrats : tous les biens, occupés marqués
+  // Pour les nouveaux contrats : tous les biens, occupés marqués par unité
   const availablePropertyOptions = useMemo(() =>
     allPropertyOptions.map(o => ({
       ...o,
-      displayLabel: (!target && rentedPropIds.has(String(o.buildingId)))
+      displayLabel: (!target && rentedNames.has(normN(o.label)))
         ? `${o.label} — (Occupé)`
         : o.label,
     })),
-  [allPropertyOptions, rentedPropIds, target]);
+  [allPropertyOptions, rentedNames, target]);
 
   // ── Données filtrées ───────────────────────────────────────────────────────
   const q = search.toLowerCase();
@@ -135,15 +138,14 @@ export default function Rental() {
       sigPreneur:  sigP,
       signedAt:    (sigB || sigP) ? new Date().toISOString() : (cForm.signedAt || null),
     };
-    const normN = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
     const isActC = c => c.status === 'Actif' || c.status === 'Expirant';
     if (!target) {
-      const conflict = contracts.find(c =>
-        isActC(c) && (
-          (payload.propertyId && String(c.propertyId) === String(payload.propertyId)) ||
-          (normN(c.propertyName || '') && normN(c.propertyName || '') === normN(payload.propertyName || ''))
-        )
-      );
+      // Compare by full property name (includes unit number) — avoids false positives
+      // when multiple units belong to the same building
+      const normPayload = normN(payload.propertyName || '');
+      const conflict = normPayload
+        ? contracts.find(c => isActC(c) && normN(c.propertyName || '') === normPayload)
+        : null;
       if (conflict) {
         const ok = window.confirm(
           `Ce bien est déjà loué par ${conflict.tenant} (contrat ${conflict.status}).\n\nVoulez-vous quand même créer un nouveau contrat ?`
@@ -958,13 +960,13 @@ export default function Rental() {
               <div>
                 <label className="form-label">Bien / Immeuble *</label>
                 <select value={selectedPropId} onChange={onTenantPropChange} className="form-input">
-                  <option value="">— Sélectionner un bien disponible —</option>
-                  {properties.filter(p => !p.isBuilding && p.status === 'Disponible').map(p => (
+                  <option value="">— Sélectionner un bien —</option>
+                  {properties.filter(p => !p.isBuilding && (p.status === 'Disponible' || `${p.id}::` === selectedPropId)).map(p => (
                     <option key={p.id} value={`${p.id}::`}>{p.name} — {p.address}</option>
                   ))}
                   {properties.filter(p => p.isBuilding).map(p => (
                     <optgroup key={p.id} label={`🏢 ${p.name}`}>
-                      {(p.units || []).filter(u => u.status === 'Disponible').map(u => (
+                      {(p.units || []).filter(u => u.status === 'Disponible' || `${p.id}::${u.id}` === selectedPropId).map(u => (
                         <option key={u.id} value={`${p.id}::${u.id}`}>{u.number} ({u.floor}) — {Number(u.rent).toLocaleString('fr-CI')} FCFA</option>
                       ))}
                     </optgroup>
