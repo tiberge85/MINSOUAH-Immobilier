@@ -179,10 +179,7 @@ export default function Rental() {
     const initials = tForm.initials || tForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     const opt = allPropertyOptions.find(o => o.value === selectedPropId);
     const propertyLabel = opt ? opt.label : (tForm.property || '');
-    const paymentStartDate = tForm.since
-      ? (() => { const d = new Date(tForm.since); d.setMonth(d.getMonth() + 2); return d.toISOString().split('T')[0]; })()
-      : (tForm.paymentStartDate || '');
-    const payload = { ...tForm, initials, property: propertyLabel, color: tForm.color || COLORS[0], paymentStartDate };
+    const payload = { ...tForm, initials, property: propertyLabel, color: tForm.color || COLORS[0] };
     if (target) dispatch({ type: 'UPDATE_TENANT', payload: { ...payload, id: target.id } });
     else {
       dispatch({ type: 'ADD_TENANT', payload });
@@ -190,6 +187,72 @@ export default function Rental() {
       if (tForm.email) offerCreateAccount(tForm.name, tForm.email, 'TENANT');
     }
     setModal(null);
+  };
+
+  const exportTenantsPDF = () => {
+    const fmtDate = (d) => {
+      if (!d) return '—';
+      const dt = new Date(d);
+      if (isNaN(dt)) return String(d);
+      return dt.toLocaleDateString('fr-CI');
+    };
+    const rows = filteredTenants.map(t => ({
+      name: t.name || '',
+      email: t.email || '',
+      phone: t.phone || '',
+      emergencyName: t.emergencyName || '',
+      emergencyPhone: t.emergencyPhone || '',
+      property: t.property || '',
+      since: fmtDate(t.since),
+      paymentStartDate: fmtDate(t.paymentStartDate),
+      paymentDueDay: t.paymentDueDay ? `${t.paymentDueDay} du mois` : '—',
+      status: t.status || '',
+    }));
+    const statusColor = (s) => s === 'Actif' ? '#166534;background:#dcfce7' : s === 'En cours' ? '#92400e;background:#fef3c7' : '#374151;background:#f3f4f6';
+    const html = `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<title>Locataires — ${new Date().toLocaleDateString('fr-CI')}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;padding:24px 20px;font-size:11px;color:#111}
+  .hdr{border-bottom:3px solid #785a00;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-end}
+  .hdr h1{font-size:20px;color:#785a00;font-weight:bold}
+  .hdr p{font-size:11px;color:#888;margin-top:3px}
+  table{width:100%;border-collapse:collapse;font-size:10.5px}
+  th{background:#785a00;color:#fff;padding:7px 8px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.5px}
+  td{padding:6px 8px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+  tr:nth-child(even) td{background:#fafaf8}
+  .badge{display:inline-block;padding:2px 7px;border-radius:20px;font-size:9px;font-weight:bold}
+  .urg{color:#dc2626;font-size:10px}
+  @media print{body{padding:0}@page{margin:12mm 10mm;size:A4 landscape}}
+</style></head><body>
+<div class="hdr">
+  <div><h1>Liste des Locataires</h1><p>Exporté le ${new Date().toLocaleDateString('fr-CI')} — ${rows.length} locataire(s)</p></div>
+</div>
+<table>
+  <thead><tr>
+    <th>Locataire</th><th>Contact</th><th>Urgence</th><th>Bien / Logement</th>
+    <th>Date entrée</th><th>1er loyer</th><th>Échéance</th><th>Statut</th>
+  </tr></thead>
+  <tbody>${rows.map(r => `
+    <tr>
+      <td><strong>${r.name}</strong></td>
+      <td>${r.email ? r.email + '<br>' : ''}${r.phone || '—'}</td>
+      <td class="urg">${r.emergencyName || ''}${r.emergencyPhone ? (r.emergencyName ? '<br>' : '') + r.emergencyPhone : (r.emergencyName ? '' : '—')}</td>
+      <td>${r.property || '—'}</td>
+      <td>${r.since}</td>
+      <td><strong>${r.paymentStartDate}</strong></td>
+      <td>${r.paymentDueDay}</td>
+      <td><span class="badge" style="color:${statusColor(r.status)}">${r.status}</span></td>
+    </tr>`).join('')}
+  </tbody>
+</table>
+</body></html>`;
+    const win = window.open('', '_blank');
+    if (!win) { alert("Autorisez les popups pour exporter en PDF."); return; }
+    win.document.write(html);
+    win.document.close();
+    win.onload = () => { win.focus(); win.print(); };
   };
 
   const exportTenants = () => {
@@ -462,7 +525,8 @@ export default function Rental() {
               <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
                 onChange={e => { const f = e.target.files?.[0]; if (f) parseImportFile(f); e.target.value = ''; }} />
               <BtnSecondary icon="upload_file" onClick={() => fileInputRef.current?.click()}>Importer</BtnSecondary>
-              <BtnSecondary icon="download" onClick={exportTenants}>Exporter</BtnSecondary>
+              <BtnSecondary icon="picture_as_pdf" onClick={exportTenantsPDF}>PDF</BtnSecondary>
+              <BtnSecondary icon="download" onClick={exportTenants}>Excel</BtnSecondary>
               <Btn icon="person_add" onClick={openAddTenant}>Ajouter Locataire</Btn>
             </>
           )}
@@ -910,7 +974,11 @@ export default function Rental() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="form-label">Date d'entrée</label>
-                  <input type="date" value={tForm.since} onChange={e => setTForm(f => ({ ...f, since: e.target.value }))} className="form-input" />
+                  <input type="date" value={tForm.since || ''} onChange={e => {
+                    const since = e.target.value;
+                    const auto = since ? (() => { const d = new Date(since); d.setMonth(d.getMonth() + 2); return d.toISOString().split('T')[0]; })() : '';
+                    setTForm(f => ({ ...f, since, paymentStartDate: auto }));
+                  }} className="form-input" />
                 </div>
                 <div>
                   <label className="form-label">Jour d'échéance du loyer</label>
@@ -921,6 +989,14 @@ export default function Rental() {
                   </select>
                 </div>
               </div>
+              <div>
+                <label className="form-label flex items-center gap-1.5">
+                  <Icon name="event_upcoming" size={13} className="text-amber-600" />
+                  1er paiement de loyer
+                </label>
+                <input type="date" value={tForm.paymentStartDate || ''} onChange={e => setTForm(f => ({ ...f, paymentStartDate: e.target.value }))} className="form-input" />
+                <p className="text-xs text-on-surface-variant mt-1">Auto-calculé (entrée + 2 mois) — modifiable si nécessaire</p>
+              </div>
               {selectedPropId && (
                 <div className="bg-primary-container/30 rounded-xl p-3 text-sm">
                   <p className="font-semibold text-primary">{allPropertyOptions.find(o => o.value === selectedPropId)?.label}</p>
@@ -929,20 +1005,6 @@ export default function Rental() {
                   </p>
                 </div>
               )}
-              {tForm.since && (() => {
-                const d = new Date(tForm.since);
-                d.setMonth(d.getMonth() + 2);
-                return (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
-                    <Icon name="event_upcoming" size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-xs font-bold text-amber-700">Premier loyer dû le</p>
-                      <p className="text-sm font-bold text-amber-900">{d.toLocaleDateString('fr-CI', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
-                      <p className="text-xs text-amber-600 mt-0.5">2 mois d'avance versés à la signature → paiement démarre le 3ème mois</p>
-                    </div>
-                  </div>
-                );
-              })()}
             </div>
           )}
 
