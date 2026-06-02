@@ -100,7 +100,7 @@ export default function Rental() {
   const openEditContract = (c) => { setCForm({ ...c, rent: String(c.rent) }); setModal('contract'); setTarget(c); setStep(1); };
 
   const openAddTenant = () => {
-    setTForm({ name: '', email: '', phone: '', property: '', since: '', status: 'Actif', color: COLORS[0] });
+    setTForm({ name: '', email: '', phone: '', emergencyName: '', emergencyPhone: '', property: '', since: '', status: 'Actif', color: COLORS[0] });
     setSelectedPropId(''); setSelectedUnitId('');
     setModal('tenant'); setTarget(null); setStep(1);
   };
@@ -179,7 +179,10 @@ export default function Rental() {
     const initials = tForm.initials || tForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     const opt = allPropertyOptions.find(o => o.value === selectedPropId);
     const propertyLabel = opt ? opt.label : (tForm.property || '');
-    const payload = { ...tForm, initials, property: propertyLabel, color: tForm.color || COLORS[0] };
+    const paymentStartDate = tForm.since
+      ? (() => { const d = new Date(tForm.since); d.setMonth(d.getMonth() + 2); return d.toISOString().split('T')[0]; })()
+      : (tForm.paymentStartDate || '');
+    const payload = { ...tForm, initials, property: propertyLabel, color: tForm.color || COLORS[0], paymentStartDate };
     if (target) dispatch({ type: 'UPDATE_TENANT', payload: { ...payload, id: target.id } });
     else {
       dispatch({ type: 'ADD_TENANT', payload });
@@ -187,6 +190,32 @@ export default function Rental() {
       if (tForm.email) offerCreateAccount(tForm.name, tForm.email, 'TENANT');
     }
     setModal(null);
+  };
+
+  const exportTenants = () => {
+    const fmtDate = (d) => {
+      if (!d) return '';
+      const dt = new Date(d);
+      if (isNaN(dt)) return d;
+      return dt.toLocaleDateString('fr-CI');
+    };
+    const rows = filteredTenants.map(t => ({
+      'Nom': t.name || '',
+      'Email': t.email || '',
+      'Téléphone': t.phone || '',
+      'Contact urgence — Nom': t.emergencyName || '',
+      'Contact urgence — Tél.': t.emergencyPhone || '',
+      'Bien / Logement': t.property || '',
+      "Date d'entrée": fmtDate(t.since),
+      'Début du paiement loyer': fmtDate(t.paymentStartDate),
+      'Jour échéance': t.paymentDueDay ? `${t.paymentDueDay} du mois` : '',
+      'Statut': t.status || '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [24, 28, 20, 26, 22, 36, 16, 22, 16, 10].map(wch => ({ wch }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Locataires');
+    XLSX.writeFile(wb, `locataires_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   const saveOwner = () => {
@@ -433,6 +462,7 @@ export default function Rental() {
               <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
                 onChange={e => { const f = e.target.files?.[0]; if (f) parseImportFile(f); e.target.value = ''; }} />
               <BtnSecondary icon="upload_file" onClick={() => fileInputRef.current?.click()}>Importer</BtnSecondary>
+              <BtnSecondary icon="download" onClick={exportTenants}>Exporter</BtnSecondary>
               <Btn icon="person_add" onClick={openAddTenant}>Ajouter Locataire</Btn>
             </>
           )}
@@ -524,8 +554,18 @@ export default function Rental() {
               <div className="flex flex-col gap-1.5 text-xs text-on-surface-variant">
                 <span className="flex items-center gap-1.5"><Icon name="mail" size={12} />{t.email || '—'}</span>
                 <span className="flex items-center gap-1.5"><Icon name="phone" size={12} />{t.phone || '—'}</span>
+                {(t.emergencyName || t.emergencyPhone) && (
+                  <span className="flex items-center gap-1.5 text-error/80">
+                    <Icon name="emergency" size={12} />{t.emergencyName || ''}{t.emergencyPhone ? ` — ${t.emergencyPhone}` : ''}
+                  </span>
+                )}
                 <span className="flex items-center gap-1.5"><Icon name="apartment" size={12} /><span className="truncate">{t.property || '—'}</span></span>
                 <span className="flex items-center gap-1.5"><Icon name="calendar_today" size={12} />Depuis : {t.since || '—'}</span>
+                {t.paymentStartDate && (
+                  <span className="flex items-center gap-1.5 text-amber-600 font-medium">
+                    <Icon name="event_upcoming" size={12} />1er loyer : {new Date(t.paymentStartDate).toLocaleDateString('fr-CI')}
+                  </span>
+                )}
               </div>
             </div>
           ))}
@@ -831,6 +871,21 @@ export default function Rental() {
                   {['Actif', 'En cours', 'Inactif'].map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
+              <div className="border-t border-outline-variant/20 pt-4">
+                <p className="text-xs font-semibold text-on-surface-variant mb-3 flex items-center gap-1.5">
+                  <Icon name="emergency" size={13} className="text-error" />Contact en cas d'urgence
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="form-label">Nom</label>
+                    <input value={tForm.emergencyName || ''} onChange={e => setTForm(f => ({ ...f, emergencyName: e.target.value }))} className="form-input" placeholder="Prénom Nom" />
+                  </div>
+                  <div>
+                    <label className="form-label">Téléphone</label>
+                    <input value={tForm.emergencyPhone || ''} onChange={e => setTForm(f => ({ ...f, emergencyPhone: e.target.value }))} className="form-input" placeholder="+225 07 00 00 00 00" />
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -874,6 +929,20 @@ export default function Rental() {
                   </p>
                 </div>
               )}
+              {tForm.since && (() => {
+                const d = new Date(tForm.since);
+                d.setMonth(d.getMonth() + 2);
+                return (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
+                    <Icon name="event_upcoming" size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-bold text-amber-700">Premier loyer dû le</p>
+                      <p className="text-sm font-bold text-amber-900">{d.toLocaleDateString('fr-CI', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+                      <p className="text-xs text-amber-600 mt-0.5">2 mois d'avance versés à la signature → paiement démarre le 3ème mois</p>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
