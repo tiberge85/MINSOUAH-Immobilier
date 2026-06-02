@@ -188,8 +188,23 @@ export default function Inspections() {
     update({ ...detail, items });
   };
 
+  // ── All property/unit options (same pattern as Rental)
+  const allPropertyOptions = useMemo(() => {
+    const opts = [];
+    properties.forEach(p => {
+      if (p.isBuilding) {
+        (p.units || []).forEach(u => {
+          opts.push({ label: `${p.name} — ${u.number} (${u.floor})`, value: `${p.id}::${u.id}`, buildingId: p.id, buildingName: p.name, unitNumber: u.number, unitId: u.id });
+        });
+      } else {
+        opts.push({ label: p.name, value: `${p.id}::`, buildingId: p.id, buildingName: p.name, unitNumber: '', unitId: '' });
+      }
+    });
+    return opts;
+  }, [properties]);
+
   // ── Forms
-  const blankForm = { type: 'ENTRY', propertyId: '', unitRef: '', tenantId: '', scheduledDate: '', notes: '' };
+  const blankForm = { type: 'ENTRY', propertyKey: '', propertyId: '', propertyName: '', unitRef: '', tenantId: '', scheduledDate: '', notes: '' };
   const [form, setForm] = useState(blankForm);
   const blankItem = { category: 'SALON', label: '', condition: 'BON', notes: '', price: '' };
   const [itemForm, setItemForm] = useState(blankItem);
@@ -233,15 +248,14 @@ export default function Inspections() {
 
   const handleCreate = () => {
     if (!form.propertyId || !form.tenantId || !form.scheduledDate) return;
-    const prop = properties.find(p => p.id === Number(form.propertyId));
-    const tenant = tenants.find(t => t.id === Number(form.tenantId));
+    const tenant = tenants.find(t => String(t.id) === String(form.tenantId));
     const payload = {
       id: Date.now(),
       ref: `EDL-${String(inspections.length + 1).padStart(3, '0')}`,
       type: form.type,
       status: 'DRAFT',
-      propertyId: prop?.id,
-      propertyName: prop?.name || prop?.address,
+      propertyId: form.propertyId,
+      propertyName: form.propertyName,
       unitRef: form.unitRef,
       tenantId: tenant?.id,
       tenantName: tenant?.name,
@@ -573,31 +587,44 @@ export default function Inspections() {
             </div>
           </div>
 
-          {/* Property */}
+          {/* Property/Unit unified dropdown */}
           <div>
-            <label className="text-label-sm text-on-surface-variant mb-1 block font-bold">Propriété *</label>
+            <label className="text-label-sm text-on-surface-variant mb-1 block font-bold">Référence logement / appartement *</label>
             <select
-              value={form.propertyId}
-              onChange={e => setForm(f => ({ ...f, propertyId: e.target.value }))}
+              value={form.propertyKey}
+              onChange={e => {
+                const opt = allPropertyOptions.find(o => o.value === e.target.value);
+                if (!opt) { setForm(f => ({ ...f, propertyKey: '', propertyId: '', propertyName: '', unitRef: '' })); return; }
+                const linked = tenants.find(t => t.property === opt.label || (opt.buildingName && t.property?.includes(opt.buildingName)));
+                setForm(f => ({
+                  ...f,
+                  propertyKey: opt.value,
+                  propertyId: String(opt.buildingId),
+                  propertyName: opt.label,
+                  unitRef: opt.unitNumber || '',
+                  ...(linked ? { tenantId: String(linked.id) } : {}),
+                }));
+              }}
               className="w-full border border-outline-variant rounded-xl px-3 py-3 bg-surface-container text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
             >
-              <option value="">Sélectionner une propriété</option>
-              {properties.map(p => (
-                <option key={p.id} value={p.id}>{p.name || p.address}</option>
+              <option value="">— Sélectionner un logement —</option>
+              {properties.filter(p => !p.isBuilding).map(p => (
+                <option key={p.id} value={`${p.id}::`}>{p.name}{p.address ? ` — ${p.address}` : ''}</option>
+              ))}
+              {properties.filter(p => p.isBuilding).map(p => (
+                <optgroup key={p.id} label={`🏢 ${p.name}`}>
+                  {(p.units || []).map(u => (
+                    <option key={u.id} value={`${p.id}::${u.id}`}>{p.name} — {u.number} ({u.floor})</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
-          </div>
-
-          {/* Unit ref */}
-          <div>
-            <label className="text-label-sm text-on-surface-variant mb-1 block font-bold">Référence logement / appartement</label>
-            <input
-              type="text"
-              placeholder="Ex: Appartement 3B, Studio 2..."
-              value={form.unitRef}
-              onChange={e => setForm(f => ({ ...f, unitRef: e.target.value }))}
-              className="w-full border border-outline-variant rounded-xl px-3 py-3 bg-surface-container text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
-            />
+            {form.propertyKey && form.tenantId && (
+              <p className="text-xs text-green-700 mt-1 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[13px]">person_check</span>
+                Locataire auto-détecté
+              </p>
+            )}
           </div>
 
           {/* Tenant */}
@@ -605,14 +632,37 @@ export default function Inspections() {
             <label className="text-label-sm text-on-surface-variant mb-1 block font-bold">Locataire *</label>
             <select
               value={form.tenantId}
-              onChange={e => setForm(f => ({ ...f, tenantId: e.target.value }))}
+              onChange={e => {
+                const tenant = tenants.find(t => String(t.id) === e.target.value);
+                if (tenant?.property) {
+                  const opt = allPropertyOptions.find(o => o.label === tenant.property);
+                  if (opt) {
+                    setForm(f => ({
+                      ...f,
+                      tenantId: e.target.value,
+                      propertyKey: opt.value,
+                      propertyId: String(opt.buildingId),
+                      propertyName: opt.label,
+                      unitRef: opt.unitNumber || '',
+                    }));
+                    return;
+                  }
+                }
+                setForm(f => ({ ...f, tenantId: e.target.value }));
+              }}
               className="w-full border border-outline-variant rounded-xl px-3 py-3 bg-surface-container text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="">Sélectionner un locataire</option>
               {tenants.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+                <option key={t.id} value={t.id}>{t.name}{t.property ? ` — ${t.property}` : ''}</option>
               ))}
             </select>
+            {form.tenantId && form.propertyKey && (
+              <p className="text-xs text-green-700 mt-1 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[13px]">apartment</span>
+                Logement auto-détecté : {form.propertyName}
+              </p>
+            )}
           </div>
 
           {/* Date */}
