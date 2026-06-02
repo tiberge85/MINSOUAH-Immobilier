@@ -340,9 +340,7 @@ ${sectionsHtml}
   const onContractPropChange = (e) => {
     const opt = availablePropertyOptions.find(o => String(o.value) === String(e.target.value));
     if (opt) {
-      const linkedTenant = tenants.find(t =>
-        t.property === opt.label || (opt.buildingName && t.property?.includes(opt.buildingName))
-      );
+      const linkedTenant = tenants.find(t => normN(t.property) === normN(opt.label));
       setCForm(f => ({
         ...f,
         propertyId: opt.buildingId,

@@ -595,7 +595,8 @@ export default function Inspections() {
               onChange={e => {
                 const opt = allPropertyOptions.find(o => o.value === e.target.value);
                 if (!opt) { setForm(f => ({ ...f, propertyKey: '', propertyId: '', propertyName: '', unitRef: '' })); return; }
-                const linked = tenants.find(t => t.property === opt.label || (opt.buildingName && t.property?.includes(opt.buildingName)));
+                const norm = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+                const linked = tenants.find(t => norm(t.property) === norm(opt.label));
                 setForm(f => ({
                   ...f,
                   propertyKey: opt.value,
