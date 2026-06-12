@@ -91,7 +91,14 @@ export default function Rental() {
     (cFilter === 'Tous' || c.status === cFilter) &&
     (c.tenant.toLowerCase().includes(q) || c.propertyName.toLowerCase().includes(q))
   );
-  const filteredTenants = tenants.filter(t => t.name.toLowerCase().includes(q) || (t.property || '').toLowerCase().includes(q));
+  const normQ = normN(q);
+  const filteredTenants = tenants.filter(t =>
+    !normQ ||
+    normN(t.name).includes(normQ) ||
+    normN(t.property || '').includes(normQ) ||
+    (t.phone || '').replace(/\s+/g, '').includes(q.replace(/\s+/g, '')) ||
+    normN(t.email || '').includes(normQ)
+  );
   const filteredOwners = owners.filter(o => o.name.toLowerCase().includes(q));
 
   // ── Ouvrir les modales ─────────────────────────────────────────────────────
@@ -182,13 +189,15 @@ export default function Rental() {
     const opt = allPropertyOptions.find(o => o.value === selectedPropId);
     const propertyLabel = opt ? opt.label : (tForm.property || '');
     const payload = { ...tForm, initials, property: propertyLabel, color: tForm.color || COLORS[0] };
-    if (target) dispatch({ type: 'UPDATE_TENANT', payload: { ...payload, id: target.id } });
-    else {
+    if (target) {
+      dispatch({ type: 'UPDATE_TENANT', payload: { ...payload, id: target.id } });
+    } else {
       dispatch({ type: 'ADD_TENANT', payload });
-      // Offer to create access account if email provided and no account yet
       if (tForm.email) offerCreateAccount(tForm.name, tForm.email, 'TENANT');
     }
     setModal(null);
+    setTab('Locataires');
+    setSearch('');
   };
 
   const exportTenantsPDF = () => {
@@ -883,6 +892,26 @@ ${sectionsHtml}
                   <option value="">— Sélectionner un bien —</option>
                   {availablePropertyOptions.map(o => <option key={o.value} value={o.value}>{o.displayLabel}</option>)}
                 </select>
+                {/* Info locataire actuel si bien déjà loué */}
+                {cForm.propertyName && (() => {
+                  const activeCont = contracts.find(c =>
+                    (c.status === 'Actif' || c.status === 'Expirant') &&
+                    normN(c.propertyName || '') === normN(cForm.propertyName)
+                  );
+                  if (!activeCont) return null;
+                  const ct = tenants.find(t => normN(t.name) === normN(activeCont.tenant));
+                  return (
+                    <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-start gap-2">
+                      <Icon name="person" size={14} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                      <div className="text-xs">
+                        <p className="font-bold text-amber-800">{activeCont.tenant}</p>
+                        {ct?.phone && <p className="text-amber-700">{ct.phone}</p>}
+                        {ct?.email && <p className="text-amber-600">{ct.email}</p>}
+                        <p className="text-amber-500 mt-0.5">Contrat {activeCont.status} — fin : {activeCont.endDate || 'Indéterminée'}</p>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
               <div>
                 <label className="form-label">Locataire *</label>
