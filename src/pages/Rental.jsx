@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import SignaturePad from '../components/SignaturePad';
+import SearchSelect from '../components/SearchSelect';
 import { openContractReport } from '../lib/contractReport';
 
 const TABS = ['Contrats', 'Locataires', 'Propriétaires'];
@@ -25,6 +26,7 @@ export default function Rental() {
 
   const [tab, setTab] = useState('Contrats');
   const [cFilter, setCFilter] = useState('Tous');
+  const [tFilter, setTFilter] = useState('Tous');
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState(null);
   const [target, setTarget] = useState(null);
@@ -93,13 +95,12 @@ export default function Rental() {
     (c.tenant.toLowerCase().includes(q) || c.propertyName.toLowerCase().includes(q))
   );
   const normQ = normN(q);
-  const filteredTenants = tenants.filter(t =>
-    !normQ ||
-    normN(t.name).includes(normQ) ||
-    normN(t.property || '').includes(normQ) ||
-    (t.phone || '').replace(/\s+/g, '').includes(q.replace(/\s+/g, '')) ||
-    normN(t.email || '').includes(normQ)
-  );
+  const tenantsWithContract = useMemo(() => new Set(contracts.filter(c => c.status === 'Actif' || c.status === 'Expirant').map(c => normN(c.tenant))), [contracts]);
+  const filteredTenants = tenants.filter(t => {
+    if (tFilter === 'Avec contrat' && !tenantsWithContract.has(normN(t.name))) return false;
+    if (tFilter === 'Sans contrat' && tenantsWithContract.has(normN(t.name))) return false;
+    return !normQ || normN(t.name).includes(normQ) || normN(t.property || '').includes(normQ) || (t.phone || '').replace(/\s+/g, '').includes(q.replace(/\s+/g, '')) || normN(t.email || '').includes(normQ);
+  });
   const filteredOwners = owners.filter(o => o.name.toLowerCase().includes(q));
 
   // ── Ouvrir les modales ─────────────────────────────────────────────────────
@@ -652,6 +653,16 @@ ${sectionsHtml}
 
       {/* ── LOCATAIRES ──────────────────────────────────────────────────── */}
       {tab === 'Locataires' && (
+        <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar">
+          {['Tous', 'Avec contrat', 'Sans contrat'].map(f => (
+            <button key={f} onClick={() => setTFilter(f)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${tFilter === f ? 'bg-primary text-on-primary' : 'bg-surface border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high'}`}>
+              {f}
+            </button>
+          ))}
+        </div>
+      )}
+      {tab === 'Locataires' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredTenants.map(t => (
             <div key={t.id} className="bg-surface rounded-2xl p-4 border border-outline-variant/20 shadow-sm group hover:shadow-md transition-shadow">
@@ -899,11 +910,12 @@ ${sectionsHtml}
                 <label className="form-label">
                   Propriété *
                 </label>
-                <select value={availablePropertyOptions.find(o => o.label === cForm.propertyName)?.value || ''}
-                  onChange={onContractPropChange} className="form-input">
-                  <option value="">— Sélectionner un bien —</option>
-                  {availablePropertyOptions.map(o => <option key={o.value} value={o.value}>{o.displayLabel}</option>)}
-                </select>
+                <SearchSelect
+                  value={availablePropertyOptions.find(o => o.label === cForm.propertyName)?.value || ''}
+                  onChange={v => onContractPropChange({ target: { value: v } })}
+                  options={availablePropertyOptions.map(o => ({ value: o.value, label: o.displayLabel }))}
+                  placeholder="— Rechercher un bien —"
+                />
                 {/* Info locataire actuel si bien déjà loué */}
                 {cForm.propertyName && (() => {
                   const activeCont = contracts.find(c =>
@@ -927,12 +939,12 @@ ${sectionsHtml}
               </div>
               <div>
                 <label className="form-label">Locataire *</label>
-                <select value={tenants.find(t => t.name === cForm.tenant)?.id || ''}
-                  onChange={e => { const t = tenants.find(x => x.id === Number(e.target.value)); if (t) setCForm(f => ({ ...f, tenant: t.name })); }}
-                  className="form-input">
-                  <option value="">— Sélectionner un locataire —</option>
-                  {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
+                <SearchSelect
+                  value={String(tenants.find(t => t.name === cForm.tenant)?.id || '')}
+                  onChange={v => { const t = tenants.find(x => String(x.id) === String(v)); if (t) setCForm(f => ({ ...f, tenant: t.name })); }}
+                  options={tenants.map(t => ({ value: String(t.id), label: t.name }))}
+                  placeholder="— Rechercher un locataire —"
+                />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

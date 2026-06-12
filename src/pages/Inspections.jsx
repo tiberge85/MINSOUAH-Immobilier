@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import Icon from '../components/Icon';
+import SearchSelect from '../components/SearchSelect';
 import { openEDLReport, openSynthesisReport } from '../lib/inspectionReport';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -590,10 +591,10 @@ export default function Inspections() {
           {/* Property/Unit unified dropdown */}
           <div>
             <label className="text-label-sm text-on-surface-variant mb-1 block font-bold">Référence logement / appartement *</label>
-            <select
+            <SearchSelect
               value={form.propertyKey}
-              onChange={e => {
-                const opt = allPropertyOptions.find(o => o.value === e.target.value);
+              onChange={v => {
+                const opt = allPropertyOptions.find(o => o.value === v);
                 if (!opt) { setForm(f => ({ ...f, propertyKey: '', propertyId: '', propertyName: '', unitRef: '' })); return; }
                 const norm = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
                 const linked = tenants.find(t => norm(t.property) === norm(opt.label));
@@ -606,20 +607,10 @@ export default function Inspections() {
                   ...(linked ? { tenantId: String(linked.id) } : {}),
                 }));
               }}
-              className="w-full border border-outline-variant rounded-xl px-3 py-3 bg-surface-container text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="">— Sélectionner un logement —</option>
-              {properties.filter(p => !p.isBuilding).map(p => (
-                <option key={p.id} value={`${p.id}::`}>{p.name}{p.address ? ` — ${p.address}` : ''}</option>
-              ))}
-              {properties.filter(p => p.isBuilding).map(p => (
-                <optgroup key={p.id} label={`🏢 ${p.name}`}>
-                  {(p.units || []).map(u => (
-                    <option key={u.id} value={`${p.id}::${u.id}`}>{p.name} — {u.number} ({u.floor})</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+              options={allPropertyOptions.map(o => ({ value: o.value, label: o.label }))}
+              placeholder="— Rechercher un logement —"
+              className="w-full border border-outline-variant rounded-xl px-3 py-3 bg-surface-container text-on-surface focus:outline-none focus:ring-2 focus:ring-primary pr-8"
+            />
             {form.propertyKey && form.tenantId && (
               <p className="text-xs text-green-700 mt-1 flex items-center gap-1">
                 <span className="material-symbols-outlined text-[13px]">person_check</span>
@@ -631,16 +622,16 @@ export default function Inspections() {
           {/* Tenant */}
           <div>
             <label className="text-label-sm text-on-surface-variant mb-1 block font-bold">Locataire *</label>
-            <select
+            <SearchSelect
               value={form.tenantId}
-              onChange={e => {
-                const tenant = tenants.find(t => String(t.id) === e.target.value);
+              onChange={v => {
+                const tenant = tenants.find(t => String(t.id) === v);
                 if (tenant?.property) {
                   const opt = allPropertyOptions.find(o => o.label === tenant.property);
                   if (opt) {
                     setForm(f => ({
                       ...f,
-                      tenantId: e.target.value,
+                      tenantId: v,
                       propertyKey: opt.value,
                       propertyId: String(opt.buildingId),
                       propertyName: opt.label,
@@ -649,15 +640,12 @@ export default function Inspections() {
                     return;
                   }
                 }
-                setForm(f => ({ ...f, tenantId: e.target.value }));
+                setForm(f => ({ ...f, tenantId: v }));
               }}
-              className="w-full border border-outline-variant rounded-xl px-3 py-3 bg-surface-container text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="">Sélectionner un locataire</option>
-              {tenants.map(t => (
-                <option key={t.id} value={t.id}>{t.name}{t.property ? ` — ${t.property}` : ''}</option>
-              ))}
-            </select>
+              options={tenants.map(t => ({ value: String(t.id), label: t.name + (t.property ? ` — ${t.property}` : '') }))}
+              placeholder="— Rechercher un locataire —"
+              className="w-full border border-outline-variant rounded-xl px-3 py-3 bg-surface-container text-on-surface focus:outline-none focus:ring-2 focus:ring-primary pr-8"
+            />
             {form.tenantId && form.propertyKey && (
               <p className="text-xs text-green-700 mt-1 flex items-center gap-1">
                 <span className="material-symbols-outlined text-[13px]">apartment</span>

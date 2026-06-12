@@ -49,7 +49,7 @@ export const PLANS = {
     maxProperties: 10,
     maxTenants: 30,
     maxStorageMB: 500,
-    trialDays: 14,
+    trialDays: 365,
     description: 'Pour petits propriétaires et petites agences',
     features: {
       basicDashboard: true,
@@ -87,7 +87,7 @@ export const PLANS = {
     maxProperties: 150,
     maxTenants: 1000,
     maxStorageMB: 5000,
-    trialDays: 14,
+    trialDays: 365,
     description: 'Pour agences immobilières et PME',
     features: {
       basicDashboard: true,

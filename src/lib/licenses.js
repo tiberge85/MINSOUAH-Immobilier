@@ -9,7 +9,7 @@ export function generateLicenseKey() {
 
 export function createLicensePayload({ orgId, plan = 'standard', trialDays }) {
   const planConfig = PLANS[plan] || PLANS.standard;
-  const days = trialDays ?? planConfig.trialDays ?? 14;
+  const days = trialDays ?? planConfig.trialDays ?? 365;
   const now = new Date();
   const expires = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
   return {
