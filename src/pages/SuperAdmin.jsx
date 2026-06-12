@@ -283,7 +283,7 @@ export default function SuperAdmin() {
       await logSec({ action: SEC.LIC_ACTIVATED, userId: state.currentUser?.id, userEmail: state.currentUser?.email, role: 'SUPER_ADMIN', target: license.key });
       showToast('Licence activée');
     } else if (action === 'extend') {
-      const newExpiry = new Date(Math.max(new Date(license.expiresAt || Date.now()), new Date()).getTime() + extendDays * 24 * 60 * 60 * 1000);
+      const newExpiry = new Date(Math.max(new Date(license.expiresAt || Date.now()).getTime(), Date.now()) + extendDays * 24 * 60 * 60 * 1000);
       await dispatch({ type: 'UPDATE_LICENSE', payload: { ...license, status: 'active', expiresAt: newExpiry.toISOString() } });
       showToast(`Licence prolongée de ${extendDays} jours`);
     } else if (action === 'new') {
