@@ -42,6 +42,7 @@ export default function Rental() {
   const [tForm, setTForm] = useState({});
   const [oForm, setOForm] = useState({});
   const [createAccountPrompt, setCreateAccountPrompt] = useState(null);
+  const [savingTenant, setSavingTenant] = useState(false);
   const sigBailleurRef = useRef(null);
   const sigPreneurRef  = useRef(null);
 
@@ -184,20 +185,27 @@ export default function Rental() {
     setCreateAccountPrompt(null);
   };
 
-  const saveTenant = () => {
+  const saveTenant = async () => {
     const initials = tForm.initials || tForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     const opt = allPropertyOptions.find(o => o.value === selectedPropId);
     const propertyLabel = opt ? opt.label : (tForm.property || '');
     const payload = { ...tForm, initials, property: propertyLabel, color: tForm.color || COLORS[0] };
-    if (target) {
-      dispatch({ type: 'UPDATE_TENANT', payload: { ...payload, id: target.id } });
-    } else {
-      dispatch({ type: 'ADD_TENANT', payload });
-      if (tForm.email) offerCreateAccount(tForm.name, tForm.email, 'TENANT');
+    setSavingTenant(true);
+    try {
+      if (target) {
+        await dispatch({ type: 'UPDATE_TENANT', payload: { ...payload, id: target.id } });
+      } else {
+        await dispatch({ type: 'ADD_TENANT', payload });
+        if (tForm.email) offerCreateAccount(tForm.name, tForm.email, 'TENANT');
+      }
+      setModal(null);
+      setTab('Locataires');
+      setSearch('');
+    } catch (err) {
+      alert(`Erreur lors de l'enregistrement : ${err?.message || err?.code || 'Erreur inconnue'}`);
+    } finally {
+      setSavingTenant(false);
     }
-    setModal(null);
-    setTab('Locataires');
-    setSearch('');
   };
 
   const exportTenantsPDF = () => {
@@ -550,12 +558,16 @@ ${sectionsHtml}
       {/* Onglets */}
       <div className="flex items-end gap-2 mb-6">
         <div className="flex items-center gap-1 border-b border-outline-variant/30 overflow-x-auto no-scrollbar flex-1 min-w-0">
-          {TABS.map(t => (
-            <button key={t} onClick={() => { setTab(t); setSearch(''); setCFilter('Tous'); }}
-              className={`py-3 px-5 text-sm font-semibold whitespace-nowrap transition-all border-b-2 ${tab === t ? 'text-primary border-primary' : 'text-on-surface-variant border-transparent hover:text-on-surface'}`}>
-              {t}
-            </button>
-          ))}
+          {TABS.map(t => {
+            const count = t === 'Contrats' ? contracts.length : t === 'Locataires' ? tenants.length : owners.length;
+            return (
+              <button key={t} onClick={() => { setTab(t); setSearch(''); setCFilter('Tous'); }}
+                className={`py-3 px-5 text-sm font-semibold whitespace-nowrap transition-all border-b-2 flex items-center gap-2 ${tab === t ? 'text-primary border-primary' : 'text-on-surface-variant border-transparent hover:text-on-surface'}`}>
+                {t}
+                <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${tab === t ? 'bg-primary/15 text-primary' : 'bg-surface-container text-on-surface-variant'}`}>{count}</span>
+              </button>
+            );
+          })}
         </div>
         <div className="pb-1 flex-shrink-0 flex gap-2">
           {tab === 'Contrats' && <Btn icon="note_add" onClick={openAddContract}>Nouveau Contrat</Btn>}
@@ -1089,7 +1101,7 @@ ${sectionsHtml}
               {step > 1 && <button onClick={() => setStep(1)} className="px-4 py-2 text-sm bg-surface-container rounded-xl">← Précédent</button>}
               {step < 2
                 ? <button onClick={() => setStep(2)} disabled={!tForm.name} className="px-5 py-2 text-sm bg-primary text-on-primary rounded-xl font-bold disabled:opacity-40">Suivant →</button>
-                : <button onClick={saveTenant} className="px-5 py-2 text-sm bg-primary text-on-primary rounded-xl font-bold">Enregistrer</button>
+                : <button onClick={saveTenant} disabled={savingTenant} className="px-5 py-2 text-sm bg-primary text-on-primary rounded-xl font-bold disabled:opacity-50 flex items-center gap-2">{savingTenant ? <><Icon name="progress_activity" size={14} className="animate-spin" />Enregistrement…</> : 'Enregistrer'}</button>
               }
             </div>
           </div>

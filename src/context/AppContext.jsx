@@ -219,6 +219,11 @@ export function AppProvider({ children }) {
             const u = JSON.parse(saved);
             // SUPER_ADMIN sees all orgs; everyone else is scoped to their orgId
             if (u?.role !== 'SUPER_ADMIN') sessionOrgId = u?.orgId || null;
+            // Refresh usersByUid so Firestore rules recognize this session/UID
+            setDoc(wsDoc('usersByUid', user.uid), {
+              userId: String(u.id), orgId: u.orgId || 'default', role: u.role,
+              updatedAt: new Date().toISOString(),
+            }, { merge: true }).catch(() => {});
           }
         } catch { /* ignore */ }
 
@@ -425,6 +430,16 @@ export function AppProvider({ children }) {
             orgId: u.orgId || 'default',
           };
           try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch { /* quota */ }
+          // Write usersByUid BEFORE reloading so Firestore rules pass on first write
+          const fbUid = auth.currentUser?.uid;
+          if (fbUid) {
+            try {
+              await setDoc(wsDoc('usersByUid', fbUid), {
+                userId: String(u.id), orgId: u.orgId || 'default', role: u.role,
+                updatedAt: new Date().toISOString(),
+              }, { merge: true });
+            } catch { /* proceed anyway */ }
+          }
           // Reload so Firestore subscriptions restart with the correct orgId filter
           window.location.reload();
           break;
