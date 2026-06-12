@@ -1244,7 +1244,7 @@ export default function SuperAdmin() {
               <h3 className="font-bold text-lg text-on-surface mb-4">Prolonger la licence</h3>
               <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-2 block">Jours à ajouter</label>
               <div className="flex gap-2 mb-2 flex-wrap">{[{d:30,l:'1 mois'},{d:90,l:'3 mois'},{d:180,l:'6 mois'},{d:365,l:'1 an'},{d:730,l:'2 ans'}].map(({d,l}) => (<button key={d} onClick={() => setExtendDays(d)} className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${extendDays === d ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}>{l}</button>))}</div>
-              <p className="text-xs text-on-surface-variant mb-4">Expiration : <strong>{new Date(Math.max(new Date(licenseModal?.license?.expiresAt || Date.now()), new Date()).getTime() + extendDays * 86400000).toLocaleDateString('fr-FR')}</strong></p>
+              <p className="text-xs text-on-surface-variant mb-4">Expiration : <strong>{new Date(Math.max(new Date(licenseModal?.license?.expiresAt || Date.now()).getTime(), Date.now()) + extendDays * 86400000).toLocaleDateString('fr-FR')}</strong></p>
               <div className="flex gap-3"><button onClick={() => setLicenseModal(null)} className="flex-1 py-2.5 bg-surface-container text-on-surface-variant rounded-xl text-sm font-semibold">Annuler</button><button onClick={handleLicenseAction} className="flex-1 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold">Prolonger</button></div>
             </>)}
             {licenseModal.action === 'new' && (<>
