@@ -46,13 +46,13 @@ service cloud.firestore {
     }
 
     // ── Organizations ─────────────────────────────────────────────────────────
-    // Read: any non-anonymous authenticated user.
-    // Create: verified email (self-registration after email confirmation)
-    //         OR SUPER_ADMIN (admin-provisioned — their own email is verified at login).
+    // Read: SUPER_ADMIN, staff (anonymous OK via usersByUid), or verified email users.
+    // Create: verified email (self-registration) OR SUPER_ADMIN.
     // Update/delete: SUPER_ADMIN only.
     match /workspaces/{wsId}/organizations/{orgId} {
       allow read:   if request.auth != null
-                    && request.auth.token.firebase.sign_in_provider != 'anonymous';
+                    && (isSuperAdmin(wsId) || isStaff(wsId)
+                        || request.auth.token.firebase.sign_in_provider != 'anonymous');
       allow create: if isVerifiedNonAnon()
                     || (request.auth != null && isSuperAdmin(wsId));
       allow update, delete: if request.auth != null && isSuperAdmin(wsId);
@@ -70,9 +70,11 @@ service cloud.firestore {
     }
 
     // ── Licenses ──────────────────────────────────────────────────────────────
+    // Read: SUPER_ADMIN, staff (anonymous OK via usersByUid), or verified email users.
     match /workspaces/{wsId}/licenses/{licId} {
       allow read:   if request.auth != null
-                    && request.auth.token.firebase.sign_in_provider != 'anonymous';
+                    && (isSuperAdmin(wsId) || isStaff(wsId)
+                        || request.auth.token.firebase.sign_in_provider != 'anonymous');
       allow create: if isVerifiedNonAnon()
                     || (request.auth != null && isSuperAdmin(wsId));
       allow update, delete: if request.auth != null && isSuperAdmin(wsId);

@@ -85,6 +85,10 @@ export default function SuperAdmin() {
   const [convertPlan, setConvertPlan]   = useState('pro');
   const [convertDuration, setConvertDuration] = useState(365);
 
+  // ── Change plan modal ─────────────────────────────────────────────────
+  const [changePlanModal, setChangePlanModal] = useState(null); // { org, license }
+  const [changePlanValue, setChangePlanValue] = useState('pro');
+
   // ── Security logs state (fetched directly from Firestore) ──────────────
   const [securityLogs, setSecurityLogs] = useState([]);
   const [secLogsLoading, setSecLogsLoading] = useState(false);
@@ -293,6 +297,22 @@ export default function SuperAdmin() {
       showToast('Nouvelle licence créée');
     }
     setLicenseModal(null);
+  };
+
+  const handleExecuteChangePlan = async () => {
+    if (!changePlanModal) return;
+    const { org, license } = changePlanModal;
+    try {
+      if (license) {
+        await dispatch({ type: 'UPDATE_LICENSE', payload: { ...license, plan: changePlanValue, status: 'active' } });
+      }
+      await dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...org, plan: changePlanValue } });
+      await logSec({ action: 'PLAN_CHANGED', userId: state.currentUser?.id, userEmail: state.currentUser?.email, role: 'SUPER_ADMIN', target: org.name, details: `Plan: ${changePlanValue}` });
+      showToast(`Plan changé → ${getPlan(changePlanValue).name}`);
+      setChangePlanModal(null);
+    } catch (err) {
+      showToast(`Erreur : ${err?.message || 'Échec du changement de plan'}`);
+    }
   };
 
   const handleConvertTrial = (license) => {
@@ -830,6 +850,7 @@ export default function SuperAdmin() {
                         {/* Actions */}
                         <div className="flex gap-2 flex-wrap pt-1 border-t border-outline-variant/20">
                           {o.license && <button onClick={() => setLicenseModal({ license: o.license, action: 'extend' })} className="flex items-center gap-1.5 text-xs bg-primary/10 text-primary hover:bg-primary/20 px-3 py-2 rounded-xl font-semibold transition-colors"><Icon name="update" size={13} />Prolonger licence</button>}
+                          <button onClick={() => { setChangePlanValue(o.license?.plan || o.plan || 'pro'); setChangePlanModal({ org: o, license: o.license }); }} className="flex items-center gap-1.5 text-xs bg-indigo-100 text-indigo-700 hover:bg-indigo-200 px-3 py-2 rounded-xl font-semibold transition-colors"><Icon name="swap_horiz" size={13} />Changer le plan</button>
                           <button onClick={() => setLicenseModal({ license: { orgId: o.id }, action: 'new' })} className="flex items-center gap-1.5 text-xs bg-surface-container text-on-surface-variant hover:text-on-surface px-3 py-2 rounded-xl font-semibold transition-colors border border-outline-variant/30"><Icon name="add_card" size={13} />Nouvelle licence</button>
                           {o.id !== 'default' && (
                             <>
@@ -1376,6 +1397,54 @@ export default function SuperAdmin() {
               <button onClick={() => setConvertModal(null)} className="flex-1 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors">Annuler</button>
               <button onClick={handleExecuteConvert} className="flex-1 py-2.5 text-sm font-bold text-on-primary bg-green-600 rounded-xl hover:bg-green-700 transition-colors flex items-center justify-center gap-2">
                 <Icon name="verified" size={16} /> Activer — {getPlan(convertPlan).name}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Change plan modal ── */}
+      {changePlanModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-lg p-6 flex flex-col gap-5">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-on-surface text-lg flex items-center gap-2">
+                <Icon name="swap_horiz" size={20} className="text-indigo-600" /> Changer le plan
+              </h3>
+              <button onClick={() => setChangePlanModal(null)}><Icon name="close" size={20} className="text-on-surface-variant" /></button>
+            </div>
+            <div className="p-3 bg-surface-container rounded-xl text-sm text-on-surface-variant flex items-center gap-2">
+              <Icon name="business" size={16} className="flex-shrink-0" />
+              <span>Organisation : <strong className="text-on-surface">{changePlanModal.org?.name}</strong></span>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-3 block">Nouveau plan</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {['standard', 'pro', 'enterprise'].map(p => {
+                  const plan = getPlan(p);
+                  const selected = changePlanValue === p;
+                  return (
+                    <button key={p} onClick={() => setChangePlanValue(p)}
+                      className={`p-4 rounded-2xl border-2 text-left transition-all ${selected ? 'border-indigo-500 bg-indigo-50' : 'border-outline-variant/30 hover:border-indigo-300'}`}>
+                      <div className={`text-xs font-bold px-2 py-0.5 rounded-full w-fit mb-2 ${plan.badgeColor}`}>{plan.name}</div>
+                      <p className="font-black text-on-surface text-base">
+                        {plan.monthlyPrice ? `${plan.monthlyPrice.toLocaleString('fr-CI')} FCFA` : 'Sur devis'}
+                        <span className="text-xs font-normal text-on-surface-variant">/mois</span>
+                      </p>
+                      <ul className="mt-2 flex flex-col gap-0.5">
+                        <li className="text-xs text-on-surface-variant flex items-center gap-1"><Icon name="person" size={11}/>{plan.maxUsers === Infinity ? 'Illimité' : plan.maxUsers} utilisateurs</li>
+                        <li className="text-xs text-on-surface-variant flex items-center gap-1"><Icon name="home" size={11}/>{plan.maxProperties === Infinity ? 'Illimité' : plan.maxProperties} biens</li>
+                        <li className="text-xs text-on-surface-variant flex items-center gap-1"><Icon name="group" size={11}/>{plan.maxTenants === Infinity ? 'Illimité' : plan.maxTenants} locataires</li>
+                      </ul>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setChangePlanModal(null)} className="flex-1 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors">Annuler</button>
+              <button onClick={handleExecuteChangePlan} className="flex-1 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2">
+                <Icon name="check_circle" size={16} /> Appliquer — {getPlan(changePlanValue).name}
               </button>
             </div>
           </div>
