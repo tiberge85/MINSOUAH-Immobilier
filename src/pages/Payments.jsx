@@ -1226,41 +1226,32 @@ export default function Payments() {
       >
         <div className="flex flex-col gap-4">
           <Field label="Propriété / Appartement" required>
-            <select value={payForm.propertyKey} onChange={e => handlePropertySelect(e.target.value)} className={inputCls}>
-              <option value="">— Choisir la propriété —</option>
-              {(() => {
-                const standalone = allPropertyOptions.filter(o => !o.isUnit);
-                const buildings = {};
-                allPropertyOptions.filter(o => o.isUnit).forEach(o => {
-                  if (!buildings[o.buildingName]) buildings[o.buildingName] = [];
-                  buildings[o.buildingName].push(o);
-                });
-                return (
-                  <>
-                    {standalone.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    {Object.entries(buildings).map(([bname, units]) => (
-                      <optgroup key={bname} label={`🏢 ${bname}`}>
-                        {units.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
-                      </optgroup>
-                    ))}
-                  </>
-                );
-              })()}
-            </select>
+            <SearchSelect
+              value={payForm.propertyKey}
+              onChange={v => handlePropertySelect(v)}
+              placeholder="— Choisir la propriété —"
+              options={[
+                { value: '', label: '— Choisir la propriété —' },
+                ...allPropertyOptions,
+              ]}
+              className={inputCls}
+            />
           </Field>
 
           <Field label="Locataire" required>
-            <select value={payForm.tenantId} onChange={e => handleTenantSelect(e.target.value)}
-              className={inputCls}>
-              <option value="">— Choisir le locataire —</option>
-              {matchingTenants.map(t => {
-                const name = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
-                return <option key={t.id} value={t.id}>{name}</option>;
-              })}
-              {payForm.propertyKey && matchingTenants.length === 0 && (
-                <option disabled>Aucun locataire actif sur ce bien</option>
-              )}
-            </select>
+            <SearchSelect
+              value={payForm.tenantId}
+              onChange={v => handleTenantSelect(v)}
+              placeholder="— Choisir le locataire —"
+              options={[
+                { value: '', label: '— Choisir le locataire —' },
+                ...matchingTenants.map(t => ({
+                  value: String(t.id),
+                  label: t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim(),
+                })),
+              ]}
+              className={inputCls}
+            />
             {payForm.propertyKey && matchingTenants.length === 0 && (
               <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
                 <Icon name="info" size={12} /> Aucun contrat actif trouvé pour cette propriété.
