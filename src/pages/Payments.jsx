@@ -447,49 +447,56 @@ export default function Payments() {
   const reportPaid = monthPmts.filter(p => p.status === 'Payé');
   const reportUnpaid = monthPmts.filter(p => p.status !== 'Payé');
 
+  /* ── Shared helpers for contract-based auto-fill ── */
+  // Contracts store tenant as a name string (not ID) and propertyName as the full label.
+  // We match by propertyName first (exact, includes unit number) to avoid cross-unit confusion.
+  const contractByProp = (opt) => {
+    if (!opt) return null;
+    return (contracts || []).find(c =>
+      (c.status === 'Actif' || c.status === 'Expirant') &&
+      c.propertyName === opt.propertyName
+    ) || (!opt.isUnit && (contracts || []).find(c =>
+      (c.status === 'Actif' || c.status === 'Expirant') &&
+      c.propertyName === opt.buildingName
+    )) || null;
+  };
+
+  const tenantFromContract = (c) => {
+    if (!c) return null;
+    return (tenants || []).find(t =>
+      (t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim()) === c.tenant ||
+      (c.tenantId && String(t.id) === String(c.tenantId))
+    ) || null;
+  };
+
+  const propOptFromContract = (c) => {
+    if (!c) return null;
+    return allPropertyOptions.find(o => o.propertyName === c.propertyName)
+      || allPropertyOptions.find(o => !o.isUnit && o.buildingName === c.propertyName)
+      || null;
+  };
+
   /* ── Handlers ── */
   const handlePropertySelect = (val) => {
     const opt = allPropertyOptions.find(o => o.value === val);
-    let autoId = '';
-    if (opt && val) {
-      const activeContract = (contracts || []).find(c =>
-        (c.status === 'Actif' || c.status === 'Expirant') &&
-        (c.propertyName === opt.propertyName ||
-          c.propertyName === opt.buildingName ||
-          String(c.propertyId) === String(opt.buildingId) ||
-          (opt.isUnit && String(c.buildingId) === String(opt.buildingId)))
-      );
-      if (activeContract) {
-        const match = (tenants || []).find(t =>
-          String(t.id) === String(activeContract.tenantId) ||
-          (t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim()) === activeContract.tenant
-        );
-        if (match) autoId = String(match.id);
-      }
-    }
-    setPayForm(f => ({ ...f, propertyKey: val, tenantId: autoId, amount: opt?.rent || '' }));
+    const contract = contractByProp(opt);
+    const match = tenantFromContract(contract);
+    setPayForm(f => ({ ...f, propertyKey: val, tenantId: match ? String(match.id) : '', amount: opt?.rent || '' }));
   };
 
   const handleTenantSelect = (val) => {
     if (!val) { setPayForm(f => ({ ...f, tenantId: '' })); return; }
-    // Auto-fill property from active contract when no property is already selected
     if (!payForm.propertyKey) {
       const tenant = (tenants || []).find(t => String(t.id) === String(val));
       const tenantName = tenant ? (tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim()) : '';
       const contract = (contracts || []).find(c =>
         (c.status === 'Actif' || c.status === 'Expirant') &&
-        (String(c.tenantId) === String(val) || c.tenant === tenantName)
+        (c.tenant === tenantName || (c.tenantId && String(c.tenantId) === String(val)))
       );
-      if (contract) {
-        const matchOpt = allPropertyOptions.find(o =>
-          o.propertyName === contract.propertyName ||
-          o.buildingName === contract.propertyName ||
-          String(o.buildingId) === String(contract.propertyId)
-        );
-        if (matchOpt) {
-          setPayForm(f => ({ ...f, tenantId: val, propertyKey: matchOpt.value, amount: matchOpt.rent || f.amount }));
-          return;
-        }
+      const matchOpt = propOptFromContract(contract);
+      if (matchOpt) {
+        setPayForm(f => ({ ...f, tenantId: val, propertyKey: matchOpt.value, amount: matchOpt.rent || f.amount }));
+        return;
       }
     }
     setPayForm(f => ({ ...f, tenantId: val }));
@@ -500,22 +507,9 @@ export default function Payments() {
     let autoTenantId = '';
     if (val) {
       const opt = allPropertyOptions.find(o => o.value === val);
-      if (opt) {
-        const activeContract = (contracts || []).find(c =>
-          (c.status === 'Actif' || c.status === 'Expirant') &&
-          (c.propertyName === opt.propertyName ||
-            c.propertyName === opt.buildingName ||
-            String(c.propertyId) === String(opt.buildingId) ||
-            (opt.isUnit && String(c.buildingId) === String(opt.buildingId)))
-        );
-        if (activeContract) {
-          const match = (tenants || []).find(t =>
-            String(t.id) === String(activeContract.tenantId) ||
-            (t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim()) === activeContract.tenant
-          );
-          if (match) autoTenantId = String(match.id);
-        }
-      }
+      const contract = contractByProp(opt);
+      const match = tenantFromContract(contract);
+      if (match) autoTenantId = String(match.id);
     }
     setFilterPropKey(val);
     setFilterTenantId(autoTenantId);
@@ -528,16 +522,10 @@ export default function Payments() {
       const tenantName = tenant ? (tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim()) : '';
       const contract = (contracts || []).find(c =>
         (c.status === 'Actif' || c.status === 'Expirant') &&
-        (String(c.tenantId) === String(val) || c.tenant === tenantName)
+        (c.tenant === tenantName || (c.tenantId && String(c.tenantId) === String(val)))
       );
-      if (contract) {
-        const matchOpt = allPropertyOptions.find(o =>
-          o.propertyName === contract.propertyName ||
-          o.buildingName === contract.propertyName ||
-          String(o.buildingId) === String(contract.propertyId)
-        );
-        if (matchOpt) setFilterPropKey(matchOpt.value);
-      }
+      const matchOpt = propOptFromContract(contract);
+      if (matchOpt) setFilterPropKey(matchOpt.value);
     }
   };
 
