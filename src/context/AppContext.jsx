@@ -149,6 +149,42 @@ async function pushPropertyStatus(updatedContract, properties) {
   await setDoc(wsDoc('properties', prop.id), { status: isActive ? 'Loué' : 'Disponible' }, { merge: true });
 }
 
+// After a tenant is linked to a property, update property/unit status in Firestore.
+// Handles both simple properties (direct name match) and building units (label format
+// "BuildingName — UnitNumber (Floor)").
+async function pushTenantPropertyStatus(propertyLabel, properties, isActive) {
+  if (!propertyLabel) return;
+  const label = (propertyLabel || '').trim();
+
+  // Simple property (not a building): match by name
+  const simpleProp = (properties || []).find(p =>
+    !p.isBuilding && norm(p.name) === norm(label)
+  );
+  if (simpleProp) {
+    await setDoc(wsDoc('properties', simpleProp.id), { status: isActive ? 'Loué' : 'Disponible' }, { merge: true });
+    return;
+  }
+
+  // Building unit — label: "BuildingName — UnitNumber (Floor)" or "BuildingName — UnitNumber"
+  const sep = label.indexOf(' — ');
+  if (sep === -1) return;
+  const bldName = label.slice(0, sep).trim();
+  const unitPart = label.slice(sep + 3).trim();
+  const floorM = unitPart.match(/^(.+?)\s*\(([^)]+)\)$/);
+  const unitNum = floorM ? floorM[1].trim() : unitPart;
+  const unitFloor = floorM ? floorM[2].trim() : null;
+
+  const bld = (properties || []).find(p => p.isBuilding && norm(p.name) === norm(bldName));
+  if (!bld || !Array.isArray(bld.units)) return;
+
+  const updatedUnits = bld.units.map(u => {
+    const numOk = norm(u.number) === norm(unitNum);
+    const floorOk = !unitFloor || norm(u.floor || '') === norm(unitFloor);
+    return numOk && floorOk ? { ...u, status: isActive ? 'Loué' : 'Disponible' } : u;
+  });
+  await setDoc(wsDoc('properties', bld.id), { units: updatedUnits }, { merge: true });
+}
+
 // ── Context ────────────────────────────────────────────────────────────────────
 const AppContext = createContext(null);
 
@@ -500,15 +536,37 @@ export function AppProvider({ children }) {
           const limit = checkLimit(planId, 'Tenants', count);
           if (!limit.ok) throw new Error(`Limite atteinte : plan ${limit.plan} autorise ${limit.max} locataires maximum.`);
           const id = Date.now();
-          await setDoc(wsDoc('tenants', id), { ...payload, id, orgId, createdAt: new Date().toISOString() });
+          const newTenant = { ...payload, id, orgId, createdAt: new Date().toISOString() };
+          await setDoc(wsDoc('tenants', id), newTenant);
+          if (newTenant.property) await pushTenantPropertyStatus(newTenant.property, st.properties, true);
           break;
         }
-        case 'UPDATE_TENANT':
+        case 'UPDATE_TENANT': {
+          const oldTenant = st.tenants.find(t => t.id === payload.id);
           await setDoc(wsDoc('tenants', payload.id), payload);
+          // If property changed, revert old unit (unless a contract still covers it)
+          if (oldTenant?.property && oldTenant.property !== payload.property) {
+            const hasActiveContract = st.contracts.some(c =>
+              (c.status === 'Actif' || c.status === 'Expirant') &&
+              norm(c.propertyName || '') === norm(oldTenant.property)
+            );
+            if (!hasActiveContract) await pushTenantPropertyStatus(oldTenant.property, st.properties, false);
+          }
+          if (payload.property) await pushTenantPropertyStatus(payload.property, st.properties, true);
           break;
-        case 'DELETE_TENANT':
+        }
+        case 'DELETE_TENANT': {
+          const delTenant = st.tenants.find(t => t.id === payload);
           await deleteDoc(wsDoc('tenants', payload));
+          if (delTenant?.property) {
+            const hasActiveContract = st.contracts.some(c =>
+              (c.status === 'Actif' || c.status === 'Expirant') &&
+              norm(c.propertyName || '') === norm(delTenant.property)
+            );
+            if (!hasActiveContract) await pushTenantPropertyStatus(delTenant.property, st.properties, false);
+          }
           break;
+        }
 
         // ── OWNERS ────────────────────────────────────────────────────────────
         case 'ADD_OWNER': {
