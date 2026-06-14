@@ -312,10 +312,15 @@ export default function Payments() {
     return `${dueDay} ${MONTH_NAMES[nextMIdx]} ${nextYr}`;
   }, [tenants]);
 
-  /* ── All months (from existing payments + current) ── */
+  /* ── All months: 24 months back → 12 months ahead + any existing payment months ── */
   const allMonths = useMemo(() => {
-    const set = new Set(payments.map(p => p.month));
-    set.add(currentMonthLabel);
+    const set = new Set();
+    const ref = new Date();
+    for (let i = -24; i <= 12; i++) {
+      const d = new Date(ref.getFullYear(), ref.getMonth() + i, 1);
+      set.add(`${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`);
+    }
+    payments.forEach(p => { if (p.month) set.add(p.month); });
     return [...set].sort((a, b) => {
       const [am, ay] = a.split(' ');
       const [bm, by] = b.split(' ');
