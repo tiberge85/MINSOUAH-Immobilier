@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
+import SearchSelect from '../components/SearchSelect';
 import SignaturePad from '../components/SignaturePad';
 import { buildReceiptHTML as buildReceiptHTMLShared } from '../lib/quittanceReport';
 import { sendEmail, buildReminderHtml } from '../lib/email';
@@ -282,6 +283,8 @@ export default function Payments() {
   const [selectedMonth, setSelectedMonth] = useState(currentMonthLabel);
   const [statusFilter, setStatusFilter] = useState('Tous');
   const [search, setSearch] = useState('');
+  const [filterPropKey, setFilterPropKey] = useState('');
+  const [filterTenantId, setFilterTenantId] = useState('');
 
   /* ── Payment modal ── */
   const [payModal, setPayModal] = useState(false);
@@ -351,15 +354,27 @@ export default function Payments() {
     return opts;
   }, [properties]);
 
-  /* ── Tenants matching the selected property ── */
+  /* ── Tenants matching the selected property, excluding already paid this month ── */
   const matchingTenants = useMemo(() => {
-    if (!payForm.propertyKey) return tenants || [];
+    // Tenants who already have a "Payé" payment for the selected month
+    const paidThisMonth = new Set(
+      (payments || [])
+        .filter(p => p.month === payForm.month && p.status === 'Payé')
+        .flatMap(p => [String(p.tenantId), (p.tenantName || '').toLowerCase()])
+        .filter(Boolean)
+    );
+    const alreadyPaid = t => {
+      const name = (t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim()).toLowerCase();
+      return paidThisMonth.has(String(t.id)) || paidThisMonth.has(name);
+    };
+
+    if (!payForm.propertyKey) return (tenants || []).filter(t => !alreadyPaid(t));
     const selected = allPropertyOptions.find(o => o.value === payForm.propertyKey);
-    if (!selected) return tenants || [];
+    if (!selected) return (tenants || []).filter(t => !alreadyPaid(t));
 
     const matched = (tenants || []).filter(t => {
+      if (alreadyPaid(t)) return false;
       const tName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
-      // Via active contract — name OR id based
       const viaContract = (contracts || []).some(c => {
         if (c.status !== 'Actif') return false;
         const tenantMatch = c.tenantId === t.id || c.tenant === tName;
@@ -370,23 +385,50 @@ export default function Payments() {
           (selected.isUnit && String(c.buildingId) === String(selected.buildingId));
         return tenantMatch && propMatch;
       });
-      // Direct property field on tenant
       const directMatch =
         (t.property || '').includes(selected.buildingName) ||
         (t.property || '').includes(selected.propertyName);
       return viaContract || directMatch;
     });
     return matched;
-  }, [payForm.propertyKey, allPropertyOptions, tenants, contracts]);
+  }, [payForm.propertyKey, payForm.month, allPropertyOptions, tenants, contracts, payments]);
 
   /* ── Filtered payments (main tab) ── */
+  /* ── Tenants list for the tracking filter (no paid exclusion) ── */
+  const filterTenants = useMemo(() => {
+    if (!filterPropKey) return tenants || [];
+    const opt = allPropertyOptions.find(o => o.value === filterPropKey);
+    if (!opt) return tenants || [];
+    return (tenants || []).filter(t => {
+      const tName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
+      const via = (contracts || []).some(c =>
+        (c.tenantId === t.id || c.tenant === tName) &&
+        (c.propertyName === opt.propertyName || c.propertyName === opt.buildingName ||
+          String(c.propertyId) === String(opt.buildingId) ||
+          (opt.isUnit && String(c.buildingId) === String(opt.buildingId)))
+      );
+      return via || (t.property || '').includes(opt.buildingName || '') || (t.property || '').includes(opt.propertyName || '');
+    });
+  }, [filterPropKey, allPropertyOptions, tenants, contracts]);
+
   const filtered = useMemo(() => payments.filter(p => {
     const matchMonth = p.month === selectedMonth;
     const matchStatus = statusFilter === 'Tous' || p.status === statusFilter;
-    const matchSearch = (p.propertyName || '').toLowerCase().includes(search.toLowerCase()) ||
+    const matchSearch = !search ||
+      (p.propertyName || '').toLowerCase().includes(search.toLowerCase()) ||
       (p.tenantName || '').toLowerCase().includes(search.toLowerCase());
-    return matchMonth && matchStatus && matchSearch;
-  }), [payments, selectedMonth, statusFilter, search]);
+    const matchProp = !filterPropKey || (() => {
+      const opt = allPropertyOptions.find(o => o.value === filterPropKey);
+      if (!opt) return true;
+      const pn = (p.propertyName || '').toLowerCase();
+      return pn === (opt.propertyName || '').toLowerCase() ||
+        pn === (opt.buildingName || '').toLowerCase() ||
+        pn.includes((opt.buildingName || '').toLowerCase()) ||
+        pn.includes((opt.propertyName || '').toLowerCase());
+    })();
+    const matchTenant = !filterTenantId || String(p.tenantId) === String(filterTenantId);
+    return matchMonth && matchStatus && matchSearch && matchProp && matchTenant;
+  }), [payments, selectedMonth, statusFilter, search, filterPropKey, filterTenantId, allPropertyOptions]);
 
   /* ── Stats for selected month ── */
   const monthPmts = payments.filter(p => p.month === selectedMonth);
@@ -408,7 +450,102 @@ export default function Payments() {
   /* ── Handlers ── */
   const handlePropertySelect = (val) => {
     const opt = allPropertyOptions.find(o => o.value === val);
-    setPayForm(f => ({ ...f, propertyKey: val, tenantId: '', amount: opt?.rent || '' }));
+    // Inline-compute matching tenants to auto-fill when exactly one occupant
+    const paidNow = new Set(
+      (payments || [])
+        .filter(p => p.month === payForm.month && p.status === 'Payé')
+        .flatMap(p => [String(p.tenantId), (p.tenantName || '').toLowerCase()])
+        .filter(Boolean)
+    );
+    const isPaid = t => {
+      const nm = (t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim()).toLowerCase();
+      return paidNow.has(String(t.id)) || paidNow.has(nm);
+    };
+    const candidates = opt ? (tenants || []).filter(t => {
+      if (isPaid(t)) return false;
+      const tName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
+      const via = (contracts || []).some(c =>
+        c.status === 'Actif' &&
+        (c.tenantId === t.id || c.tenant === tName) &&
+        (c.propertyName === opt.propertyName || c.propertyName === opt.buildingName ||
+          String(c.propertyId) === String(opt.buildingId) ||
+          (opt.isUnit && String(c.buildingId) === String(opt.buildingId)))
+      );
+      return via || (t.property || '').includes(opt.buildingName || '') || (t.property || '').includes(opt.propertyName || '');
+    }) : [];
+    const autoId = candidates.length === 1 ? String(candidates[0].id) : '';
+    setPayForm(f => ({ ...f, propertyKey: val, tenantId: autoId, amount: opt?.rent || '' }));
+  };
+
+  const handleTenantSelect = (val) => {
+    if (!val) { setPayForm(f => ({ ...f, tenantId: '' })); return; }
+    // Auto-fill property from active contract when no property is already selected
+    if (!payForm.propertyKey) {
+      const tenant = (tenants || []).find(t => String(t.id) === String(val));
+      const tenantName = tenant ? (tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim()) : '';
+      const contract = (contracts || []).find(c =>
+        (c.status === 'Actif' || c.status === 'Expirant') &&
+        (String(c.tenantId) === String(val) || c.tenant === tenantName)
+      );
+      if (contract) {
+        const matchOpt = allPropertyOptions.find(o =>
+          o.propertyName === contract.propertyName ||
+          o.buildingName === contract.propertyName ||
+          String(o.buildingId) === String(contract.propertyId)
+        );
+        if (matchOpt) {
+          setPayForm(f => ({ ...f, tenantId: val, propertyKey: matchOpt.value, amount: matchOpt.rent || f.amount }));
+          return;
+        }
+      }
+    }
+    setPayForm(f => ({ ...f, tenantId: val }));
+  };
+
+  /* ── Tracking filter: bidirectional auto-fill ── */
+  const handleFilterPropSelect = (val) => {
+    let autoTenantId = '';
+    if (val) {
+      const opt = allPropertyOptions.find(o => o.value === val);
+      if (opt) {
+        const activeContract = (contracts || []).find(c =>
+          (c.status === 'Actif' || c.status === 'Expirant') &&
+          (c.propertyName === opt.propertyName ||
+            c.propertyName === opt.buildingName ||
+            String(c.propertyId) === String(opt.buildingId) ||
+            (opt.isUnit && String(c.buildingId) === String(opt.buildingId)))
+        );
+        if (activeContract) {
+          const match = (tenants || []).find(t =>
+            String(t.id) === String(activeContract.tenantId) ||
+            (t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim()) === activeContract.tenant
+          );
+          if (match) autoTenantId = String(match.id);
+        }
+      }
+    }
+    setFilterPropKey(val);
+    setFilterTenantId(autoTenantId);
+  };
+
+  const handleFilterTenantSelect = (val) => {
+    setFilterTenantId(val);
+    if (val && !filterPropKey) {
+      const tenant = (tenants || []).find(t => String(t.id) === String(val));
+      const tenantName = tenant ? (tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim()) : '';
+      const contract = (contracts || []).find(c =>
+        (c.status === 'Actif' || c.status === 'Expirant') &&
+        (String(c.tenantId) === String(val) || c.tenant === tenantName)
+      );
+      if (contract) {
+        const matchOpt = allPropertyOptions.find(o =>
+          o.propertyName === contract.propertyName ||
+          o.buildingName === contract.propertyName ||
+          String(o.buildingId) === String(contract.propertyId)
+        );
+        if (matchOpt) setFilterPropKey(matchOpt.value);
+      }
+    }
   };
 
   const handleSavePayment = () => {
@@ -654,23 +791,62 @@ export default function Payments() {
       {tab === 'payments' && (
         <>
           {/* Filters */}
-          <div className="bg-surface-container-lowest rounded-xl p-sm border border-outline-variant/20 flex flex-col sm:flex-row items-start sm:items-center gap-md">
-            <div className="relative w-full sm:w-64">
-              <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-outline" size={15} />
-              <input type="text" placeholder="Propriété, locataire..." value={search} onChange={e => setSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 border border-outline-variant rounded-lg bg-surface-container-low text-sm focus:outline-none focus:border-primary" />
-            </div>
-            <div className="flex flex-wrap gap-xs">
-              {['Tous','Payé','Impayé','En retard'].map(opt => (
-                <button key={opt} onClick={() => setStatusFilter(opt)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                    statusFilter === opt ? 'bg-primary text-on-primary' : 'border border-outline-variant text-on-surface-variant hover:bg-surface-container-high'
-                  }`}>
-                  {opt}
+          <div className="bg-surface-container-lowest rounded-xl p-sm border border-outline-variant/20 flex flex-col gap-sm">
+            {/* Row 1: property + tenant searchable dropdowns */}
+            <div className="flex flex-col sm:flex-row gap-sm items-start sm:items-center">
+              <div className="w-full sm:w-64">
+                <SearchSelect
+                  value={filterPropKey}
+                  onChange={v => handleFilterPropSelect(v)}
+                  placeholder="— Tous les appartements —"
+                  options={[
+                    { value: '', label: '— Tous les appartements —' },
+                    ...allPropertyOptions,
+                  ]}
+                  className="w-full pl-3 pr-8 py-2 border border-outline-variant rounded-lg bg-surface-container-low text-sm focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div className="w-full sm:w-64">
+                <SearchSelect
+                  value={filterTenantId}
+                  onChange={v => handleFilterTenantSelect(v)}
+                  placeholder="— Tous les locataires —"
+                  options={[
+                    { value: '', label: '— Tous les locataires —' },
+                    ...filterTenants.map(t => ({
+                      value: String(t.id),
+                      label: t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim(),
+                    })),
+                  ]}
+                  className="w-full pl-3 pr-8 py-2 border border-outline-variant rounded-lg bg-surface-container-low text-sm focus:outline-none focus:border-primary"
+                />
+              </div>
+              {(filterPropKey || filterTenantId) && (
+                <button onClick={() => { setFilterPropKey(''); setFilterTenantId(''); }}
+                  className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold text-error border border-error/30 hover:bg-error/8 transition-colors whitespace-nowrap">
+                  <Icon name="close" size={13} /> Effacer
                 </button>
-              ))}
+              )}
             </div>
-            <span className="ml-auto text-sm text-on-surface-variant">{filtered.length} paiement(s)</span>
+            {/* Row 2: text search + status pills + count */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-md">
+              <div className="relative w-full sm:w-64">
+                <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-outline" size={15} />
+                <input type="text" placeholder="Propriété, locataire..." value={search} onChange={e => setSearch(e.target.value)}
+                  className="w-full pl-8 pr-3 py-2 border border-outline-variant rounded-lg bg-surface-container-low text-sm focus:outline-none focus:border-primary" />
+              </div>
+              <div className="flex flex-wrap gap-xs">
+                {['Tous','Payé','Impayé','En retard'].map(opt => (
+                  <button key={opt} onClick={() => setStatusFilter(opt)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                      statusFilter === opt ? 'bg-primary text-on-primary' : 'border border-outline-variant text-on-surface-variant hover:bg-surface-container-high'
+                    }`}>
+                    {opt}
+                  </button>
+                ))}
+              </div>
+              <span className="ml-auto text-sm text-on-surface-variant">{filtered.length} paiement(s)</span>
+            </div>
           </div>
 
           {/* Table */}
@@ -1074,8 +1250,8 @@ export default function Payments() {
           </Field>
 
           <Field label="Locataire" required>
-            <select value={payForm.tenantId} onChange={e => setPayForm(f => ({ ...f, tenantId: e.target.value }))}
-              className={inputCls} disabled={!payForm.propertyKey}>
+            <select value={payForm.tenantId} onChange={e => handleTenantSelect(e.target.value)}
+              className={inputCls}>
               <option value="">— Choisir le locataire —</option>
               {matchingTenants.map(t => {
                 const name = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
