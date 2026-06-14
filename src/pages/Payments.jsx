@@ -9,7 +9,7 @@ import { sendEmail, buildReminderHtml } from '../lib/email';
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
 const fmt = n => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
-const phoneForWA = raw => { const d = (raw || '').replace(/\D/g, ''); if (!d) return ''; return d.startsWith('225') ? d : '225' + (d.startsWith('0') ? d.slice(1) : d); };
+const phoneForWA = raw => { const d = (raw || '').replace(/\D/g, ''); if (!d) return ''; return d.startsWith('225') ? d : '225' + d; };
 
 const statusColor = {
   'Payé':      'text-green-700 bg-green-100',
@@ -152,11 +152,11 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
     const pType = (entry.propertyType || contract?.propertyType || '').toLowerCase();
     const pIcon = entry.propertyIcon || contract?.propertyIcon || '';
     const pName = (entry.propertyName || contract?.propertyName || '').toLowerCase();
-    // Detect by type, icon, or name starting with "mag"
+    // Detect by type, icon, or "Mag" anywhere in the property name
     if (
       pType.includes('commercial') || pType.includes('magasin') || pType.includes('local') ||
       STORE_ICONS.includes(pIcon) ||
-      /^mag\s*\d/i.test(pName) || pName.startsWith('magasin')
+      /\bmag\b|\bmagasin/.test(pName)
     ) {
       return 'Magasins';
     }
