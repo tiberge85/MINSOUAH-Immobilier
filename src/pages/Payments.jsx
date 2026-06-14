@@ -138,76 +138,204 @@ function buildReceiptHTML(payment, orgSettings, signatures = {}) {
 }
 
 /* ── Monthly Report HTML ──────────────────────────────────────────────────── */
-function buildReportHTML(month, paid, unpaid, orgSettings) {
+function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = []) {
   const org = orgSettings || {};
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
-  const totalCollected = paid.reduce((s, p) => s + p.amount, 0);
-  const totalUnpaid = unpaid.reduce((s, p) => s + p.amount, 0);
-  const total = totalCollected + totalUnpaid;
-  const rate = (paid.length + unpaid.length) > 0 ? Math.round(paid.length / (paid.length + unpaid.length) * 100) : 0;
 
+  const totalCollected = paid.reduce((s, p) => s + (p.amount || 0), 0);
+  const totalUnpaid   = unpaid.reduce((s, p) => s + (p.amount || 0), 0);
+  const total  = totalCollected + totalUnpaid;
+  const rateAmt = total > 0 ? Math.round(totalCollected / total * 100) : 0;
+  const rateCnt = (paid.length + unpaid.length) > 0 ? Math.round(paid.length / (paid.length + unpaid.length) * 100) : 0;
+  const rateColor = rateAmt >= 80 ? '#15803d' : rateAmt >= 50 ? '#b45309' : '#b91c1c';
+
+  /* ── Donut SVG ── */
+  const R = 70; const CX = 90; const CY = 90;
+  const circ = +(2 * Math.PI * R).toFixed(2);
+  const paidArc = total > 0 ? +((totalCollected / total) * circ).toFixed(2) : 0;
+  const donutSVG = `<svg viewBox="0 0 180 180" width="180" height="180">
+    <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="#fecaca" stroke-width="26"/>
+    ${paidArc > 0 ? `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="#4ade80" stroke-width="26"
+      stroke-dasharray="${paidArc} ${circ}" transform="rotate(-90 ${CX} ${CY})"/>` : ''}
+    <text x="${CX}" y="${CY - 6}" text-anchor="middle" font-size="30" font-weight="900" fill="${rateColor}">${rateAmt}%</text>
+    <text x="${CX}" y="${CY + 14}" text-anchor="middle" font-size="11" fill="#888">Encaissé</text>
+    <text x="${CX}" y="${CY + 30}" text-anchor="middle" font-size="10" fill="#bbb">${paid.length} / ${paid.length + unpaid.length} dossiers</text>
+  </svg>`;
+
+  /* ── Property horizontal bar chart SVG ── */
+  const propData = {};
+  [...paid, ...unpaid].forEach(p => {
+    const k = p.propertyName || 'Inconnu';
+    if (!propData[k]) propData[k] = { paid: 0, unpaid: 0 };
+    if (p.status === 'Payé') propData[k].paid += (p.amount || 0);
+    else propData[k].unpaid += (p.amount || 0);
+  });
+  const propItems = Object.entries(propData)
+    .sort((a, b) => (b[1].paid + b[1].unpaid) - (a[1].paid + a[1].unpaid))
+    .slice(0, 8);
+  const maxProp = Math.max(...propItems.map(([, v]) => v.paid + v.unpaid), 1);
+  const BH = 22; const BG = 9; const LW = 145; const PW = 220;
+  const propChartH = propItems.length * (BH + BG) + 28;
+  const propBars = propItems.map(([name, vals], i) => {
+    const y = 8 + i * (BH + BG);
+    const pW = vals.paid   > 0 ? Math.max(Math.round((vals.paid   / maxProp) * PW), 3) : 0;
+    const uW = vals.unpaid > 0 ? Math.max(Math.round((vals.unpaid / maxProp) * PW), 3) : 0;
+    const short = name.length > 22 ? name.slice(0, 22) + '…' : name;
+    return `<text x="${LW - 5}" y="${y + 15}" text-anchor="end" font-size="10" fill="#555">${short}</text>
+    ${pW ? `<rect x="${LW}" y="${y}" width="${pW}" height="${BH}" fill="#4ade80" rx="3"/>` : ''}
+    ${uW ? `<rect x="${LW + pW}" y="${y}" width="${uW}" height="${BH}" fill="#fca5a5" rx="3"/>` : ''}
+    <text x="${LW + pW + uW + 5}" y="${y + 15}" font-size="9" fill="#999">${Number(vals.paid + vals.unpaid).toLocaleString('fr-FR')}</text>`;
+  }).join('');
+  const propSVG = propItems.length > 0 ? `<svg viewBox="0 0 ${LW + PW + 80} ${propChartH}" width="100%" height="${propChartH}">
+    ${propBars}
+    <text x="${LW}" y="${propChartH - 2}" font-size="9" fill="#4ade80">■</text>
+    <text x="${LW + 12}" y="${propChartH - 2}" font-size="9" fill="#888">Payé</text>
+    <text x="${LW + 55}" y="${propChartH - 2}" font-size="9" fill="#fca5a5">■</text>
+    <text x="${LW + 67}" y="${propChartH - 2}" font-size="9" fill="#888">Impayé</text>
+  </svg>` : '<p style="color:#bbb;font-size:11px;padding:8px 0">Aucune donnée</p>';
+
+  /* ── Trend line chart (6 months) ── */
+  const [mName0, mYear0] = month.split(' ');
+  const mIdx0 = MONTH_NAMES.indexOf(mName0);
+  const mY0   = parseInt(mYear0);
+  const trendMonths = Array.from({ length: 6 }, (_, k) => {
+    let idx = mIdx0 - (5 - k), y = mY0;
+    if (idx < 0) { idx += 12; y--; }
+    return `${MONTH_NAMES[idx]} ${y}`;
+  });
+  const trendData = trendMonths.map(m => {
+    const ps = allPayments.filter(p => p.month === m);
+    const pA = ps.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+    const tA = ps.reduce((s, p) => s + (p.amount || 0), 0);
+    return { label: m, rate: tA > 0 ? Math.round(pA / tA * 100) : null, collected: pA, total: tA };
+  });
+  const TW = 520; const TH = 165;
+  const pL = 40; const pR = 20; const pT = 18; const pB = 38;
+  const plotW = TW - pL - pR; const plotH = TH - pT - pB;
+  const tPts = trendData.map((d, i) => ({ x: pL + (i / 5) * plotW, y: d.rate !== null ? pT + plotH - (d.rate / 100) * plotH : null, d }));
+  const validPts = tPts.filter(p => p.y !== null);
+  const linePath = validPts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const areaPath = validPts.length > 0
+    ? `M${validPts[0].x.toFixed(1)},${(pT + plotH).toFixed(1)} ` + validPts.map(p => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ') + ` L${validPts[validPts.length-1].x.toFixed(1)},${(pT + plotH).toFixed(1)}Z` : '';
+  const gridLines = [0, 25, 50, 75, 100].map(v => {
+    const gy = pT + plotH - (v / 100) * plotH;
+    return `<line x1="${pL}" y1="${gy.toFixed(1)}" x2="${pL + plotW}" y2="${gy.toFixed(1)}" stroke="#f0ece6" stroke-width="1"/>
+    <text x="${pL - 4}" y="${(gy + 4).toFixed(1)}" text-anchor="end" font-size="9" fill="#ccc">${v}%</text>`;
+  }).join('');
+  const trendDots = tPts.map(({ x, y, d }) => {
+    const isCur = d.label === month;
+    const dotColor = d.rate === null ? '#e5e7eb' : d.rate >= 80 ? '#4ade80' : d.rate >= 50 ? '#fbbf24' : '#f87171';
+    const yPos = y !== null ? y : pT + plotH;
+    const [mn, yr] = d.label.split(' ');
+    return `<circle cx="${x.toFixed(1)}" cy="${yPos.toFixed(1)}" r="${isCur ? 6 : 4}"
+      fill="${isCur ? '#785a00' : dotColor}" stroke="${isCur ? '#5a4300' : '#fff'}" stroke-width="${isCur ? 2 : 1.5}"/>
+    ${d.rate !== null ? `<text x="${x.toFixed(1)}" y="${(yPos - 9).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="${isCur ? 700 : 400}" fill="${isCur ? '#785a00' : '#888'}">${d.rate}%</text>` : ''}
+    <text x="${x.toFixed(1)}" y="${(TH - 3).toFixed(1)}" text-anchor="middle" font-size="8.5" fill="${isCur ? '#785a00' : '#bbb'}" font-weight="${isCur ? 700 : 400}">${mn.slice(0,3)} ${yr.slice(2)}</text>`;
+  }).join('');
+  const trendSVG = `<svg viewBox="0 0 ${TW} ${TH}" width="100%" height="${TH}">
+    <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#785a00" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#785a00" stop-opacity="0.01"/>
+    </linearGradient></defs>
+    ${gridLines}
+    <line x1="${pL}" y1="${pT}" x2="${pL}" y2="${pT + plotH}" stroke="#e8d5b7" stroke-width="1"/>
+    ${areaPath ? `<path d="${areaPath}" fill="url(#ag)"/>` : ''}
+    ${linePath ? `<path d="${linePath}" fill="none" stroke="#785a00" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>` : ''}
+    ${trendDots}
+  </svg>`;
+
+  /* ── Tables ── */
+  const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
   const paidRows = paid.map(p => `<tr>
-    <td>${p.propertyName}</td><td>${p.tenantName}</td>
-    <td style="text-align:right;font-weight:700;color:#166534">${Number(p.amount).toLocaleString('fr-FR')} FCFA</td>
-    <td>${p.paidDate || '—'}</td>
+    <td>${p.propertyName || '—'}</td><td>${p.tenantName || '—'}</td>
+    <td style="text-align:right;font-weight:700;color:#15803d">${fCFA(p.amount)}</td>
+    <td>${p.paidDate || '—'}</td><td style="text-align:center">${p.method || '—'}</td>
   </tr>`).join('');
-
   const unpaidRows = unpaid.map(p => `<tr>
-    <td>${p.propertyName}</td><td>${p.tenantName}</td>
-    <td style="text-align:right;font-weight:700;color:#991b1b">${Number(p.amount).toLocaleString('fr-FR')} FCFA</td>
-    <td style="color:${p.status === 'En retard' ? '#92400e' : '#991b1b'};font-weight:600">${p.status}</td>
+    <td>${p.propertyName || '—'}</td><td>${p.tenantName || '—'}</td>
+    <td style="text-align:right;font-weight:700;color:#b91c1c">${fCFA(p.amount)}</td>
+    <td>${p.dueDate || '—'}</td>
+    <td style="text-align:center;font-weight:600;color:${p.status === 'En retard' ? '#92400e' : '#b91c1c'}">${p.status || 'Impayé'}</td>
   </tr>`).join('');
 
-  const barWidth = rate;
   return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8"><title>Rapport Mensuel — ${month}</title>
+<html lang="fr"><head>
+<meta charset="UTF-8"><title>Rapport Financier — ${month}</title>
 <style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Segoe UI',Arial,sans-serif;color:#1c1b19;background:#fff;padding:40px}
-  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #785a00;padding-bottom:16px;margin-bottom:28px}
-  .brand{font-size:26px;font-weight:900;color:#785a00}.brand-sub{font-size:11px;color:#817662;text-transform:uppercase;letter-spacing:2px;margin-top:3px}
-  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px}
-  .kpi{background:#fff8f2;border:1px solid #e3d9cc;border-radius:10px;padding:16px}
-  .kpi-l{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#817662;margin-bottom:6px}
-  .kpi-v{font-size:20px;font-weight:800}
-  .bar-wrap{background:#e3d9cc;border-radius:99px;height:16px;margin-bottom:28px;overflow:hidden}
-  .bar{height:100%;background:#785a00;border-radius:99px;width:${barWidth}%;transition:width 0.5s}
-  .bar-label{font-size:12px;color:#817662;margin-bottom:6px}
-  table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}
-  th{background:#785a00;color:white;padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px}
-  td{padding:9px 12px;border-bottom:1px solid #f0e8de}tr:last-child td{border-bottom:none}tr:nth-child(even){background:#fff8f2}
-  .section-h{font-size:14px;font-weight:700;margin:24px 0 10px}
-  .footer{margin-top:32px;padding-top:12px;border-top:1px solid #e3d9cc;font-size:10px;color:#b0a090;display:flex;justify-content:space-between}
-  @media print{body{padding:20px}}
-</style>
-</head>
-<body>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#1c1b19;background:#fff;font-size:13px}
+.page{max-width:900px;margin:0 auto;padding:36px 40px}
+.header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #785a00;padding-bottom:16px;margin-bottom:22px}
+.brand{font-size:24px;font-weight:900;color:#785a00;letter-spacing:-0.5px}
+.brand-sub{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:2px;margin-top:3px}
+.report-meta{text-align:right}
+.report-meta h1{font-size:16px;font-weight:800}
+.report-meta p{font-size:11px;color:#aaa;margin-top:3px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
+.kpi{background:#fafaf8;border:1px solid #ede8e0;border-radius:12px;padding:14px 12px}
+.kpi-l{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:7px}
+.kpi-v{font-size:18px;font-weight:800;line-height:1}
+.kpi-s{font-size:10px;color:#bbb;margin-top:5px}
+.charts-row{display:grid;grid-template-columns:200px 1fr;gap:16px;margin-bottom:16px;align-items:start}
+.chart-box{background:#fafaf8;border:1px solid #ede8e0;border-radius:12px;padding:14px}
+.chart-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#aaa;margin-bottom:10px}
+.trend-box{background:#fafaf8;border:1px solid #ede8e0;border-radius:12px;padding:14px;margin-bottom:22px}
+.section-title{font-size:13px;font-weight:700;margin:0 0 9px;display:flex;align-items:center;gap:8px}
+.badge{display:inline-flex;align-items:center;justify-content:center;padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:22px}
+thead th{background:#785a00;color:#fff;padding:8px 11px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px}
+tbody td{padding:8px 11px;border-bottom:1px solid #f5f0ea}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:nth-child(even){background:#fdf9f5}
+.footer{border-top:1px solid #ede8e0;padding-top:11px;margin-top:4px;display:flex;justify-content:space-between;font-size:10px;color:#ccc}
+@media print{.page{padding:18px 22px}.kpis{gap:8px}.kpi{padding:10px 9px}.kpi-v{font-size:15px}}
+</style></head>
+<body><div class="page">
+
 <div class="header">
-  <div><div class="brand">${org.companyName || 'Minsouah'}</div><div class="brand-sub">L'immobilier réinventé</div></div>
-  <div style="text-align:right"><h2 style="font-size:17px;font-weight:700">Rapport de Paiements — ${month}</h2><p style="font-size:12px;color:#817662;margin-top:4px">Généré le ${today}</p></div>
+  <div><div class="brand">${org.companyName || 'Minsouah'}</div><div class="brand-sub">Gestion Immobilière</div></div>
+  <div class="report-meta">
+    <h1>Rapport Financier — ${month}</h1>
+    <p>Généré le ${today}</p>
+    <p style="margin-top:2px">${paid.length + unpaid.length} dossier(s) · ${paid.length} payé(s) · ${unpaid.length} impayé(s)</p>
+  </div>
 </div>
 
 <div class="kpis">
-  <div class="kpi"><div class="kpi-l">Total attendu</div><div class="kpi-v" style="color:#785a00">${Number(total).toLocaleString('fr-FR')} FCFA</div></div>
-  <div class="kpi"><div class="kpi-l">Encaissé</div><div class="kpi-v" style="color:#166534">${Number(totalCollected).toLocaleString('fr-FR')} FCFA</div></div>
-  <div class="kpi"><div class="kpi-l">Impayés</div><div class="kpi-v" style="color:#991b1b">${Number(totalUnpaid).toLocaleString('fr-FR')} FCFA</div></div>
-  <div class="kpi"><div class="kpi-l">Recouvrement</div><div class="kpi-v" style="color:${rate >= 80 ? '#166534' : '#991b1b'}">${rate}%</div></div>
+  <div class="kpi"><div class="kpi-l">Loyers attendus</div><div class="kpi-v" style="color:#785a00">${Number(total).toLocaleString('fr-FR')}</div><div class="kpi-s">FCFA</div></div>
+  <div class="kpi"><div class="kpi-l">Encaissé</div><div class="kpi-v" style="color:#15803d">${Number(totalCollected).toLocaleString('fr-FR')}</div><div class="kpi-s">FCFA · ${paid.length} locataire(s)</div></div>
+  <div class="kpi"><div class="kpi-l">Impayés</div><div class="kpi-v" style="color:#b91c1c">${Number(totalUnpaid).toLocaleString('fr-FR')}</div><div class="kpi-s">FCFA · ${unpaid.length} locataire(s)</div></div>
+  <div class="kpi"><div class="kpi-l">Recouvrement</div><div class="kpi-v" style="color:${rateColor}">${rateAmt}%</div><div class="kpi-s">${rateCnt}% des dossiers</div></div>
 </div>
 
-<div class="bar-label">Taux de recouvrement : <strong>${rate}%</strong> (${paid.length} payés sur ${paid.length + unpaid.length})</div>
-<div class="bar-wrap"><div class="bar"></div></div>
+<div class="charts-row">
+  <div class="chart-box" style="text-align:center">
+    <div class="chart-title">Répartition</div>
+    ${donutSVG}
+    <div style="font-size:10px;margin-top:6px;color:#15803d">■ Encaissé : ${Number(totalCollected).toLocaleString('fr-FR')} FCFA</div>
+    <div style="font-size:10px;margin-top:3px;color:#b91c1c">■ Impayé : ${Number(totalUnpaid).toLocaleString('fr-FR')} FCFA</div>
+  </div>
+  <div class="chart-box">
+    <div class="chart-title">Par propriété</div>
+    ${propSVG}
+  </div>
+</div>
 
-${paid.length > 0 ? `<div class="section-h" style="color:#166534">✓ Paiements reçus (${paid.length})</div>
-<table><thead><tr><th>Propriété</th><th>Locataire</th><th>Montant</th><th>Payé le</th></tr></thead>
+<div class="trend-box">
+  <div class="chart-title">Évolution du taux de recouvrement — 6 derniers mois</div>
+  ${trendSVG}
+</div>
+
+${paid.length > 0 ? `<div class="section-title" style="color:#15803d">✓ Paiements reçus <span class="badge" style="background:#dcfce7;color:#15803d">${paid.length}</span><span style="font-weight:400;font-size:11px;color:#999">— ${Number(totalCollected).toLocaleString('fr-FR')} FCFA</span></div>
+<table><thead><tr><th>Propriété</th><th>Locataire</th><th style="text-align:right">Montant</th><th>Payé le</th><th style="text-align:center">Mode</th></tr></thead>
 <tbody>${paidRows}</tbody></table>` : ''}
 
-${unpaid.length > 0 ? `<div class="section-h" style="color:#991b1b">⚠ Impayés / En retard (${unpaid.length})</div>
-<table><thead><tr><th>Propriété</th><th>Locataire</th><th>Montant dû</th><th>Statut</th></tr></thead>
+${unpaid.length > 0 ? `<div class="section-title" style="color:#b91c1c">⚠ Loyers impayés / en retard <span class="badge" style="background:#fee2e2;color:#b91c1c">${unpaid.length}</span><span style="font-weight:400;font-size:11px;color:#999">— ${Number(totalUnpaid).toLocaleString('fr-FR')} FCFA</span></div>
+<table><thead><tr><th>Propriété</th><th>Locataire</th><th style="text-align:right">Montant dû</th><th>Échéance</th><th style="text-align:center">Statut</th></tr></thead>
 <tbody>${unpaidRows}</tbody></table>` : ''}
 
-<div class="footer"><span>${org.companyName || 'Minsouah'} — Gestion Immobilière</span><span>Document confidentiel — généré automatiquement</span></div>
+<div class="footer"><span>${org.companyName || 'Minsouah'} — Document confidentiel</span><span>${today} · ${month}</span></div>
+</div>
 <script>window.onload=()=>window.print()</script>
 </body></html>`;
 }
@@ -657,7 +785,7 @@ export default function Payments() {
   }, [quittancePayment, orgSettings]);
 
   const handlePrintReport = () => {
-    const html = buildReportHTML(selectedMonth, reportPaid, reportUnpaid, orgSettings);
+    const html = buildReportHTML(selectedMonth, reportPaid, reportUnpaid, orgSettings, payments);
     const win = window.open('', '_blank', 'width=900,height=700');
     if (win) { win.document.write(html); win.document.close(); }
   };
