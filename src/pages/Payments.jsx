@@ -157,6 +157,36 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
     return String(entry.amount || 0);
   }
 
+  /* ── Building metadata ── */
+  const CAT_META = {
+    '130000': {
+      label: 'Studios — Petit Bâtiment',
+      sublabel: 'Studio · 130 000 FCFA / mois',
+      totalUnits: 24,
+    },
+    '150000': {
+      label: 'Studios — Grand Bâtiment A',
+      sublabel: 'Studio · 150 000 FCFA / mois',
+      totalUnits: 16,
+    },
+    '200000': {
+      label: '2 Pièces — Grand Bâtiment A',
+      sublabel: '2 Pièces · 200 000 FCFA / mois',
+      totalUnits: 4,
+    },
+    '300000': {
+      label: '3 Pièces — Grand Bâtiment B',
+      sublabel: '3 Pièces · 300 000 FCFA / mois',
+      totalUnits: 8,
+    },
+    'Magasins': {
+      label: 'Magasins / Locaux Commerciaux',
+      sublabel: '2 × 100 000 FCFA · 1 × 150 000 FCFA · 1 × 200 000 FCFA',
+      totalUnits: 9,
+      note: '4 loués · 5 disponibles',
+    },
+  };
+
   /* ── Group by category ── */
   const CATEGORY_ORDER = ['130000', '150000', '200000', '300000', 'Magasins'];
   const catMap = {};
@@ -170,6 +200,14 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
     if (!catMap[cat]) catMap[cat] = { paid: [], unpaid: [] };
     catMap[cat].unpaid.push(p);
   });
+
+  /* count advance tenants per category to include in occupancy */
+  const advCatCount = {};
+  advance.forEach(a => {
+    const cat = getCategory(a);
+    advCatCount[cat] = (advCatCount[cat] || 0) + 1;
+  });
+
   const sortedCats = Object.keys(catMap).sort((a, b) => {
     const ai = CATEGORY_ORDER.indexOf(a);
     const bi = CATEGORY_ORDER.indexOf(b);
@@ -180,9 +218,7 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
   });
 
   function catLabel(cat) {
-    if (cat === 'Magasins') return 'Magasins / Locaux Commerciaux';
-    const n = Number(cat);
-    return isNaN(n) ? cat : `${n.toLocaleString('fr-FR')} FCFA / mois`;
+    return CAT_META[cat]?.label || (cat === 'Magasins' ? 'Magasins / Locaux Commerciaux' : (() => { const n = Number(cat); return isNaN(n) ? cat : `${n.toLocaleString('fr-FR')} FCFA / mois`; })());
   }
 
   /* ── Mini donut per category ── */
@@ -203,9 +239,14 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
 
   /* ── Per-category section ── */
   function catSection(cat, data) {
+    const meta = CAT_META[cat] || {};
     const paidAmt = data.paid.reduce((s, p) => s + (p.amount || 0), 0);
     const unpaidAmt = data.unpaid.reduce((s, p) => s + (p.amount || 0), 0);
     const totalAmt = paidAmt + unpaidAmt;
+    const occupied = data.paid.length + data.unpaid.length + (advCatCount[cat] || 0);
+    const totalUnits = meta.totalUnits || null;
+    const disponibles = totalUnits !== null ? totalUnits - occupied : null;
+
     const paidRows = data.paid.map(p => `<tr>
       <td>${p.propertyName || '—'}</td><td>${p.tenantName || '—'}</td>
       <td style="text-align:right;font-weight:700;color:#15803d">${fCFA(p.amount)}</td>
@@ -217,12 +258,20 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
       <td>${p.dueDate || '—'}</td>
       <td style="text-align:center;font-weight:600;color:${p.status === 'En retard' ? '#92400e' : '#b91c1c'}">${p.status || 'Impayé'}</td>
     </tr>`).join('');
+
     return `<div class="cat-section">
   <div class="cat-header">
-    <div class="cat-title">${catLabel(cat)}</div>
-    <div class="cat-stats">
-      <span class="badge" style="background:#dcfce7;color:#15803d">${data.paid.length} payé(s)</span>
-      ${data.unpaid.length > 0 ? `<span class="badge" style="background:#fee2e2;color:#b91c1c">${data.unpaid.length} impayé(s)</span>` : ''}
+    <div>
+      <div class="cat-title">${catLabel(cat)}</div>
+      ${meta.sublabel ? `<div style="font-size:10px;color:#aaa;margin-top:2px">${meta.sublabel}</div>` : ''}
+    </div>
+    <div class="cat-stats" style="flex-direction:column;align-items:flex-end;gap:4px">
+      <div style="display:flex;gap:6px">
+        <span class="badge" style="background:#dcfce7;color:#15803d">${data.paid.length} payé(s)</span>
+        ${data.unpaid.length > 0 ? `<span class="badge" style="background:#fee2e2;color:#b91c1c">${data.unpaid.length} impayé(s)</span>` : ''}
+      </div>
+      ${totalUnits !== null ? `<div style="font-size:10px;color:#888">${occupied} loué(s) sur ${totalUnits}${disponibles !== null && disponibles > 0 ? ` · <span style="color:#0369a1;font-weight:700">${disponibles} disponible(s)</span>` : ''}</div>` : ''}
+      ${meta.note ? `<div style="font-size:10px;color:#999">${meta.note}</div>` : ''}
     </div>
   </div>
   <div class="cat-body">
