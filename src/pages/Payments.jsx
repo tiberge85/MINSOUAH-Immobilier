@@ -450,30 +450,23 @@ export default function Payments() {
   /* ── Handlers ── */
   const handlePropertySelect = (val) => {
     const opt = allPropertyOptions.find(o => o.value === val);
-    // Inline-compute matching tenants to auto-fill when exactly one occupant
-    const paidNow = new Set(
-      (payments || [])
-        .filter(p => p.month === payForm.month && p.status === 'Payé')
-        .flatMap(p => [String(p.tenantId), (p.tenantName || '').toLowerCase()])
-        .filter(Boolean)
-    );
-    const isPaid = t => {
-      const nm = (t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim()).toLowerCase();
-      return paidNow.has(String(t.id)) || paidNow.has(nm);
-    };
-    const candidates = opt ? (tenants || []).filter(t => {
-      if (isPaid(t)) return false;
-      const tName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
-      const via = (contracts || []).some(c =>
-        c.status === 'Actif' &&
-        (c.tenantId === t.id || c.tenant === tName) &&
-        (c.propertyName === opt.propertyName || c.propertyName === opt.buildingName ||
+    let autoId = '';
+    if (opt && val) {
+      const activeContract = (contracts || []).find(c =>
+        (c.status === 'Actif' || c.status === 'Expirant') &&
+        (c.propertyName === opt.propertyName ||
+          c.propertyName === opt.buildingName ||
           String(c.propertyId) === String(opt.buildingId) ||
           (opt.isUnit && String(c.buildingId) === String(opt.buildingId)))
       );
-      return via || (t.property || '').includes(opt.buildingName || '') || (t.property || '').includes(opt.propertyName || '');
-    }) : [];
-    const autoId = candidates.length === 1 ? String(candidates[0].id) : '';
+      if (activeContract) {
+        const match = (tenants || []).find(t =>
+          String(t.id) === String(activeContract.tenantId) ||
+          (t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim()) === activeContract.tenant
+        );
+        if (match) autoId = String(match.id);
+      }
+    }
     setPayForm(f => ({ ...f, propertyKey: val, tenantId: autoId, amount: opt?.rent || '' }));
   };
 
