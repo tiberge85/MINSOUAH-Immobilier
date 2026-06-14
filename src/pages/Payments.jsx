@@ -138,7 +138,7 @@ function buildReceiptHTML(payment, orgSettings, signatures = {}) {
 }
 
 /* ── Monthly Report HTML ──────────────────────────────────────────────────── */
-function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = []) {
+function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], advance = []) {
   const org = orgSettings || {};
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
 
@@ -333,6 +333,23 @@ ${paid.length > 0 ? `<div class="section-title" style="color:#15803d">✓ Paieme
 ${unpaid.length > 0 ? `<div class="section-title" style="color:#b91c1c">⚠ Loyers impayés / en retard <span class="badge" style="background:#fee2e2;color:#b91c1c">${unpaid.length}</span><span style="font-weight:400;font-size:11px;color:#999">— ${Number(totalUnpaid).toLocaleString('fr-FR')} FCFA</span></div>
 <table><thead><tr><th>Propriété</th><th>Locataire</th><th style="text-align:right">Montant dû</th><th>Échéance</th><th style="text-align:center">Statut</th></tr></thead>
 <tbody>${unpaidRows}</tbody></table>` : ''}
+
+${advance.length > 0 ? (() => {
+  const advRows = advance.map(a => {
+    const sinceStr = a.since ? new Date(a.since).toLocaleDateString('fr-CI') : '—';
+    const nextStr  = a.paymentStartDate ? new Date(a.paymentStartDate).toLocaleDateString('fr-CI') : '—';
+    return `<tr>
+      <td>${a.propertyName || '—'}</td>
+      <td>${a.tenantName || '—'}</td>
+      <td>${sinceStr}</td>
+      <td style="text-align:right;color:#92400e;font-weight:700">${Number(a.amount || 0).toLocaleString('fr-FR')} FCFA</td>
+      <td style="text-align:center;color:#0369a1;font-weight:700">${nextStr}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="section-title" style="color:#0369a1">🕐 Locataires en période d'avance <span class="badge" style="background:#dbeafe;color:#0369a1">${advance.length}</span><span style="font-weight:400;font-size:11px;color:#999">— 1er loyer non encore échu</span></div>
+<table><thead><tr><th>Propriété</th><th>Locataire</th><th>Date d'entrée</th><th style="text-align:right">Loyer mensuel</th><th style="text-align:center">1er loyer dû le</th></tr></thead>
+<tbody>${advRows}</tbody></table>`;
+})() : ''}
 
 <div class="footer"><span>${org.companyName || 'Minsouah'} — Document confidentiel</span><span>${today} · ${month}</span></div>
 </div>
@@ -582,25 +599,55 @@ export default function Payments() {
 
   /* ── Report month payments ── */
   const reportPaid = monthPmts.filter(p => p.status === 'Payé');
-  // Unpaid = explicit unpaid records + active-contract tenants with no payment entry at all
-  const reportUnpaid = (() => {
+
+  // Helper: convert "Juin 2026" → Date(2026, 5, 1)
+  const monthLabelToDate = (label) => {
+    const [mn, yr] = (label || '').split(' ');
+    const idx = MONTH_NAMES.indexOf(mn);
+    return idx >= 0 ? new Date(parseInt(yr), idx, 1) : null;
+  };
+  const selectedDate = monthLabelToDate(selectedMonth);
+
+  // Unpaid = explicit records (status != Payé) + active-contract tenants with no payment record
+  //          BUT exclude those still in their advance period (paymentStartDate not yet reached)
+  // Advance = active-contract tenants whose paymentStartDate is after the selected month
+  const { reportUnpaid, reportAdvance } = (() => {
     const explicit = monthPmts.filter(p => p.status !== 'Payé');
-    const alreadyInReport = new Set(
-      monthPmts.map(p => (p.tenantName || '').toLowerCase().trim())
-    );
-    const implicit = (contracts || [])
-      .filter(c =>
-        (c.status === 'Actif' || c.status === 'Expirant') &&
-        !alreadyInReport.has((c.tenant || '').toLowerCase().trim())
-      )
-      .map(c => ({
-        propertyName: c.propertyName || '',
-        tenantName: c.tenant || '',
-        amount: c.rent || 0,
-        dueDate: '',
-        status: 'Impayé',
-      }));
-    return [...explicit, ...implicit];
+    const alreadyInReport = new Set(monthPmts.map(p => (p.tenantName || '').toLowerCase().trim()));
+
+    const unpaid = [...explicit];
+    const advance = [];
+
+    (contracts || [])
+      .filter(c => (c.status === 'Actif' || c.status === 'Expirant') && !alreadyInReport.has((c.tenant || '').toLowerCase().trim()))
+      .forEach(c => {
+        const tenant = (tenants || []).find(t =>
+          (t.name || '').toLowerCase().trim() === (c.tenant || '').toLowerCase().trim() ||
+          (c.tenantId && String(t.id) === String(c.tenantId))
+        );
+        const psDate = tenant?.paymentStartDate ? new Date(tenant.paymentStartDate) : null;
+        const inAdvancePeriod = psDate && selectedDate && selectedDate < psDate;
+
+        if (inAdvancePeriod) {
+          advance.push({
+            propertyName: c.propertyName || '',
+            tenantName: c.tenant || '',
+            amount: c.rent || 0,
+            since: tenant?.since || '',
+            paymentStartDate: tenant.paymentStartDate,
+          });
+        } else {
+          unpaid.push({
+            propertyName: c.propertyName || '',
+            tenantName: c.tenant || '',
+            amount: c.rent || 0,
+            dueDate: '',
+            status: 'Impayé',
+          });
+        }
+      });
+
+    return { reportUnpaid: unpaid, reportAdvance: advance };
   })();
 
   /* ── Shared helpers for contract-based auto-fill ── */
@@ -804,7 +851,7 @@ export default function Payments() {
   }, [quittancePayment, orgSettings]);
 
   const handlePrintReport = () => {
-    const html = buildReportHTML(selectedMonth, reportPaid, reportUnpaid, orgSettings, payments);
+    const html = buildReportHTML(selectedMonth, reportPaid, reportUnpaid, orgSettings, payments, reportAdvance);
     const win = window.open('', '_blank', 'width=900,height=700');
     if (win) { win.document.write(html); win.document.close(); }
   };
