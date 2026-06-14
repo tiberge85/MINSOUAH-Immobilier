@@ -784,7 +784,7 @@ export default function Payments() {
   const handleReminder = (p) => { dispatch({ type: 'SEND_REMINDER', payload: p.id }); setReminderModal(null); };
 
   const openEdit = (p) => {
-    setEditForm({ amount: p.amount, dueDate: p.dueDate || '', month: p.month, method: p.method || 'Espèces', status: p.status });
+    setEditForm({ amount: p.amount, dueDate: p.dueDate || '', paidDate: p.paidDate || '', month: p.month, method: p.method || 'Espèces', status: p.status });
     setEditModal(p);
   };
   const saveEdit = () => {
@@ -1723,12 +1723,15 @@ export default function Payments() {
               <Field label="Date d'échéance">
                 <input type="date" value={editForm.dueDate} onChange={e => setEditForm(f => ({ ...f, dueDate: e.target.value }))} className={inputCls} />
               </Field>
-              <Field label="Mode de paiement">
-                <select value={editForm.method} onChange={e => setEditForm(f => ({ ...f, method: e.target.value }))} className={inputCls}>
-                  {['Espèces','Virement','Mobile Money','Chèque','Autre'].map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
+              <Field label="Date de paiement">
+                <input type="date" value={editForm.paidDate} onChange={e => setEditForm(f => ({ ...f, paidDate: e.target.value }))} className={inputCls} />
               </Field>
             </div>
+            <Field label="Mode de paiement">
+              <select value={editForm.method} onChange={e => setEditForm(f => ({ ...f, method: e.target.value }))} className={inputCls}>
+                {['Espèces','Virement','Mobile Money','Chèque','Autre'].map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </Field>
           </div>
         )}
       </ModalWrap>
