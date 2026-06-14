@@ -607,6 +607,10 @@ export default function Payments() {
   /* ── Reminder modal ── */
   const [reminderModal, setReminderModal] = useState(null);
 
+  /* ── Arrears add modal ── */
+  const [arrearsAddModal, setArrearsAddModal] = useState(false);
+  const [arrearsAddForm, setArrearsAddForm] = useState({ tenantId: '', month: '', amount: '', status: 'Impayé', propertyName: '' });
+
   /* ── Compute next payment date for quittance ── */
   const computeNextPaymentDate = useCallback((payment) => {
     const tenant = (tenants || []).find(t => String(t.id) === String(payment.tenantId));
@@ -759,6 +763,75 @@ export default function Payments() {
     payments.filter(p => p.month === currentMonthLabel && p.status !== 'Payé'),
     [payments, currentMonthLabel]
   );
+
+  /* ── Penalty list: active tenants who haven't paid for current month ── */
+  const penaltyList = useMemo(() => {
+    const currentDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    const paidThisMonth = new Set(
+      (payments || [])
+        .filter(p => p.month === currentMonthLabel && p.status === 'Payé')
+        .map(p => (p.tenantName || '').toLowerCase().trim())
+        .filter(Boolean)
+    );
+    return (contracts || [])
+      .filter(c => c.status === 'Actif' || c.status === 'Expirant')
+      .filter(c => !paidThisMonth.has((c.tenant || '').toLowerCase().trim()))
+      .filter(c => {
+        const tenant = (tenants || []).find(t =>
+          (t.name || '').toLowerCase().trim() === (c.tenant || '').toLowerCase().trim() ||
+          (c.tenantId && String(t.id) === String(c.tenantId))
+        );
+        const psDate = tenant?.paymentStartDate ? new Date(tenant.paymentStartDate) : null;
+        return !psDate || currentDate >= psDate;
+      })
+      .map(c => {
+        const tenant = (tenants || []).find(t =>
+          (t.name || '').toLowerCase().trim() === (c.tenant || '').toLowerCase().trim() ||
+          (c.tenantId && String(t.id) === String(c.tenantId))
+        );
+        const rent = c.rent || 0;
+        const penalty = Math.round(rent * 0.10);
+        return {
+          contractId: c.id,
+          tenantName: c.tenant || '',
+          tenantPhone: tenant?.phone || '',
+          tenantEmail: tenant?.email || '',
+          tenantId: c.tenantId || tenant?.id || null,
+          propertyName: c.propertyName || '',
+          rent,
+          penalty,
+          total: rent + penalty,
+        };
+      });
+  }, [contracts, payments, currentMonthLabel, tenants, now]);
+
+  /* ── Arrears: unpaid payments from months BEFORE the current month ── */
+  const arrearsList = useMemo(() => {
+    const cy = now.getFullYear();
+    const cm = now.getMonth();
+    return (payments || []).filter(p => {
+      if (p.status === 'Payé' || p.status === 'Annulé') return false;
+      if (!p.month) return false;
+      const [mn, yr] = p.month.split(' ');
+      const idx = MONTH_NAMES.indexOf(mn);
+      if (idx === -1) return false;
+      const y = parseInt(yr);
+      return y < cy || (y === cy && idx < cm);
+    });
+  }, [payments, now]);
+  const arrearsTotal = arrearsList.reduce((s, p) => s + (p.amount || 0), 0);
+
+  /* ── Arrears grouped by tenant ── */
+  const arrearsByTenant = useMemo(() => {
+    const groups = {};
+    arrearsList.forEach(p => {
+      const key = (p.tenantName || '—').toLowerCase();
+      if (!groups[key]) groups[key] = { tenantName: p.tenantName || '—', tenantPhone: p.tenantPhone || '', payments: [], total: 0 };
+      groups[key].payments.push(p);
+      groups[key].total += p.amount || 0;
+    });
+    return Object.values(groups).sort((a, b) => b.total - a.total);
+  }, [arrearsList]);
 
   /* ── Report month payments ── */
   const reportPaid = monthPmts.filter(p => p.status === 'Payé');
@@ -1023,6 +1096,56 @@ export default function Payments() {
     window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
   }, [quittancePayment, orgSettings]);
 
+  /* ── Open payment modal pre-filled with penalty amount ── */
+  const openPenaltyPayment = (item) => {
+    const opt = allPropertyOptions.find(o =>
+      (o.propertyName || '').toLowerCase() === (item.propertyName || '').toLowerCase() ||
+      (o.buildingName || '').toLowerCase() === (item.propertyName || '').toLowerCase()
+    );
+    setPayForm({
+      propertyKey: opt?.value || '',
+      tenantId: String(item.tenantId || ''),
+      amount: String(item.total),
+      month: currentMonthLabel,
+      dueDate: '',
+      method: 'Espèces',
+    });
+    setPayModal(true);
+  };
+
+  /* ── Save an arrear (past month payment) ── */
+  const handleSaveArrear = () => {
+    const tenant = (tenants || []).find(t => String(t.id) === String(arrearsAddForm.tenantId));
+    const tenantName = tenant ? (tenant.name || '') : '';
+    const contract = (contracts || []).find(c =>
+      (c.status === 'Actif' || c.status === 'Expirant') &&
+      (c.tenant === tenantName || String(c.tenantId) === String(arrearsAddForm.tenantId))
+    );
+    const today = new Date().toLocaleDateString('fr-CI');
+    dispatch({
+      type: 'ADD_PAYMENT',
+      payload: {
+        propertyName: arrearsAddForm.propertyName || contract?.propertyName || '',
+        tenantName,
+        tenantEmail: tenant?.email || '',
+        tenantPhone: tenant?.phone || '',
+        tenantId: tenant?.id || null,
+        contractId: contract?.id || null,
+        amount: parseFloat(arrearsAddForm.amount) || 0,
+        month: arrearsAddForm.month,
+        dueDate: '',
+        method: 'Espèces',
+        status: arrearsAddForm.status,
+        paidDate: arrearsAddForm.status === 'Payé' ? today : null,
+        isArrear: true,
+        reminderSent: false,
+        reminderCount: 0,
+      },
+    });
+    setArrearsAddModal(false);
+    setArrearsAddForm({ tenantId: '', month: '', amount: '', status: 'Impayé', propertyName: '' });
+  };
+
   const handlePrintReport = () => {
     const html = buildReportHTML(selectedMonth, reportPaid, reportUnpaid, orgSettings, payments, reportAdvance, contracts, monthExpenses);
     const win = window.open('', '_blank', 'width=900,height=700');
@@ -1090,9 +1213,23 @@ export default function Payments() {
     });
   };
 
+  const sendBulkPenaltyNotifications = () => {
+    penaltyList.forEach((item, i) => {
+      const phone = phoneForWA(item.tenantPhone);
+      if (phone) {
+        const msg = encodeURIComponent(
+          `Bonjour ${item.tenantName},\n\nVotre loyer de ${currentMonthLabel} n'a pas été réglé avant le 10 du mois. Une pénalité de 10% est donc appliquée.\n\n• Loyer : ${fmt(item.rent)}\n• Pénalité (10%) : ${fmt(item.penalty)}\n• Total à régler : ${fmt(item.total)}\n\nPropriété : ${item.propertyName}\n\nMerci de régulariser sans délai.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
+        );
+        setTimeout(() => window.open(`https://wa.me/${phone}?text=${msg}`, '_blank'), i * 600);
+      }
+    });
+  };
+
   const TABS = [
     { id: 'payments', label: 'Paiements', icon: 'payments' },
     { id: 'reminders', label: 'Rappels du mois', icon: 'notifications_active', badge: currentMonthUnpaid.length },
+    { id: 'penalties', label: 'Pénalités 10%', icon: 'gavel', badge: isAfterDeadline ? penaltyList.length : 0 },
+    { id: 'arrears', label: 'Arriérés', icon: 'history', badge: arrearsList.length },
     { id: 'report', label: 'Rapport mensuel', icon: 'bar_chart' },
   ];
 
@@ -1404,6 +1541,183 @@ export default function Payments() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════ TAB: PÉNALITÉS ══════════════════ */}
+      {tab === 'penalties' && (
+        <div className="flex flex-col gap-md">
+          <div className={`${isAfterDeadline ? 'bg-red-50 border-red-300' : 'bg-amber-50 border-amber-300'} border rounded-xl px-4 py-3 flex items-center gap-3`}>
+            <Icon name="gavel" size={20} className={isAfterDeadline ? 'text-red-700 flex-shrink-0' : 'text-amber-700 flex-shrink-0'} />
+            <div>
+              <p className={`text-sm font-bold ${isAfterDeadline ? 'text-red-800' : 'text-amber-800'}`}>
+                {isAfterDeadline
+                  ? `Délai dépassé — ${penaltyList.length} locataire(s) n'ont pas payé avant le 10`
+                  : 'Période de rappel en cours — la pénalité de 10% s\'applique après le 10 du mois'}
+              </p>
+              <p className={`text-xs mt-0.5 ${isAfterDeadline ? 'text-red-700' : 'text-amber-700'}`}>
+                Pénalité = 10% du loyer mensuel · Rappel : les paiements sont attendus entre le 1er et le 10
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between flex-wrap gap-sm">
+            <div>
+              <h3 className="font-bold text-on-surface text-base">Liste des pénalités — {currentMonthLabel}</h3>
+              <p className="text-sm text-on-surface-variant mt-0.5">{penaltyList.length} dossier(s) concerné(s)</p>
+            </div>
+            {isAfterDeadline && penaltyList.length > 0 && (
+              <Btn icon="chat" onClick={sendBulkPenaltyNotifications}>Notifier tous (WhatsApp)</Btn>
+            )}
+          </div>
+
+          {penaltyList.length === 0 ? (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
+              <Icon name="check_circle" size={40} className="text-green-600 mb-3" />
+              <p className="font-semibold text-green-800">Aucune pénalité pour {currentMonthLabel}</p>
+              <p className="text-sm text-green-600 mt-1">Tous les locataires ont réglé leur loyer.</p>
+            </div>
+          ) : (
+            <div className="bg-surface-container-lowest rounded-xl border border-red-200 overflow-hidden shadow-card">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-red-700 text-white">
+                    <tr>
+                      {['Locataire','Propriété','Loyer dû','Pénalité 10%','Total à payer','Actions'].map(h => (
+                        <th key={h} className="px-4 py-3 text-xs font-bold uppercase tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/20">
+                    {penaltyList.map((item, i) => (
+                      <tr key={i} className="hover:bg-red-50/40 transition-colors">
+                        <td className="px-4 py-3.5">
+                          <p className="font-semibold text-sm">{item.tenantName}</p>
+                          {item.tenantPhone && <p className="text-xs text-on-surface-variant">{item.tenantPhone}</p>}
+                        </td>
+                        <td className="px-4 py-3.5 text-sm text-on-surface">{item.propertyName}</td>
+                        <td className="px-4 py-3.5 font-semibold text-sm">{fmt(item.rent)}</td>
+                        <td className="px-4 py-3.5 font-bold text-sm text-red-700">+ {fmt(item.penalty)}</td>
+                        <td className="px-4 py-3.5">
+                          <span className="font-black text-sm text-red-800 bg-red-100 px-2 py-1 rounded-lg">{fmt(item.total)}</span>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <div className="flex gap-2 flex-wrap">
+                            {item.tenantPhone && (() => {
+                              const phone = phoneForWA(item.tenantPhone);
+                              const msg = encodeURIComponent(
+                                `Bonjour ${item.tenantName},\n\nUne pénalité de 10% a été appliquée pour non-paiement du loyer de ${currentMonthLabel} avant le 10.\n\n• Loyer : ${fmt(item.rent)}\n• Pénalité : ${fmt(item.penalty)}\n• Total à régler : ${fmt(item.total)}\n\nPropriété : ${item.propertyName}\n\nMerci de régulariser sans délai.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
+                              );
+                              return phone ? (
+                                <button onClick={() => window.open(`https://wa.me/${phone}?text=${msg}`, '_blank')}
+                                  className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-200">
+                                  <Icon name="chat" size={12} /> WhatsApp
+                                </button>
+                              ) : null;
+                            })()}
+                            <button onClick={() => openPenaltyPayment(item)}
+                              className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-semibold hover:bg-red-200">
+                              <Icon name="payments" size={12} /> Encaisser + 10%
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-red-50 border-t-2 border-red-200">
+                      <td colSpan={3} className="px-4 py-3 text-sm font-bold text-red-800">Total</td>
+                      <td className="px-4 py-3 font-bold text-sm text-red-700">{fmt(penaltyList.reduce((s, i) => s + i.penalty, 0))}</td>
+                      <td className="px-4 py-3 font-black text-red-800">{fmt(penaltyList.reduce((s, i) => s + i.total, 0))}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════ TAB: ARRIÉRÉS ══════════════════ */}
+      {tab === 'arrears' && (
+        <div className="flex flex-col gap-md">
+          <div className="flex items-center justify-between flex-wrap gap-sm">
+            <div>
+              <h3 className="font-bold text-on-surface text-base">Arriérés de loyers</h3>
+              <p className="text-sm text-on-surface-variant mt-0.5">
+                {arrearsList.length} mois impayé(s) · Total dû : <span className="font-bold text-red-700">{fmt(arrearsTotal)}</span>
+              </p>
+            </div>
+            <Btn icon="add_circle" onClick={() => { setArrearsAddForm({ tenantId: '', month: '', amount: '', status: 'Impayé', propertyName: '' }); setArrearsAddModal(true); }}>
+              Ajouter un arriéré
+            </Btn>
+          </div>
+
+          {arrearsByTenant.length === 0 ? (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
+              <Icon name="check_circle" size={40} className="text-green-600 mb-3" />
+              <p className="font-semibold text-green-800">Aucun arriéré enregistré</p>
+              <p className="text-sm text-green-600 mt-1">Tous les loyers des mois précédents ont été réglés.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-md">
+              {arrearsByTenant.map(group => (
+                <div key={group.tenantName} className="bg-surface-container-lowest rounded-xl border border-amber-200 overflow-hidden shadow-card">
+                  <div className="bg-amber-50 px-5 py-3 border-b border-amber-200 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-amber-200 flex items-center justify-center text-amber-800 font-bold text-sm flex-shrink-0">
+                      {(group.tenantName[0] || '?').toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-amber-900 truncate">{group.tenantName}</p>
+                      <p className="text-xs text-amber-700">{group.payments.length} mois d'arriéré(s)</p>
+                    </div>
+                    <span className="font-black text-amber-900 bg-amber-200 px-3 py-1 rounded-lg text-sm flex-shrink-0">{fmt(group.total)}</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead><tr className="bg-amber-50/60 border-b border-amber-100">
+                        {['Mois','Propriété','Montant','Statut','Actions'].map(h => (
+                          <th key={h} className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-amber-800">{h}</th>
+                        ))}
+                      </tr></thead>
+                      <tbody className="divide-y divide-amber-50">
+                        {group.payments.map(p => (
+                          <tr key={p.id} className="hover:bg-amber-50/40">
+                            <td className="px-4 py-3 text-sm font-semibold">{p.month}</td>
+                            <td className="px-4 py-3 text-sm text-on-surface-variant">{p.propertyName}</td>
+                            <td className="px-4 py-3 text-sm font-bold text-amber-800">{fmt(p.amount)}</td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor[p.status] || ''}`}>
+                                <Icon name={statusIcon[p.status] || 'info'} size={12} />{p.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex gap-2 flex-wrap">
+                                <Btn small icon="check_circle" variant="green" onClick={() => handleMarkPaid(p.id)}>Encaisser</Btn>
+                                {group.tenantPhone && (() => {
+                                  const phone = phoneForWA(group.tenantPhone);
+                                  const msg = encodeURIComponent(
+                                    `Bonjour ${p.tenantName},\n\nNous vous rappelons que votre loyer de ${fmt(p.amount)} pour le mois de ${p.month} est toujours impayé.\n\nPropriété : ${p.propertyName}\n\nMerci de régulariser votre situation.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
+                                  );
+                                  return phone ? (
+                                    <button onClick={() => window.open(`https://wa.me/${phone}?text=${msg}`, '_blank')}
+                                      className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-200">
+                                      <Icon name="chat" size={12} /> WhatsApp
+                                    </button>
+                                  ) : null;
+                                })()}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -1907,6 +2221,88 @@ export default function Payments() {
             </Field>
           </div>
         )}
+      </ModalWrap>
+
+      {/* ══════════════ MODAL: Ajouter un arriéré ══════════════ */}
+      <ModalWrap
+        open={arrearsAddModal}
+        onClose={() => setArrearsAddModal(false)}
+        title="Ajouter un arriéré"
+        size="sm"
+        footer={
+          <>
+            <Btn variant="secondary" onClick={() => setArrearsAddModal(false)}>Annuler</Btn>
+            <Btn icon="save"
+              onClick={handleSaveArrear}
+              disabled={!arrearsAddForm.tenantId || !arrearsAddForm.month || !arrearsAddForm.amount}>
+              Enregistrer l'arriéré
+            </Btn>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <Field label="Locataire" required>
+            <SearchSelect
+              options={(tenants || []).map(t => ({ value: String(t.id), label: t.name || '—', sub: t.phone || '' }))}
+              value={arrearsAddForm.tenantId}
+              onChange={val => {
+                const t = (tenants || []).find(t2 => String(t2.id) === String(val));
+                const contract = t ? (contracts || []).find(c =>
+                  (c.status === 'Actif' || c.status === 'Expirant') &&
+                  (c.tenant === t.name || String(c.tenantId) === String(t.id))
+                ) : null;
+                setArrearsAddForm(f => ({
+                  ...f,
+                  tenantId: val,
+                  amount: contract ? String(contract.rent || '') : f.amount,
+                  propertyName: contract ? (contract.propertyName || '') : f.propertyName,
+                }));
+              }}
+              placeholder="Sélectionner un locataire…"
+            />
+          </Field>
+          <Field label="Mois concerné" required>
+            <select
+              value={arrearsAddForm.month}
+              onChange={e => setArrearsAddForm(f => ({ ...f, month: e.target.value }))}
+              className={inputCls}
+            >
+              <option value="">— Choisir un mois —</option>
+              {allMonths.filter(m => {
+                const [mn, yr] = m.split(' ');
+                const idx = MONTH_NAMES.indexOf(mn);
+                const y = parseInt(yr);
+                const cy = now.getFullYear(), cm = now.getMonth();
+                return y < cy || (y === cy && idx < cm);
+              }).reverse().map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </Field>
+          <Field label="Montant (FCFA)" required>
+            <input
+              type="number"
+              value={arrearsAddForm.amount}
+              onChange={e => setArrearsAddForm(f => ({ ...f, amount: e.target.value }))}
+              placeholder="Ex : 130000"
+              className={inputCls}
+            />
+          </Field>
+          <Field label="Statut">
+            <select
+              value={arrearsAddForm.status}
+              onChange={e => setArrearsAddForm(f => ({ ...f, status: e.target.value }))}
+              className={inputCls}
+            >
+              <option value="Impayé">Impayé</option>
+              <option value="En retard">En retard</option>
+              <option value="Payé">Payé (régularisation)</option>
+            </select>
+          </Field>
+          {arrearsAddForm.propertyName && (
+            <div className="bg-surface-container rounded-xl px-3 py-2 text-xs text-on-surface-variant">
+              Propriété détectée : <span className="font-semibold text-on-surface">{arrearsAddForm.propertyName}</span>
+            </div>
+          )}
+        </div>
       </ModalWrap>
 
       {/* ══════════════ MODAL: Confirmer suppression ══════════════ */}
