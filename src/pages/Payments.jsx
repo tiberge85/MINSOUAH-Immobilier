@@ -151,7 +151,13 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
     );
     const pType = (entry.propertyType || contract?.propertyType || '').toLowerCase();
     const pIcon = entry.propertyIcon || contract?.propertyIcon || '';
-    if (pType.includes('commercial') || pType.includes('magasin') || pType.includes('local') || STORE_ICONS.includes(pIcon)) {
+    const pName = (entry.propertyName || contract?.propertyName || '').toLowerCase();
+    // Detect by type, icon, or name starting with "mag"
+    if (
+      pType.includes('commercial') || pType.includes('magasin') || pType.includes('local') ||
+      STORE_ICONS.includes(pIcon) ||
+      /^mag\s*\d/i.test(pName) || pName.startsWith('magasin')
+    ) {
       return 'Magasins';
     }
     return String(entry.amount || 0);
@@ -189,7 +195,9 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
 
   /* ── Group by category ── */
   const CATEGORY_ORDER = ['130000', '150000', '200000', '300000', 'Magasins'];
+  // Pre-populate all known categories so they always appear in the report
   const catMap = {};
+  CATEGORY_ORDER.forEach(k => { catMap[k] = { paid: [], unpaid: [] }; });
   paid.forEach(p => {
     const cat = getCategory(p);
     if (!catMap[cat]) catMap[cat] = { paid: [], unpaid: [] };
