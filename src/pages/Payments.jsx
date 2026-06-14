@@ -137,6 +137,87 @@ function buildReceiptHTML(payment, orgSettings, signatures = {}) {
 </html>`;
 }
 
+/* ── Penalty Report HTML ──────────────────────────────────────────────────── */
+function buildPenaltyReportHTML(penaltyList, month, orgSettings) {
+  const org = orgSettings || {};
+  const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
+  const totalLoyer = penaltyList.reduce((s, i) => s + (i.rent || 0), 0);
+  const totalPenalty = penaltyList.reduce((s, i) => s + (i.penalty || 0), 0);
+  const totalDu = penaltyList.reduce((s, i) => s + (i.total || 0), 0);
+
+  const rows = penaltyList.map((item, idx) => `
+    <tr style="${idx % 2 === 0 ? '' : 'background:#fafafa'}">
+      <td style="padding:10px 14px;font-weight:600">${item.tenantName || '—'}</td>
+      <td style="padding:10px 14px;color:#555">${item.tenantPhone || '—'}</td>
+      <td style="padding:10px 14px;color:#555">${item.propertyName || '—'}</td>
+      <td style="padding:10px 14px;text-align:right;font-weight:600">${fCFA(item.rent)}</td>
+      <td style="padding:10px 14px;text-align:right;color:#b91c1c;font-weight:700">+ ${fCFA(item.penalty)}</td>
+      <td style="padding:10px 14px;text-align:right;font-weight:900;color:#7f1d1d">${fCFA(item.total)}</td>
+    </tr>`).join('');
+
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+  <title>Liste des Pénalités — ${month}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;background:#fff;padding:28px}
+    @media print{body{padding:0}@page{margin:18mm 14mm}}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #b91c1c}
+    .org-name{font-size:20px;font-weight:900;color:#b91c1c}
+    .doc-title{font-size:15px;font-weight:700;color:#1a1a1a;margin-top:4px}
+    .meta{font-size:11px;color:#666;margin-top:2px}
+    .badge{background:#b91c1c;color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    thead tr{background:#b91c1c;color:#fff}
+    th{padding:10px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+    th:nth-child(4),th:nth-child(5),th:nth-child(6){text-align:right}
+    tfoot tr{background:#fef2f2;border-top:2px solid #b91c1c}
+    td,tfoot td{border-bottom:1px solid #f3f4f6}
+    .total-row td{font-weight:900;padding:12px 14px;color:#7f1d1d;font-size:13px}
+    .summary{display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+    .kpi{flex:1;min-width:140px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 16px;text-align:center}
+    .kpi-val{font-size:18px;font-weight:900;color:#b91c1c}
+    .kpi-lbl{font-size:10px;color:#666;margin-top:2px;text-transform:uppercase;letter-spacing:.05em}
+    .footer{margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#999;text-align:center}
+  </style>
+  </head><body>
+  <div class="header">
+    <div>
+      <div class="org-name">${org.companyName || 'Minsouah Immobilier'}</div>
+      <div class="doc-title">Liste des pénalités de retard — ${month}</div>
+      <div class="meta">Généré le ${today} · Pénalité applicable après le 10 du mois (10% du loyer)</div>
+    </div>
+    <div class="badge">${penaltyList.length} dossier(s)</div>
+  </div>
+
+  <div class="summary">
+    <div class="kpi"><div class="kpi-val">${penaltyList.length}</div><div class="kpi-lbl">Locataires concernés</div></div>
+    <div class="kpi"><div class="kpi-val">${fCFA(totalLoyer)}</div><div class="kpi-lbl">Total loyers dus</div></div>
+    <div class="kpi"><div class="kpi-val">${fCFA(totalPenalty)}</div><div class="kpi-lbl">Total pénalités 10%</div></div>
+    <div class="kpi" style="background:#fff7ed;border-color:#fed7aa"><div class="kpi-val" style="color:#c2410c">${fCFA(totalDu)}</div><div class="kpi-lbl">Total à encaisser</div></div>
+  </div>
+
+  <table>
+    <thead><tr>
+      <th>Locataire</th><th>Téléphone</th><th>Propriété</th>
+      <th style="text-align:right">Loyer dû</th>
+      <th style="text-align:right">Pénalité 10%</th>
+      <th style="text-align:right">Total à payer</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr class="total-row">
+      <td colspan="3">TOTAUX</td>
+      <td style="text-align:right">${fCFA(totalLoyer)}</td>
+      <td style="text-align:right;color:#b91c1c">+ ${fCFA(totalPenalty)}</td>
+      <td style="text-align:right;color:#7f1d1d">${fCFA(totalDu)}</td>
+    </tr></tfoot>
+  </table>
+
+  <div class="footer">${org.companyName || 'Minsouah Immobilier'} · Document généré automatiquement · ${today}</div>
+  <script>window.onload=()=>window.print();</script>
+  </body></html>`;
+}
+
 /* ── Monthly Report HTML ──────────────────────────────────────────────────── */
 function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], advance = [], contracts = [], expenses = []) {
   const org = orgSettings || {};
@@ -617,7 +698,7 @@ export default function Payments() {
 
   /* ── Arrears add modal ── */
   const [arrearsAddModal, setArrearsAddModal] = useState(false);
-  const [arrearsAddForm, setArrearsAddForm] = useState({ tenantId: '', month: '', amount: '', status: 'Impayé', propertyName: '' });
+  const [arrearsAddForm, setArrearsAddForm] = useState({ tenantId: '', months: [], amountPerMonth: '', status: 'Impayé', propertyName: '' });
 
   /* ── Compute next payment date for quittance ── */
   const computeNextPaymentDate = useCallback((payment) => {
@@ -1095,6 +1176,25 @@ export default function Payments() {
     window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
   }, [quittancePayment, orgSettings, signatures]);
 
+  const whatsappReceiptWithPDF = useCallback(() => {
+    const phone = phoneForWA(quittancePayment?.tenantPhone);
+    if (!phone) { alert('Numéro de téléphone manquant pour ce locataire.'); return; }
+    // Open the receipt for printing/saving as PDF
+    const nextDate = computeNextPaymentDate(quittancePayment);
+    const html = buildReceiptHTMLShared(quittancePayment, orgSettings, signatures, nextDate);
+    const win = window.open('', '_blank', 'width=820,height=700');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      setTimeout(() => win.print(), 700);
+    }
+    // Open WhatsApp after a short delay so both windows open
+    const msg = encodeURIComponent(
+      `Bonjour ${quittancePayment?.tenantName},\n\nVeuillez trouver ci-joint votre quittance de loyer pour ${quittancePayment?.month}.\n\n• Montant : ${fmt(quittancePayment?.amount)}\n• Propriété : ${quittancePayment?.propertyName}${signatures.bailleur ? '\n✅ Signée numériquement' : ''}\n\nMerci pour votre paiement.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
+    );
+    setTimeout(() => window.open(`https://wa.me/${phone}?text=${msg}`, '_blank'), 1400);
+  }, [quittancePayment, orgSettings, signatures, computeNextPaymentDate]);
+
   const emailReceipt = useCallback(() => {
     const email = quittancePayment?.tenantEmail || '';
     const subject = encodeURIComponent(`Quittance de loyer — ${quittancePayment?.month}`);
@@ -1130,28 +1230,37 @@ export default function Payments() {
       (c.tenant === tenantName || String(c.tenantId) === String(arrearsAddForm.tenantId))
     );
     const today = new Date().toLocaleDateString('fr-CI');
-    dispatch({
-      type: 'ADD_PAYMENT',
-      payload: {
-        propertyName: arrearsAddForm.propertyName || contract?.propertyName || '',
-        tenantName,
-        tenantEmail: tenant?.email || '',
-        tenantPhone: tenant?.phone || '',
-        tenantId: tenant?.id || null,
-        contractId: contract?.id || null,
-        amount: parseFloat(arrearsAddForm.amount) || 0,
-        month: arrearsAddForm.month,
-        dueDate: '',
-        method: 'Espèces',
-        status: arrearsAddForm.status,
-        paidDate: arrearsAddForm.status === 'Payé' ? today : null,
-        isArrear: true,
-        reminderSent: false,
-        reminderCount: 0,
-      },
+    const propName = arrearsAddForm.propertyName || contract?.propertyName || '';
+    arrearsAddForm.months.forEach(month => {
+      dispatch({
+        type: 'ADD_PAYMENT',
+        payload: {
+          propertyName: propName,
+          tenantName,
+          tenantEmail: tenant?.email || '',
+          tenantPhone: tenant?.phone || '',
+          tenantId: tenant?.id || null,
+          contractId: contract?.id || null,
+          amount: parseFloat(arrearsAddForm.amountPerMonth) || 0,
+          month,
+          dueDate: '',
+          method: 'Espèces',
+          status: arrearsAddForm.status,
+          paidDate: arrearsAddForm.status === 'Payé' ? today : null,
+          isArrear: true,
+          reminderSent: false,
+          reminderCount: 0,
+        },
+      });
     });
     setArrearsAddModal(false);
-    setArrearsAddForm({ tenantId: '', month: '', amount: '', status: 'Impayé', propertyName: '' });
+    setArrearsAddForm({ tenantId: '', months: [], amountPerMonth: '', status: 'Impayé', propertyName: '' });
+  };
+
+  const handlePrintPenalties = () => {
+    const html = buildPenaltyReportHTML(penaltyList, currentMonthLabel, orgSettings);
+    const win = window.open('', '_blank', 'width=900,height=700');
+    if (win) { win.document.write(html); win.document.close(); }
   };
 
   const handlePrintReport = () => {
@@ -1576,9 +1685,14 @@ export default function Payments() {
               <h3 className="font-bold text-on-surface text-base">Liste des pénalités — {currentMonthLabel}</h3>
               <p className="text-sm text-on-surface-variant mt-0.5">{penaltyList.length} dossier(s) concerné(s)</p>
             </div>
-            {isAfterDeadline && penaltyList.length > 0 && (
-              <Btn icon="chat" onClick={sendBulkPenaltyNotifications}>Notifier tous (WhatsApp)</Btn>
-            )}
+            <div className="flex gap-sm flex-wrap">
+              {penaltyList.length > 0 && (
+                <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintPenalties}>Exporter PDF</Btn>
+              )}
+              {isAfterDeadline && penaltyList.length > 0 && (
+                <Btn icon="chat" onClick={sendBulkPenaltyNotifications}>Notifier tous (WhatsApp)</Btn>
+              )}
+            </div>
           </div>
 
           {penaltyList.length === 0 ? (
@@ -1997,7 +2111,7 @@ export default function Payments() {
               <Btn variant="secondary" onClick={() => setReceiptTab('sign')}>← Modifier signatures</Btn>
               <div className="flex gap-2 flex-wrap">
                 <Btn icon="print" onClick={printReceipt}>Imprimer</Btn>
-                <Btn icon="chat" variant="green" onClick={whatsappReceipt}>WhatsApp</Btn>
+                <Btn icon="chat" variant="green" onClick={whatsappReceiptWithPDF}>WhatsApp + PDF</Btn>
                 <Btn icon="mail" variant="secondary" onClick={emailReceipt}>Email</Btn>
               </div>
             </div>
@@ -2235,15 +2349,15 @@ export default function Payments() {
       <ModalWrap
         open={arrearsAddModal}
         onClose={() => setArrearsAddModal(false)}
-        title="Ajouter un arriéré"
+        title="Ajouter des arriérés"
         size="sm"
         footer={
           <>
             <Btn variant="secondary" onClick={() => setArrearsAddModal(false)}>Annuler</Btn>
             <Btn icon="save"
               onClick={handleSaveArrear}
-              disabled={!arrearsAddForm.tenantId || !arrearsAddForm.month || !arrearsAddForm.amount}>
-              Enregistrer l'arriéré
+              disabled={!arrearsAddForm.tenantId || arrearsAddForm.months.length === 0 || !arrearsAddForm.amountPerMonth}>
+              Enregistrer {arrearsAddForm.months.length > 1 ? `(${arrearsAddForm.months.length} mois)` : 'l\'arriéré'}
             </Btn>
           </>
         }
@@ -2262,38 +2376,71 @@ export default function Payments() {
                 setArrearsAddForm(f => ({
                   ...f,
                   tenantId: val,
-                  amount: contract ? String(contract.rent || '') : f.amount,
+                  months: [],
+                  amountPerMonth: contract ? String(contract.rent || '') : f.amountPerMonth,
                   propertyName: contract ? (contract.propertyName || '') : f.propertyName,
                 }));
               }}
               placeholder="Sélectionner un locataire…"
             />
           </Field>
-          <Field label="Mois concerné" required>
-            <select
-              value={arrearsAddForm.month}
-              onChange={e => setArrearsAddForm(f => ({ ...f, month: e.target.value }))}
-              className={inputCls}
-            >
-              <option value="">— Choisir un mois —</option>
-              {allMonths.filter(m => {
+
+          <Field label="Mois d'arriérés (plusieurs choix possibles)" required>
+            {(() => {
+              const pastMonths = allMonths.filter(m => {
                 const [mn, yr] = m.split(' ');
                 const idx = MONTH_NAMES.indexOf(mn);
                 const y = parseInt(yr);
                 const cy = now.getFullYear(), cm = now.getMonth();
                 return y < cy || (y === cy && idx < cm);
-              }).reverse().map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
+              }).reverse();
+              return (
+                <div className="border border-outline-variant rounded-xl overflow-hidden max-h-44 overflow-y-auto">
+                  {pastMonths.map(m => {
+                    const checked = arrearsAddForm.months.includes(m);
+                    return (
+                      <label key={m} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer border-b border-outline-variant/20 last:border-0 transition-colors ${checked ? 'bg-primary/8' : 'hover:bg-surface-container'}`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => setArrearsAddForm(f => ({
+                            ...f,
+                            months: checked ? f.months.filter(x => x !== m) : [...f.months, m],
+                          }))}
+                          className="w-4 h-4 accent-primary"
+                        />
+                        <span className="text-sm font-medium">{m}</span>
+                        {checked && <span className="ml-auto text-xs text-primary font-bold">✓</span>}
+                      </label>
+                    );
+                  })}
+                  {pastMonths.length === 0 && <p className="px-4 py-3 text-sm text-on-surface-variant">Aucun mois passé disponible.</p>}
+                </div>
+              );
+            })()}
           </Field>
-          <Field label="Montant (FCFA)" required>
+
+          <Field label="Loyer mensuel (FCFA)" required>
             <input
               type="number"
-              value={arrearsAddForm.amount}
-              onChange={e => setArrearsAddForm(f => ({ ...f, amount: e.target.value }))}
+              value={arrearsAddForm.amountPerMonth}
+              onChange={e => setArrearsAddForm(f => ({ ...f, amountPerMonth: e.target.value }))}
               placeholder="Ex : 130000"
               className={inputCls}
             />
           </Field>
+
+          {arrearsAddForm.months.length > 0 && arrearsAddForm.amountPerMonth && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between">
+              <div className="text-sm text-amber-800">
+                <span className="font-semibold">{arrearsAddForm.months.length} mois</span> × {fmt(Number(arrearsAddForm.amountPerMonth))}
+              </div>
+              <span className="font-black text-amber-900 text-base">
+                = {fmt(arrearsAddForm.months.length * Number(arrearsAddForm.amountPerMonth))}
+              </span>
+            </div>
+          )}
+
           <Field label="Statut">
             <select
               value={arrearsAddForm.status}
@@ -2307,7 +2454,7 @@ export default function Payments() {
           </Field>
           {arrearsAddForm.propertyName && (
             <div className="bg-surface-container rounded-xl px-3 py-2 text-xs text-on-surface-variant">
-              Propriété détectée : <span className="font-semibold text-on-surface">{arrearsAddForm.propertyName}</span>
+              Propriété : <span className="font-semibold text-on-surface">{arrearsAddForm.propertyName}</span>
             </div>
           )}
         </div>
