@@ -582,7 +582,26 @@ export default function Payments() {
 
   /* ── Report month payments ── */
   const reportPaid = monthPmts.filter(p => p.status === 'Payé');
-  const reportUnpaid = monthPmts.filter(p => p.status !== 'Payé');
+  // Unpaid = explicit unpaid records + active-contract tenants with no payment entry at all
+  const reportUnpaid = (() => {
+    const explicit = monthPmts.filter(p => p.status !== 'Payé');
+    const alreadyInReport = new Set(
+      monthPmts.map(p => (p.tenantName || '').toLowerCase().trim())
+    );
+    const implicit = (contracts || [])
+      .filter(c =>
+        (c.status === 'Actif' || c.status === 'Expirant') &&
+        !alreadyInReport.has((c.tenant || '').toLowerCase().trim())
+      )
+      .map(c => ({
+        propertyName: c.propertyName || '',
+        tenantName: c.tenant || '',
+        amount: c.rent || 0,
+        dueDate: '',
+        status: 'Impayé',
+      }));
+    return [...explicit, ...implicit];
+  })();
 
   /* ── Shared helpers for contract-based auto-fill ── */
   // Contracts store tenant as a name string (not ID) and propertyName as the full label.
