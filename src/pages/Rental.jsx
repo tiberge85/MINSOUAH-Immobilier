@@ -27,6 +27,7 @@ export default function Rental() {
   const [tab, setTab] = useState('Contrats');
   const [cFilter, setCFilter] = useState('Tous');
   const [tFilter, setTFilter] = useState('Tous');
+  const [tSort, setTSort] = useState(false);
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState(null);
   const [target, setTarget] = useState(null);
@@ -100,7 +101,7 @@ export default function Rental() {
     if (tFilter === 'Avec contrat' && !tenantsWithContract.has(normN(t.name))) return false;
     if (tFilter === 'Sans contrat' && tenantsWithContract.has(normN(t.name))) return false;
     return !normQ || normN(t.name).includes(normQ) || normN(t.property || '').includes(normQ) || (t.phone || '').replace(/\s+/g, '').includes(q.replace(/\s+/g, '')) || normN(t.email || '').includes(normQ);
-  });
+  }).sort((a, b) => tSort ? normN(a.name).localeCompare(normN(b.name)) : 0);
   const filteredOwners = owners.filter(o => o.name.toLowerCase().includes(q));
 
   // ── Ouvrir les modales ─────────────────────────────────────────────────────
@@ -653,13 +654,18 @@ ${sectionsHtml}
 
       {/* ── LOCATAIRES ──────────────────────────────────────────────────── */}
       {tab === 'Locataires' && (
-        <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar">
+        <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar items-center">
           {['Tous', 'Avec contrat', 'Sans contrat'].map(f => (
             <button key={f} onClick={() => setTFilter(f)}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${tFilter === f ? 'bg-primary text-on-primary' : 'bg-surface border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high'}`}>
               {f}
             </button>
           ))}
+          <div className="w-px h-4 bg-outline-variant/40 mx-1 flex-shrink-0" />
+          <button onClick={() => setTSort(s => !s)}
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${tSort ? 'bg-primary text-on-primary' : 'bg-surface border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high'}`}>
+            <Icon name="sort_by_alpha" size={13} /> A → Z
+          </button>
         </div>
       )}
       {tab === 'Locataires' && (
