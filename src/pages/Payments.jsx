@@ -329,10 +329,14 @@ export default function Payments() {
     (properties || []).forEach(prop => {
       if (prop.isBuilding && prop.units?.length > 0) {
         prop.units.forEach(unit => {
+          // Include floor in label to match the format stored in contracts (created in Rental.jsx)
+          const unitLabel = unit.floor
+            ? `${prop.name} — ${unit.number} (${unit.floor})`
+            : `${prop.name} — ${unit.number}`;
           opts.push({
             value: `${prop.id}::${unit.id}`,
-            label: `${prop.name} — ${unit.number}`,
-            propertyName: `${prop.name} — ${unit.number}`,
+            label: unitLabel,
+            propertyName: unitLabel,
             buildingId: prop.id,
             buildingName: prop.name,
             unitId: unit.id,
@@ -450,14 +454,21 @@ export default function Payments() {
   /* ── Shared helpers for contract-based auto-fill ── */
   // Contracts store tenant as a name string (not ID) and propertyName as the full label.
   // We match by propertyName first (exact, includes unit number) to avoid cross-unit confusion.
+  // Flexible name match: handles floor suffix differences ("Apt 3B" vs "Apt 3B (RDC)")
+  const propNameMatch = (a, b) => {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    return a.startsWith(b + ' (') || b.startsWith(a + ' (');
+  };
+
   const contractByProp = (opt) => {
     if (!opt) return null;
     return (contracts || []).find(c =>
       (c.status === 'Actif' || c.status === 'Expirant') &&
-      c.propertyName === opt.propertyName
+      propNameMatch(c.propertyName, opt.propertyName)
     ) || (!opt.isUnit && (contracts || []).find(c =>
       (c.status === 'Actif' || c.status === 'Expirant') &&
-      c.propertyName === opt.buildingName
+      propNameMatch(c.propertyName, opt.buildingName)
     )) || null;
   };
 
@@ -471,8 +482,8 @@ export default function Payments() {
 
   const propOptFromContract = (c) => {
     if (!c) return null;
-    return allPropertyOptions.find(o => o.propertyName === c.propertyName)
-      || allPropertyOptions.find(o => !o.isUnit && o.buildingName === c.propertyName)
+    return allPropertyOptions.find(o => propNameMatch(o.propertyName, c.propertyName))
+      || allPropertyOptions.find(o => !o.isUnit && propNameMatch(o.buildingName, c.propertyName))
       || null;
   };
 
