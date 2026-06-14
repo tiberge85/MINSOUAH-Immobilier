@@ -4,7 +4,9 @@ import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 
 // ── Constantes ────────────────────────────────────────────────────────────────
-const CATEGORIES = ['Tous', 'Immeuble', 'Villa', 'Appartement', 'Commerce'];
+const CATEGORIES = ['Tous', 'Immeuble', 'Studio', '2 Pièces', '3 Pièces', 'Magasin'];
+const PROPERTY_TYPES = ['Immeuble', 'Studio', '2 Pièces', '3 Pièces', 'Magasin'];
+const UNIT_TYPES = ['Studio', '2 Pièces', '3 Pièces', 'Magasin'];
 const STATUS_COLORS = {
   Loué:        'bg-green-100 text-green-800',
   Disponible:  'bg-surface-container text-on-surface-variant',
@@ -16,10 +18,10 @@ const UNIT_STATUS_COLORS = {
   Maintenance: 'bg-red-50 text-red-700 border-red-200',
 };
 const FLOOR_OPTIONS = ['RDC', '1er étage', '2ème étage', '3ème étage', '4ème étage', '5ème étage', '6ème étage+'];
-const EMPTY_UNIT = { number: '', floor: 'RDC', surface: '', rooms: '', rent: '', status: 'Disponible' };
+const EMPTY_UNIT = { number: '', floor: 'RDC', type: 'Studio', surface: '', rooms: '', rent: '', status: 'Disponible' };
 const PROPERTY_STATES = ['Bon état', 'À rénover', 'Neuf', 'En travaux'];
 const EMPTY_FORM = {
-  name: '', address: '', type: 'Appartement', status: 'Disponible',
+  name: '', address: '', type: 'Studio', status: 'Disponible',
   rent: '', deposit: '', surface: '', rooms: '', owner: '', ownerInitials: '', image: '',
   propertyState: 'Bon état', description: '',
   isBuilding: false, units: [],
@@ -37,11 +39,11 @@ function UnitRow({ unit, onEdit, onDelete }) {
       <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
         <div>
           <p className="font-bold text-on-surface">{unit.number}</p>
-          <p className="text-xs text-on-surface-variant">{unit.floor}</p>
+          <p className="text-xs text-on-surface-variant">{unit.floor}{unit.type ? ` · ${unit.type}` : ''}</p>
         </div>
         <div>
           <p className="text-on-surface">{unit.surface ? `${unit.surface} m²` : '—'}</p>
-          <p className="text-xs text-on-surface-variant">{unit.rooms ? `${unit.rooms} pièces` : ''}</p>
+          <p className="text-xs text-on-surface-variant">{unit.rooms ? `${unit.rooms} pièce(s)` : ''}</p>
         </div>
         <div>
           <p className="font-bold text-primary">{fmt(unit.rent)}/mois</p>
@@ -67,11 +69,18 @@ function UnitRow({ unit, onEdit, onDelete }) {
 function UnitForm({ unit, onChange, onSave, onCancel }) {
   return (
     <div className="bg-surface-container rounded-xl p-4 border border-outline-variant/30">
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <div>
           <label className="text-xs font-medium text-on-surface-variant mb-1 block">Numéro / Nom</label>
           <input value={unit.number} onChange={e => onChange({ ...unit, number: e.target.value })}
             placeholder="Ex: Appt 01" className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-on-surface-variant mb-1 block">Type</label>
+          <select value={unit.type || 'Studio'} onChange={e => onChange({ ...unit, type: e.target.value })}
+            className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm">
+            {UNIT_TYPES.map(t => <option key={t}>{t}</option>)}
+          </select>
         </div>
         <div>
           <label className="text-xs font-medium text-on-surface-variant mb-1 block">Étage</label>
@@ -391,7 +400,7 @@ export default function Assets() {
                       <label className="text-sm font-medium text-on-surface-variant mb-1 block">Type *</label>
                       <select name="type" value={form.type} onChange={handleChange}
                         className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30">
-                        {['Immeuble', 'Villa', 'Appartement', 'Commerce'].map(t => <option key={t}>{t}</option>)}
+                        {PROPERTY_TYPES.map(t => <option key={t}>{t}</option>)}
                       </select>
                     </div>
                     {!form.isBuilding && (
