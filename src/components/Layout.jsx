@@ -387,14 +387,14 @@ export default function Layout() {
                 )}
               </button>
               {showNotif && (
-                <div className="absolute right-0 top-12 w-80 max-w-[calc(100vw-1rem)] bg-surface rounded-2xl shadow-xl border border-outline-variant/20 z-50 overflow-hidden">
+                <div className="absolute right-0 top-12 w-96 max-w-[calc(100vw-1rem)] bg-surface rounded-2xl shadow-xl border border-outline-variant/20 z-50 overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-outline-variant/10">
                     <p className="font-bold text-on-surface text-sm">Notifications</p>
                     {notifications.length > 0 && (
                       <span className="text-xs bg-error text-on-error px-2 py-0.5 rounded-full font-bold">{notifications.length}</span>
                     )}
                   </div>
-                  <div className="max-h-80 overflow-y-auto">
+                  <div className="max-h-[28rem] overflow-y-auto">
                     {notifications.length === 0 ? (
                       <div className="text-center py-8 text-on-surface-variant">
                         <Icon name="check_circle" size={32} className="opacity-30 mb-2 text-green-600" />
@@ -403,12 +403,12 @@ export default function Layout() {
                     ) : notifications.map(n => (
                       <button key={n.id} onClick={() => { navigate(n.path); setShowNotif(false); }}
                         className="w-full flex items-start gap-3 px-4 py-3 hover:bg-surface-container transition-colors border-b border-outline-variant/10 last:border-0 text-left">
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${n.bg}`}>
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${n.bg}`}>
                           <Icon name={n.icon} size={16} className={n.color} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-on-surface">{n.label}</p>
-                          <p className="text-xs text-on-surface-variant truncate">{n.sub}</p>
+                          <p className="text-sm font-semibold text-on-surface leading-snug">{n.label}</p>
+                          <p className="text-xs text-on-surface mt-0.5 break-words leading-snug">{n.sub}</p>
                         </div>
                       </button>
                     ))}
