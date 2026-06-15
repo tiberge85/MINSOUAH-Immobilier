@@ -2142,11 +2142,12 @@ export default function Payments() {
         size="xl"
         footer={
           receiptTab === 'preview' ? (
-            <div className="flex gap-3 w-full justify-between items-center">
+            <div className="flex gap-3 w-full justify-between items-center flex-wrap">
               <Btn variant="secondary" onClick={() => setQuittancePayment(null)}>Fermer</Btn>
-              <div className="flex gap-3">
-                <Btn icon="draw" onClick={() => setReceiptTab('sign')}>Signer numériquement</Btn>
-                <Btn icon="print" variant="secondary" onClick={printReceipt}>Imprimer sans signature</Btn>
+              <div className="flex gap-2 flex-wrap">
+                <Btn icon="draw" variant="secondary" onClick={() => setReceiptTab('sign')}>Signer</Btn>
+                <Btn icon="print" variant="secondary" onClick={printReceipt}>Imprimer</Btn>
+                <Btn icon="chat" variant="green" onClick={whatsappReceiptWithPDF}>WhatsApp + PDF</Btn>
               </div>
             </div>
           ) : receiptTab === 'sign' ? (
