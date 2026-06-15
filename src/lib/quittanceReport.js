@@ -75,14 +75,20 @@ export function buildReceiptHTML(payment, orgSettings, signatures = {}, nextPaym
   </div>
 
   <div class="amount-box">
-    <div class="amount-label">Loyer reçu pour la période de</div>
+    <div class="amount-label">${payment.penaltyAmount > 0 ? 'Loyer + Pénalité reçus pour la période de' : 'Loyer reçu pour la période de'}</div>
     <div class="amount-period">${payment.month}</div>
     <div class="amount-value">${Number(payment.amount).toLocaleString('fr-FR')} FCFA</div>
+    ${payment.penaltyAmount > 0 ? `<div style="font-size:12px;opacity:0.8;margin-top:6px">dont pénalité de retard : ${Number(payment.penaltyAmount).toLocaleString('fr-FR')} FCFA</div>` : ''}
   </div>
 
   <div class="details">
     <div class="details-row"><span>Propriété</span><span>${payment.propertyName || '—'}</span></div>
     <div class="details-row"><span>Période couverte</span><span>${payment.month}</span></div>
+    ${payment.penaltyAmount > 0 ? `
+    <div class="details-row"><span>Loyer de base</span><span>${Number(payment.baseAmount).toLocaleString('fr-FR')} FCFA</span></div>
+    <div class="details-row" style="background:#fff3cd"><span style="color:#92400e;font-weight:700">Pénalité de retard (10%)</span><span style="color:#b45309;font-weight:700">+ ${Number(payment.penaltyAmount).toLocaleString('fr-FR')} FCFA</span></div>
+    <div class="details-row" style="background:#fef3c7"><span style="color:#78350f;font-weight:800">Total réglé</span><span style="color:#78350f;font-weight:800">${Number(payment.amount).toLocaleString('fr-FR')} FCFA</span></div>
+    ` : ''}
     <div class="details-row"><span>Date d'échéance</span><span>${payment.dueDate || '—'}</span></div>
     <div class="details-row"><span>Date de paiement</span><span>${payment.paidDate || today}</span></div>
     <div class="details-row"><span>Mode de paiement</span><span>${payment.method || 'Espèces'}</span></div>

@@ -218,6 +218,100 @@ function buildPenaltyReportHTML(penaltyList, month, orgSettings) {
   </body></html>`;
 }
 
+/* ── Arrears Report HTML ──────────────────────────────────────────────────── */
+function buildArrearsReportHTML(arrearsByTenant, arrearsTotal, orgSettings) {
+  const org = orgSettings || {};
+  const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
+  const totalTenants = arrearsByTenant.length;
+  const totalMonths = arrearsByTenant.reduce((s, g) => s + g.payments.length, 0);
+
+  /* Bar chart SVG */
+  const maxAmt = Math.max(...arrearsByTenant.map(g => g.total), 1);
+  const BAR_H = 22; const BAR_GAP = 8; const LEFT = 160; const RIGHT = 320;
+  const svgH = arrearsByTenant.length * (BAR_H + BAR_GAP) + 20;
+  const bars = arrearsByTenant.map((g, i) => {
+    const barW = Math.max(4, Math.round((g.total / maxAmt) * RIGHT));
+    const y = i * (BAR_H + BAR_GAP) + 10;
+    const name = g.tenantName.length > 22 ? g.tenantName.slice(0, 20) + '…' : g.tenantName;
+    return `
+      <text x="${LEFT - 6}" y="${y + BAR_H * 0.72}" text-anchor="end" font-size="11" fill="#374151">${name}</text>
+      <rect x="${LEFT}" y="${y}" width="${barW}" height="${BAR_H}" fill="#f59e0b" rx="3"/>
+      <text x="${LEFT + barW + 6}" y="${y + BAR_H * 0.72}" font-size="10" fill="#92400e" font-weight="700">${fCFA(g.total)}</text>`;
+  }).join('');
+  const barChart = `<svg viewBox="0 0 ${LEFT + RIGHT + 120} ${svgH}" width="100%" style="max-height:${Math.min(svgH, 300)}px">${bars}</svg>`;
+
+  /* Tenant tables */
+  const tenantSections = arrearsByTenant.map(g => {
+    const rows = g.payments.map((p, idx) => `
+      <tr style="${idx % 2 === 0 ? '' : 'background:#fffbeb'}">
+        <td style="padding:8px 12px;font-weight:600">${p.month}</td>
+        <td style="padding:8px 12px;color:#555">${p.propertyName || '—'}</td>
+        <td style="padding:8px 12px;text-align:right;font-weight:700;color:#92400e">${fCFA(p.amount)}</td>
+        <td style="padding:8px 12px;text-align:center;color:${p.status === 'En retard' ? '#b45309' : '#b91c1c'};font-weight:600">${p.status}</td>
+      </tr>`).join('');
+    return `
+      <div style="margin-bottom:20px;border:1px solid #fcd34d;border-radius:10px;overflow:hidden">
+        <div style="background:#fef3c7;padding:10px 16px;display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <span style="font-size:14px;font-weight:800;color:#78350f">${g.tenantName}</span>
+            <span style="font-size:11px;color:#92400e;margin-left:10px">${g.payments.length} mois impayé(s)</span>
+          </div>
+          <span style="font-weight:900;color:#78350f;background:#fde68a;padding:4px 12px;border-radius:8px;font-size:13px">${fCFA(g.total)}</span>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:#f59e0b;color:#fff">
+            <th style="padding:7px 12px;text-align:left">Mois</th>
+            <th style="padding:7px 12px;text-align:left">Propriété</th>
+            <th style="padding:7px 12px;text-align:right">Montant</th>
+            <th style="padding:7px 12px;text-align:center">Statut</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }).join('');
+
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+  <title>Rapport des Arriérés</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;background:#fff;padding:28px}
+    @media print{body{padding:0}@page{margin:18mm 14mm}h2{page-break-before:auto}}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #d97706}
+    .org-name{font-size:20px;font-weight:900;color:#d97706}
+    .kpis{display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap}
+    .kpi{flex:1;min-width:130px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;text-align:center}
+    .kpi-val{font-size:20px;font-weight:900;color:#d97706}
+    .kpi-lbl{font-size:10px;color:#78350f;margin-top:2px;text-transform:uppercase;letter-spacing:.05em}
+    h2{font-size:14px;font-weight:800;color:#1a1a1a;margin:20px 0 10px;border-bottom:2px solid #fde68a;padding-bottom:6px}
+    .footer{margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#999;text-align:center}
+  </style></head><body>
+  <div class="header">
+    <div>
+      <div class="org-name">${org.companyName || 'Minsouah Immobilier'}</div>
+      <div style="font-size:13px;font-weight:700;color:#1a1a1a;margin-top:4px">Rapport des Arriérés de Loyers</div>
+      <div style="font-size:11px;color:#666;margin-top:2px">Généré le ${today}</div>
+    </div>
+    <div style="background:#f59e0b;color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;font-weight:700;white-space:nowrap">${totalTenants} locataire(s)</div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-val">${totalTenants}</div><div class="kpi-lbl">Locataires concernés</div></div>
+    <div class="kpi"><div class="kpi-val">${totalMonths}</div><div class="kpi-lbl">Mois impayés</div></div>
+    <div class="kpi" style="background:#fff7ed;border-color:#fed7aa"><div class="kpi-val" style="color:#c2410c">${fCFA(arrearsTotal)}</div><div class="kpi-lbl">Total à récupérer</div></div>
+  </div>
+
+  <h2>Arriérés par locataire</h2>
+  <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:16px;margin-bottom:20px">${barChart}</div>
+
+  <h2>Détail par locataire</h2>
+  ${tenantSections}
+
+  <div class="footer">${org.companyName || 'Minsouah Immobilier'} · Document généré automatiquement · ${today}</div>
+  <script>window.onload=()=>window.print();</script>
+  </body></html>`;
+}
+
 /* ── Monthly Report HTML ──────────────────────────────────────────────────── */
 function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], advance = [], contracts = [], expenses = []) {
   const org = orgSettings || {};
@@ -685,7 +779,7 @@ export default function Payments() {
 
   /* ── Payment modal ── */
   const [payModal, setPayModal] = useState(false);
-  const [payForm, setPayForm] = useState({ propertyKey: '', tenantId: '', amount: '', month: currentMonthLabel, dueDate: '', method: 'Espèces' });
+  const [payForm, setPayForm] = useState({ propertyKey: '', tenantId: '', amount: '', month: currentMonthLabel, dueDate: '', method: 'Espèces', withPenalty: false });
   const [quittancePayment, setQuittancePayment] = useState(null);
 
   /* ── Edit / delete / cancel modals ── */
@@ -700,6 +794,7 @@ export default function Payments() {
   const [arrearsAddModal, setArrearsAddModal] = useState(false);
   const [arrearsAddForm, setArrearsAddForm] = useState({ tenantId: '', months: [], amountPerMonth: '', status: 'Impayé', propertyName: '' });
   const [arrearsSelected, setArrearsSelected] = useState(new Set());
+  const [arrearsExpanded, setArrearsExpanded] = useState(new Set());
 
   /* ── Compute next payment date for quittance ── */
   const computeNextPaymentDate = useCallback((payment) => {
@@ -1085,6 +1180,8 @@ export default function Payments() {
     const linkedProp = opt ? (properties || []).find(p =>
       p.id === opt.buildingId || Number(p.id) === Number(opt.buildingId)
     ) : null;
+    const baseAmount = parseFloat(payForm.amount) || 0;
+    const penaltyAmount = payForm.withPenalty ? Math.round(baseAmount * 0.10) : 0;
     const newPayment = {
       propertyName: opt?.propertyName || payForm.propertyKey,
       tenantName: tenantFullName,
@@ -1094,7 +1191,9 @@ export default function Payments() {
       contractId: matchingContract?.id || null,
       ownerId: linkedProp?.ownerId || matchingContract?.ownerId || null,
       ownerName: linkedProp?.owner || matchingContract?.ownerName || null,
-      amount: parseFloat(payForm.amount) || 0,
+      baseAmount: payForm.withPenalty ? baseAmount : null,
+      penaltyAmount: payForm.withPenalty ? penaltyAmount : null,
+      amount: baseAmount + penaltyAmount,
       month: payForm.month,
       dueDate: payForm.dueDate,
       method: payForm.method,
@@ -1105,7 +1204,7 @@ export default function Payments() {
     };
     dispatch({ type: 'ADD_PAYMENT', payload: newPayment });
     setPayModal(false);
-    setPayForm({ propertyKey: '', tenantId: '', amount: '', month: currentMonthLabel, dueDate: '', method: 'Espèces' });
+    setPayForm({ propertyKey: '', tenantId: '', amount: '', month: currentMonthLabel, dueDate: '', method: 'Espèces', withPenalty: false });
     setQuittancePayment(newPayment);
   };
 
@@ -1249,6 +1348,12 @@ export default function Payments() {
     });
     setArrearsAddModal(false);
     setArrearsAddForm({ tenantId: '', months: [], amountPerMonth: '', status: 'Impayé', propertyName: '' });
+  };
+
+  const handlePrintArrears = () => {
+    const html = buildArrearsReportHTML(arrearsByTenant, arrearsTotal, orgSettings);
+    const win = window.open('', '_blank', 'width=900,height=700');
+    if (win) { win.document.write(html); win.document.close(); }
   };
 
   const handlePrintPenalties = () => {
@@ -1778,6 +1883,9 @@ export default function Payments() {
                   Supprimer ({arrearsSelected.size})
                 </Btn>
               )}
+              {arrearsByTenant.length > 0 && (
+                <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintArrears}>Exporter PDF</Btn>
+              )}
               <Btn icon="add_circle" onClick={() => { setArrearsAddForm({ tenantId: '', months: [], amountPerMonth: '', status: 'Impayé', propertyName: '' }); setArrearsAddModal(true); }}>
                 Ajouter un arriéré
               </Btn>
@@ -1795,9 +1903,15 @@ export default function Payments() {
               {arrearsByTenant.map(group => {
                 const allGroupIds = group.payments.map(p => p.id);
                 const allGroupSelected = allGroupIds.length > 0 && allGroupIds.every(id => arrearsSelected.has(id));
+                const isExpanded = arrearsExpanded.has(group.tenantName);
+                const toggleExpand = () => setArrearsExpanded(prev => {
+                  const next = new Set(prev);
+                  if (isExpanded) next.delete(group.tenantName); else next.add(group.tenantName);
+                  return next;
+                });
                 return (
                   <div key={group.tenantName} className="bg-surface-container-lowest rounded-xl border border-amber-200 overflow-hidden shadow-card">
-                    <div className="bg-amber-50 px-5 py-3 border-b border-amber-200 flex items-center gap-3">
+                    <div className="bg-amber-50 px-4 py-3 border-b border-amber-200 flex items-center gap-3">
                       <input type="checkbox" checked={allGroupSelected}
                         onChange={() => {
                           setArrearsSelected(prev => {
@@ -1808,16 +1922,21 @@ export default function Payments() {
                           });
                         }}
                         className="w-4 h-4 accent-amber-600 flex-shrink-0"
+                        onClick={e => e.stopPropagation()}
                       />
-                      <div className="w-8 h-8 rounded-full bg-amber-200 flex items-center justify-center text-amber-800 font-bold text-sm flex-shrink-0">
-                        {(group.tenantName[0] || '?').toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-amber-900 truncate">{group.tenantName}</p>
-                        <p className="text-xs text-amber-700">{group.payments.length} mois d'arriéré(s)</p>
-                      </div>
-                      <span className="font-black text-amber-900 bg-amber-200 px-3 py-1 rounded-lg text-sm flex-shrink-0">{fmt(group.total)}</span>
+                      <button onClick={toggleExpand} className="flex-1 min-w-0 flex items-center gap-3 text-left">
+                        <div className="w-8 h-8 rounded-full bg-amber-200 flex items-center justify-center text-amber-800 font-bold text-sm flex-shrink-0">
+                          {(group.tenantName[0] || '?').toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-amber-900 truncate">{group.tenantName}</p>
+                          <p className="text-xs text-amber-700">{group.payments.length} mois d'arriéré(s) · Cliquer pour {isExpanded ? 'masquer' : 'voir le détail'}</p>
+                        </div>
+                        <span className="font-black text-amber-900 bg-amber-200 px-3 py-1 rounded-lg text-sm flex-shrink-0">{fmt(group.total)}</span>
+                        <Icon name={isExpanded ? 'expand_less' : 'expand_more'} size={20} className="text-amber-700 flex-shrink-0" />
+                      </button>
                     </div>
+                    {isExpanded && (
                     <div className="overflow-x-auto">
                       <table className="w-full text-left">
                         <thead><tr className="bg-amber-50/60 border-b border-amber-100">
@@ -1880,6 +1999,7 @@ export default function Payments() {
                         </tbody>
                       </table>
                     </div>
+                    )}
                   </div>
                 );
               })}
@@ -2138,6 +2258,28 @@ export default function Payments() {
               </select>
             </Field>
           </div>
+
+          {/* Penalty toggle */}
+          <label className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-colors ${payForm.withPenalty ? 'bg-red-50 border-red-300' : 'bg-surface-container border-outline-variant/40 hover:bg-surface-container-high'}`}>
+            <input type="checkbox" checked={payForm.withPenalty}
+              onChange={e => setPayForm(f => ({ ...f, withPenalty: e.target.checked }))}
+              className="w-4 h-4 accent-red-600 flex-shrink-0" />
+            <div className="flex-1">
+              <p className={`text-sm font-semibold ${payForm.withPenalty ? 'text-red-800' : 'text-on-surface'}`}>Appliquer la pénalité de 10%</p>
+              <p className={`text-xs mt-0.5 ${payForm.withPenalty ? 'text-red-600' : 'text-on-surface-variant'}`}>Paiement effectué après le 10 du mois</p>
+            </div>
+            {payForm.withPenalty && payForm.amount && (
+              <span className="font-bold text-sm text-red-700 flex-shrink-0">+{fmt(Math.round(parseFloat(payForm.amount) * 0.10))}</span>
+            )}
+          </label>
+
+          {payForm.withPenalty && payForm.amount && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm">
+              <div className="flex justify-between text-on-surface-variant"><span>Loyer de base</span><span className="font-semibold">{fmt(parseFloat(payForm.amount) || 0)}</span></div>
+              <div className="flex justify-between text-red-700 mt-1"><span>Pénalité 10%</span><span className="font-semibold">+ {fmt(Math.round(parseFloat(payForm.amount) * 0.10))}</span></div>
+              <div className="flex justify-between font-black text-red-900 text-base mt-2 pt-2 border-t border-red-200"><span>Total à encaisser</span><span>{fmt((parseFloat(payForm.amount) || 0) + Math.round(parseFloat(payForm.amount) * 0.10))}</span></div>
+            </div>
+          )}
         </div>
       </ModalWrap>
 
