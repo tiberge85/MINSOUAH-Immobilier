@@ -593,7 +593,7 @@ export function AppProvider({ children }) {
 
         // ── PAYMENTS ──────────────────────────────────────────────────────────
         case 'ADD_PAYMENT': {
-          const id = Date.now();
+          const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
           await setDoc(wsDoc('payments', id), { ...payload, id, orgId, createdAt: new Date().toISOString() });
           break;
         }

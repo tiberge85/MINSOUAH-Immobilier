@@ -699,6 +699,7 @@ export default function Payments() {
   /* ── Arrears add modal ── */
   const [arrearsAddModal, setArrearsAddModal] = useState(false);
   const [arrearsAddForm, setArrearsAddForm] = useState({ tenantId: '', months: [], amountPerMonth: '', status: 'Impayé', propertyName: '' });
+  const [arrearsSelected, setArrearsSelected] = useState(new Set());
 
   /* ── Compute next payment date for quittance ── */
   const computeNextPaymentDate = useCallback((payment) => {
@@ -1773,9 +1774,21 @@ export default function Payments() {
                 {arrearsList.length} mois impayé(s) · Total dû : <span className="font-bold text-red-700">{fmt(arrearsTotal)}</span>
               </p>
             </div>
-            <Btn icon="add_circle" onClick={() => { setArrearsAddForm({ tenantId: '', month: '', amount: '', status: 'Impayé', propertyName: '' }); setArrearsAddModal(true); }}>
-              Ajouter un arriéré
-            </Btn>
+            <div className="flex gap-sm flex-wrap">
+              {arrearsSelected.size > 0 && (
+                <Btn icon="delete" variant="danger" onClick={() => {
+                  if (window.confirm(`Supprimer ${arrearsSelected.size} arriéré(s) sélectionné(s) ?`)) {
+                    arrearsSelected.forEach(id => dispatch({ type: 'DELETE_PAYMENT', payload: id }));
+                    setArrearsSelected(new Set());
+                  }
+                }}>
+                  Supprimer ({arrearsSelected.size})
+                </Btn>
+              )}
+              <Btn icon="add_circle" onClick={() => { setArrearsAddForm({ tenantId: '', months: [], amountPerMonth: '', status: 'Impayé', propertyName: '' }); setArrearsAddModal(true); }}>
+                Ajouter un arriéré
+              </Btn>
+            </div>
           </div>
 
           {arrearsByTenant.length === 0 ? (
@@ -1786,60 +1799,97 @@ export default function Payments() {
             </div>
           ) : (
             <div className="flex flex-col gap-md">
-              {arrearsByTenant.map(group => (
-                <div key={group.tenantName} className="bg-surface-container-lowest rounded-xl border border-amber-200 overflow-hidden shadow-card">
-                  <div className="bg-amber-50 px-5 py-3 border-b border-amber-200 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-amber-200 flex items-center justify-center text-amber-800 font-bold text-sm flex-shrink-0">
-                      {(group.tenantName[0] || '?').toUpperCase()}
+              {arrearsByTenant.map(group => {
+                const allGroupIds = group.payments.map(p => p.id);
+                const allGroupSelected = allGroupIds.length > 0 && allGroupIds.every(id => arrearsSelected.has(id));
+                return (
+                  <div key={group.tenantName} className="bg-surface-container-lowest rounded-xl border border-amber-200 overflow-hidden shadow-card">
+                    <div className="bg-amber-50 px-5 py-3 border-b border-amber-200 flex items-center gap-3">
+                      <input type="checkbox" checked={allGroupSelected}
+                        onChange={() => {
+                          setArrearsSelected(prev => {
+                            const next = new Set(prev);
+                            if (allGroupSelected) allGroupIds.forEach(id => next.delete(id));
+                            else allGroupIds.forEach(id => next.add(id));
+                            return next;
+                          });
+                        }}
+                        className="w-4 h-4 accent-amber-600 flex-shrink-0"
+                      />
+                      <div className="w-8 h-8 rounded-full bg-amber-200 flex items-center justify-center text-amber-800 font-bold text-sm flex-shrink-0">
+                        {(group.tenantName[0] || '?').toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-amber-900 truncate">{group.tenantName}</p>
+                        <p className="text-xs text-amber-700">{group.payments.length} mois d'arriéré(s)</p>
+                      </div>
+                      <span className="font-black text-amber-900 bg-amber-200 px-3 py-1 rounded-lg text-sm flex-shrink-0">{fmt(group.total)}</span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-amber-900 truncate">{group.tenantName}</p>
-                      <p className="text-xs text-amber-700">{group.payments.length} mois d'arriéré(s)</p>
-                    </div>
-                    <span className="font-black text-amber-900 bg-amber-200 px-3 py-1 rounded-lg text-sm flex-shrink-0">{fmt(group.total)}</span>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead><tr className="bg-amber-50/60 border-b border-amber-100">
-                        {['Mois','Propriété','Montant','Statut','Actions'].map(h => (
-                          <th key={h} className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-amber-800">{h}</th>
-                        ))}
-                      </tr></thead>
-                      <tbody className="divide-y divide-amber-50">
-                        {group.payments.map(p => (
-                          <tr key={p.id} className="hover:bg-amber-50/40">
-                            <td className="px-4 py-3 text-sm font-semibold">{p.month}</td>
-                            <td className="px-4 py-3 text-sm text-on-surface-variant">{p.propertyName}</td>
-                            <td className="px-4 py-3 text-sm font-bold text-amber-800">{fmt(p.amount)}</td>
-                            <td className="px-4 py-3">
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor[p.status] || ''}`}>
-                                <Icon name={statusIcon[p.status] || 'info'} size={12} />{p.status}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex gap-2 flex-wrap">
-                                <Btn small icon="check_circle" variant="green" onClick={() => handleMarkPaid(p.id)}>Encaisser</Btn>
-                                {group.tenantPhone && (() => {
-                                  const phone = phoneForWA(group.tenantPhone);
-                                  const msg = encodeURIComponent(
-                                    `Bonjour ${p.tenantName},\n\nNous vous rappelons que votre loyer de ${fmt(p.amount)} pour le mois de ${p.month} est toujours impayé.\n\nPropriété : ${p.propertyName}\n\nMerci de régulariser votre situation.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
-                                  );
-                                  return phone ? (
-                                    <button onClick={() => window.open(`https://wa.me/${phone}?text=${msg}`, '_blank')}
-                                      className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-200">
-                                      <Icon name="chat" size={12} /> WhatsApp
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead><tr className="bg-amber-50/60 border-b border-amber-100">
+                          <th className="px-3 py-2.5 w-8"></th>
+                          {['Mois','Propriété','Montant','Statut','Actions'].map(h => (
+                            <th key={h} className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-amber-800">{h}</th>
+                          ))}
+                        </tr></thead>
+                        <tbody className="divide-y divide-amber-50">
+                          {group.payments.map(p => {
+                            const sel = arrearsSelected.has(p.id);
+                            return (
+                              <tr key={p.id} className={`transition-colors ${sel ? 'bg-amber-100/60' : 'hover:bg-amber-50/40'}`}>
+                                <td className="px-3 py-3">
+                                  <input type="checkbox" checked={sel}
+                                    onChange={() => setArrearsSelected(prev => {
+                                      const next = new Set(prev);
+                                      if (sel) next.delete(p.id); else next.add(p.id);
+                                      return next;
+                                    })}
+                                    className="w-4 h-4 accent-amber-600"
+                                  />
+                                </td>
+                                <td className="px-4 py-3 text-sm font-semibold">{p.month}</td>
+                                <td className="px-4 py-3 text-sm text-on-surface-variant">{p.propertyName}</td>
+                                <td className="px-4 py-3 text-sm font-bold text-amber-800">{fmt(p.amount)}</td>
+                                <td className="px-4 py-3">
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor[p.status] || ''}`}>
+                                    <Icon name={statusIcon[p.status] || 'info'} size={12} />{p.status}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex gap-2 flex-wrap">
+                                    <Btn small icon="check_circle" variant="green" onClick={() => handleMarkPaid(p.id)}>Encaisser</Btn>
+                                    {group.tenantPhone && (() => {
+                                      const phone = phoneForWA(group.tenantPhone);
+                                      const msg = encodeURIComponent(
+                                        `Bonjour ${p.tenantName},\n\nNous vous rappelons que votre loyer de ${fmt(p.amount)} pour le mois de ${p.month} est toujours impayé.\n\nPropriété : ${p.propertyName}\n\nMerci de régulariser votre situation.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
+                                      );
+                                      return phone ? (
+                                        <button onClick={() => window.open(`https://wa.me/${phone}?text=${msg}`, '_blank')}
+                                          className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-200">
+                                          <Icon name="chat" size={12} /> WhatsApp
+                                        </button>
+                                      ) : null;
+                                    })()}
+                                    <button onClick={() => {
+                                      if (window.confirm(`Supprimer l'arriéré de ${p.month} pour ${group.tenantName} ?`)) {
+                                        dispatch({ type: 'DELETE_PAYMENT', payload: p.id });
+                                        setArrearsSelected(prev => { const next = new Set(prev); next.delete(p.id); return next; });
+                                      }
+                                    }} className="flex items-center gap-1 px-2 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100">
+                                      <Icon name="delete" size={12} />
                                     </button>
-                                  ) : null;
-                                })()}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
