@@ -57,7 +57,14 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
   const [showIdleWarning, setShowIdleWarning] = useState(false);
+  const [showBackToTop, setShowBackToTop] = useState(false);
   const notifRef = useRef(null);
+
+  useEffect(() => {
+    const onScroll = () => setShowBackToTop(window.scrollY > 320);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
   const idleTimerRef = useRef(null);
   const warningTimerRef = useRef(null);
   const location = useLocation();
@@ -387,7 +394,7 @@ export default function Layout() {
                 )}
               </button>
               {showNotif && (
-                <div className="absolute right-0 top-12 w-96 max-w-[calc(100vw-1rem)] bg-surface rounded-2xl shadow-xl border border-outline-variant/20 z-50 overflow-hidden">
+                <div className="fixed right-4 top-16 sm:top-20 w-96 max-w-[calc(100vw-1rem)] bg-surface rounded-2xl shadow-xl border border-outline-variant/20 z-[200] overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-outline-variant/10">
                     <p className="font-bold text-on-surface text-sm">Notifications</p>
                     {notifications.length > 0 && (
@@ -401,8 +408,8 @@ export default function Layout() {
                         <p className="text-xs">Aucune notification</p>
                       </div>
                     ) : notifications.map(n => (
-                      <button key={n.id} onClick={() => { navigate(n.path); setShowNotif(false); }}
-                        className="w-full flex items-start gap-3 px-4 py-3 hover:bg-surface-container transition-colors border-b border-outline-variant/10 last:border-0 text-left">
+                      <NavLink key={n.id} to={n.path} onClick={() => setShowNotif(false)}
+                        className="flex items-start gap-3 px-4 py-3 hover:bg-surface-container transition-colors border-b border-outline-variant/10 last:border-0 text-left no-underline">
                         <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${n.bg}`}>
                           <Icon name={n.icon} size={16} className={n.color} />
                         </div>
@@ -410,7 +417,8 @@ export default function Layout() {
                           <p className="text-sm font-semibold text-on-surface leading-snug">{n.label}</p>
                           <p className="text-xs text-on-surface mt-0.5 break-words leading-snug">{n.sub}</p>
                         </div>
-                      </button>
+                        <Icon name="chevron_right" size={16} className="text-on-surface-variant flex-shrink-0 mt-1" />
+                      </NavLink>
                     ))}
                   </div>
                 </div>
@@ -444,6 +452,17 @@ export default function Layout() {
           <span className="absolute -top-1.5 -right-1.5 min-w-[22px] h-[22px] bg-error text-on-error text-[11px] font-black rounded-full flex items-center justify-center px-1 shadow animate-bounce">
             {notifications.length > 9 ? '9+' : notifications.length}
           </span>
+        </button>
+      )}
+
+      {/* ── Back to top ──────────────────────────────────────────────── */}
+      {showBackToTop && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="fixed bottom-36 right-4 md:bottom-24 md:right-8 z-50 w-11 h-11 bg-surface border border-outline-variant shadow-lg rounded-full flex items-center justify-center hover:bg-surface-container-high active:scale-95 transition-all"
+          title="Retour en haut"
+        >
+          <Icon name="arrow_upward" size={20} className="text-on-surface" />
         </button>
       )}
 
