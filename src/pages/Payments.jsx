@@ -1231,7 +1231,7 @@ export default function Payments() {
     );
     const today = new Date().toLocaleDateString('fr-CI');
     const propName = arrearsAddForm.propertyName || contract?.propertyName || '';
-    arrearsAddForm.months.forEach(month => {
+    (arrearsAddForm.months || []).forEach(month => {
       dispatch({
         type: 'ADD_PAYMENT',
         payload: {
@@ -2356,8 +2356,8 @@ export default function Payments() {
             <Btn variant="secondary" onClick={() => setArrearsAddModal(false)}>Annuler</Btn>
             <Btn icon="save"
               onClick={handleSaveArrear}
-              disabled={!arrearsAddForm.tenantId || arrearsAddForm.months.length === 0 || !arrearsAddForm.amountPerMonth}>
-              Enregistrer {arrearsAddForm.months.length > 1 ? `(${arrearsAddForm.months.length} mois)` : 'l\'arriéré'}
+              disabled={!arrearsAddForm.tenantId || (arrearsAddForm.months || []).length === 0 || !arrearsAddForm.amountPerMonth}>
+              Enregistrer {(arrearsAddForm.months || []).length > 1 ? `(${(arrearsAddForm.months || []).length} mois)` : 'l\'arriéré'}
             </Btn>
           </>
         }
@@ -2397,7 +2397,8 @@ export default function Payments() {
               return (
                 <div className="border border-outline-variant rounded-xl overflow-hidden max-h-44 overflow-y-auto">
                   {pastMonths.map(m => {
-                    const checked = arrearsAddForm.months.includes(m);
+                    const months = arrearsAddForm.months || [];
+                    const checked = months.includes(m);
                     return (
                       <label key={m} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer border-b border-outline-variant/20 last:border-0 transition-colors ${checked ? 'bg-primary/8' : 'hover:bg-surface-container'}`}>
                         <input
@@ -2405,7 +2406,7 @@ export default function Payments() {
                           checked={checked}
                           onChange={() => setArrearsAddForm(f => ({
                             ...f,
-                            months: checked ? f.months.filter(x => x !== m) : [...f.months, m],
+                            months: checked ? (f.months || []).filter(x => x !== m) : [...(f.months || []), m],
                           }))}
                           className="w-4 h-4 accent-primary"
                         />
@@ -2430,13 +2431,13 @@ export default function Payments() {
             />
           </Field>
 
-          {arrearsAddForm.months.length > 0 && arrearsAddForm.amountPerMonth && (
+          {(arrearsAddForm.months || []).length > 0 && arrearsAddForm.amountPerMonth && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between">
               <div className="text-sm text-amber-800">
-                <span className="font-semibold">{arrearsAddForm.months.length} mois</span> × {fmt(Number(arrearsAddForm.amountPerMonth))}
+                <span className="font-semibold">{(arrearsAddForm.months || []).length} mois</span> × {fmt(Number(arrearsAddForm.amountPerMonth))}
               </div>
               <span className="font-black text-amber-900 text-base">
-                = {fmt(arrearsAddForm.months.length * Number(arrearsAddForm.amountPerMonth))}
+                = {fmt((arrearsAddForm.months || []).length * Number(arrearsAddForm.amountPerMonth))}
               </span>
             </div>
           )}
