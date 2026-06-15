@@ -765,30 +765,24 @@ export default function Payments() {
     return opts;
   }, [properties]);
 
-  /* ── Tenants matching the selected property, excluding already paid this month ── */
+  /* ── Tenants matching the selected property (no paid exclusion — allows advance payments) ── */
+  const paidThisMonthSet = useMemo(() => new Set(
+    (payments || [])
+      .filter(p => p.month === payForm.month && p.status === 'Payé')
+      .flatMap(p => [String(p.tenantId), (p.tenantName || '').toLowerCase()])
+      .filter(Boolean)
+  ), [payments, payForm.month]);
+
   const matchingTenants = useMemo(() => {
-    // Tenants who already have a "Payé" payment for the selected month
-    const paidThisMonth = new Set(
-      (payments || [])
-        .filter(p => p.month === payForm.month && p.status === 'Payé')
-        .flatMap(p => [String(p.tenantId), (p.tenantName || '').toLowerCase()])
-        .filter(Boolean)
-    );
-    const alreadyPaid = t => {
-      const name = (t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim()).toLowerCase();
-      return paidThisMonth.has(String(t.id)) || paidThisMonth.has(name);
-    };
-
-    if (!payForm.propertyKey) return (tenants || []).filter(t => !alreadyPaid(t));
+    if (!payForm.propertyKey) return tenants || [];
     const selected = allPropertyOptions.find(o => o.value === payForm.propertyKey);
-    if (!selected) return (tenants || []).filter(t => !alreadyPaid(t));
+    if (!selected) return tenants || [];
 
-    const matched = (tenants || []).filter(t => {
-      if (alreadyPaid(t)) return false;
+    return (tenants || []).filter(t => {
       const tName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
       const viaContract = (contracts || []).some(c => {
-        if (c.status !== 'Actif') return false;
-        const tenantMatch = c.tenantId === t.id || c.tenant === tName;
+        if (c.status !== 'Actif' && c.status !== 'Expirant') return false;
+        const tenantMatch = String(c.tenantId) === String(t.id) || c.tenant === tName;
         const propMatch =
           c.propertyName === selected.propertyName ||
           c.propertyName === selected.buildingName ||
@@ -801,8 +795,7 @@ export default function Payments() {
         (t.property || '').includes(selected.propertyName);
       return viaContract || directMatch;
     });
-    return matched;
-  }, [payForm.propertyKey, payForm.month, allPropertyOptions, tenants, contracts, payments]);
+  }, [payForm.propertyKey, allPropertyOptions, tenants, contracts]);
 
   /* ── Filtered payments (main tab) ── */
   /* ── Tenants list for the tracking filter (no paid exclusion) ── */
@@ -2095,13 +2088,27 @@ export default function Payments() {
               placeholder="— Choisir le locataire —"
               options={[
                 { value: '', label: '— Choisir le locataire —' },
-                ...matchingTenants.map(t => ({
-                  value: String(t.id),
-                  label: t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim(),
-                })),
+                ...matchingTenants.map(t => {
+                  const name = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
+                  const alreadyPaid = paidThisMonthSet.has(String(t.id)) || paidThisMonthSet.has(name.toLowerCase());
+                  return {
+                    value: String(t.id),
+                    label: alreadyPaid ? `${name} ✓ déjà payé` : name,
+                    sub: alreadyPaid ? `Paiement enregistré pour ${payForm.month}` : '',
+                  };
+                }),
               ]}
               className={inputCls}
             />
+            {payForm.tenantId && (() => {
+              const tName = (matchingTenants.find(t => String(t.id) === payForm.tenantId)?.name || '').toLowerCase();
+              const alreadyPaid = paidThisMonthSet.has(payForm.tenantId) || paidThisMonthSet.has(tName);
+              return alreadyPaid ? (
+                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                  <Icon name="warning" size={12} /> Ce locataire a déjà un paiement enregistré pour {payForm.month}. Vous pouvez continuer pour un paiement d'avance.
+                </p>
+              ) : null;
+            })()}
             {payForm.propertyKey && matchingTenants.length === 0 && (
               <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
                 <Icon name="info" size={12} /> Aucun contrat actif trouvé pour cette propriété.
