@@ -408,8 +408,9 @@ export default function Layout() {
                         <p className="text-xs">Aucune notification</p>
                       </div>
                     ) : notifications.map(n => (
-                      <NavLink key={n.id} to={n.path} onClick={() => setShowNotif(false)}
-                        className="flex items-start gap-3 px-4 py-3 hover:bg-surface-container transition-colors border-b border-outline-variant/10 last:border-0 text-left no-underline">
+                      <button key={n.id}
+                        onClick={() => { setShowNotif(false); navigate(n.path); }}
+                        className="w-full flex items-start gap-3 px-4 py-3 hover:bg-surface-container transition-colors border-b border-outline-variant/10 last:border-0 text-left cursor-pointer">
                         <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${n.bg}`}>
                           <Icon name={n.icon} size={16} className={n.color} />
                         </div>
@@ -418,7 +419,7 @@ export default function Layout() {
                           <p className="text-xs text-on-surface mt-0.5 break-words leading-snug">{n.sub}</p>
                         </div>
                         <Icon name="chevron_right" size={16} className="text-on-surface-variant flex-shrink-0 mt-1" />
-                      </NavLink>
+                      </button>
                     ))}
                   </div>
                 </div>
