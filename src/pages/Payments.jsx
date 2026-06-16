@@ -68,16 +68,18 @@ function buildPenaltyReportHTML(penaltyList, month, orgSettings) {
   </head><body>
   <div class="header">
     <div style="display:flex;align-items:center;gap:12px">
-      ${orgLogo ? `<img src="${orgLogo}" style="max-height:48px;max-width:120px;object-fit:contain"/>` : ''}
+      ${orgLogo
+        ? `<img src="${orgLogo}" style="max-height:52px;max-width:130px;object-fit:contain"/>`
+        : `<div class="org-name">${org.companyName || 'Minsouah Immobilier'}</div>`
+      }
       <div>
-        <div class="org-name">${org.companyName || 'Minsouah Immobilier'}</div>
         <div class="doc-title">Liste des pénalités de retard — ${month}</div>
         <div class="meta">Généré le ${today} · Pénalité applicable après le 10 du mois (10% du loyer)</div>
       </div>
     </div>
-    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
       <div class="badge">${penaltyList.length} dossier(s)</div>
-      ${orgStamp ? `<img src="${orgStamp}" style="max-height:52px;max-width:52px;object-fit:contain;opacity:0.85"/>` : ''}
+      ${orgStamp ? `<img src="${orgStamp}" style="max-height:48px;max-width:48px;object-fit:contain;opacity:0.85"/>` : ''}
     </div>
   </div>
 
@@ -181,16 +183,18 @@ function buildArrearsReportHTML(arrearsByTenant, arrearsTotal, orgSettings) {
   </style></head><body>
   <div class="header">
     <div style="display:flex;align-items:center;gap:12px">
-      ${orgLogo ? `<img src="${orgLogo}" style="max-height:48px;max-width:120px;object-fit:contain"/>` : ''}
+      ${orgLogo
+        ? `<img src="${orgLogo}" style="max-height:52px;max-width:130px;object-fit:contain"/>`
+        : `<div class="org-name">${org.companyName || 'Minsouah Immobilier'}</div>`
+      }
       <div>
-        <div class="org-name">${org.companyName || 'Minsouah Immobilier'}</div>
-        <div style="font-size:13px;font-weight:700;color:#1a1a1a;margin-top:4px">Rapport des Arriérés de Loyers</div>
+        <div style="font-size:13px;font-weight:700;color:#1a1a1a">Rapport des Arriérés de Loyers</div>
         <div style="font-size:11px;color:#666;margin-top:2px">Généré le ${today}</div>
       </div>
     </div>
-    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
       <div style="background:#f59e0b;color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;font-weight:700;white-space:nowrap">${totalTenants} locataire(s)</div>
-      ${orgStamp ? `<img src="${orgStamp}" style="max-height:52px;max-width:52px;object-fit:contain;opacity:0.85"/>` : ''}
+      ${orgStamp ? `<img src="${orgStamp}" style="max-height:48px;max-width:48px;object-fit:contain;opacity:0.85"/>` : ''}
     </div>
   </div>
 
@@ -537,8 +541,10 @@ tbody tr:nth-child(even){background:#fdf9f5}
 
 <div class="header">
   <div style="display:flex;align-items:center;gap:12px">
-    ${orgLogo ? `<img src="${orgLogo}" style="max-height:56px;max-width:140px;object-fit:contain"/>` : ''}
-    <div><div class="brand">${org.companyName || 'Minsouah'}</div><div class="brand-sub">Gestion Immobilière</div></div>
+    ${orgLogo
+      ? `<img src="${orgLogo}" style="max-height:56px;max-width:140px;object-fit:contain"/>`
+      : `<div><div class="brand">${org.companyName || 'Minsouah'}</div><div class="brand-sub">Gestion Immobilière</div></div>`
+    }
   </div>
   <div class="report-meta" style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
     <div>
@@ -546,7 +552,7 @@ tbody tr:nth-child(even){background:#fdf9f5}
       <p>Généré le ${today}</p>
       <p style="margin-top:2px">${paid.length + unpaid.length} dossier(s) · ${paid.length} payé(s) · ${unpaid.length} impayé(s)${advance.length > 0 ? ` · ${advance.length} en avance` : ''}</p>
     </div>
-    ${orgStamp ? `<img src="${orgStamp}" style="max-height:52px;max-width:52px;object-fit:contain;opacity:0.85"/>` : ''}
+    ${orgStamp ? `<img src="${orgStamp}" style="max-height:48px;max-width:48px;object-fit:contain;opacity:0.85"/>` : ''}
   </div>
 </div>
 

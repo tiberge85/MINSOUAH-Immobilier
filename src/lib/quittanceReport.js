@@ -54,14 +54,14 @@ export function buildReceiptHTML(payment, orgSettings, signatures = {}, nextPaym
 <div class="page" style="position:relative">
   <div class="paid-stamp">PAYÉ</div>
   <div class="header">
-    <div style="display:flex;align-items:center;gap:14px">
-      ${orgLogo ? `<img src="${orgLogo}" alt="logo" class="org-logo" />` : ''}
-      <div>
-        <div class="brand">${org.companyName || 'Minsouah'}</div>
-        <div class="brand-sub">${org.tagline || "L'immobilier réinventé"}</div>
-        ${org.address ? `<div style="font-size:12px;color:#817662;margin-top:4px">${org.address}</div>` : ''}
-        ${org.phone ? `<div style="font-size:11px;color:#817662;margin-top:2px">${org.phone}</div>` : ''}
-      </div>
+    <div>
+      ${orgLogo
+        ? `<img src="${orgLogo}" alt="logo" class="org-logo" />`
+        : `<div class="brand">${org.companyName || 'Minsouah'}</div>
+           <div class="brand-sub">${org.tagline || "L'immobilier réinventé"}</div>
+           ${org.address ? `<div style="font-size:10px;color:#817662;margin-top:2px">${org.address}</div>` : ''}
+           ${org.phone ? `<div style="font-size:10px;color:#817662">${org.phone}</div>` : ''}`
+      }
     </div>
     <div class="doc-info">
       <h2>Quittance de Loyer</h2>
@@ -123,15 +123,9 @@ export function buildReceiptHTML(payment, orgSettings, signatures = {}, nextPaym
       <div class="sig-line">
         ${(signatures.bailleur || payment.signatures?.bailleur) ? `<img src="${signatures.bailleur || payment.signatures?.bailleur}" alt="signature bailleur" />` : ''}
       </div>
-      <div class="sig-label">Signature du Bailleur</div>
+      ${orgStamp ? `<div style="display:flex;justify-content:center;margin-top:4px"><img src="${orgStamp}" alt="cachet" class="org-stamp" /></div>` : ''}
+      <div class="sig-label">Signature et cachet du Bailleur</div>
     </div>
-    ${orgStamp ? `
-    <div class="sig-box">
-      <div class="sig-line" style="border:none;height:auto;justify-content:center;align-items:center;padding:4px 0">
-        <img src="${orgStamp}" alt="cachet officiel" class="org-stamp" />
-      </div>
-      <div class="sig-label">Cachet Officiel</div>
-    </div>` : ''}
     <div class="sig-box">
       <div class="sig-line">
         ${(signatures.locataire || payment.signatures?.locataire) ? `<img src="${signatures.locataire || payment.signatures?.locataire}" alt="signature locataire" />` : ''}
