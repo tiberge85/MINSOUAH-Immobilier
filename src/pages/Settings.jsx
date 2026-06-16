@@ -8,6 +8,7 @@ import { auth } from '../lib/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { getPlan } from '../lib/planLimits';
 import { getDaysRemaining, getLicenseStatusInfo } from '../lib/licenses';
+import { SCI_NORA_LOGO, SCI_NORA_STAMP } from '../lib/sciNoraAssets';
 
 // Rôles autorisés par catégorie — SUPER_ADMIN a sa propre page /superadmin
 const ADMIN_ROLES  = ['ORGANIZATION_ADMIN', 'ADMIN'];
@@ -110,7 +111,8 @@ export default function Settings() {
     rccm:         orgSettings?.rccm         || '',
     currency:     orgSettings?.currency     || 'XOF',
     language:     orgSettings?.language     || 'fr',
-    logo:         orgSettings?.logo         || '',
+    logo:         orgSettings?.logo         || SCI_NORA_LOGO,
+    stamp:        orgSettings?.stamp        || SCI_NORA_STAMP,
   });
 
   /* ── Notifications ── */
@@ -177,6 +179,28 @@ export default function Settings() {
         canvas.height = Math.round(img.height * ratio);
         canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
         setOrg(o => ({ ...o, logo: canvas.toDataURL('image/png', 0.90) }));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  /* ── Org stamp (cachet) ── */
+  const handleStampChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { showToast('Image trop grande (max 10 Mo)'); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 300;
+        const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.width  * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        setOrg(o => ({ ...o, stamp: canvas.toDataURL('image/png', 0.90) }));
       };
       img.src = ev.target.result;
     };
@@ -497,6 +521,32 @@ export default function Settings() {
                     </label>
                     {org.logo && (
                       <button onClick={() => setOrg(o => ({ ...o, logo: '' }))}
+                        className="text-xs text-error text-center hover:underline">Supprimer</button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Cachet / Stamp */}
+                <div className="flex items-center gap-4 mt-4 p-4 bg-surface-container rounded-2xl">
+                  <div className="relative flex-shrink-0">
+                    {org.stamp
+                      ? <img src={org.stamp} alt="cachet" className="w-20 h-20 rounded-xl object-contain border border-outline-variant/30 bg-white" />
+                      : <div className="w-20 h-20 rounded-xl border-2 border-dashed border-outline-variant flex items-center justify-center text-on-surface-variant">
+                          <Icon name="approval" size={32} />
+                        </div>
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-on-surface text-sm">Cachet / Tampon officiel</p>
+                    <p className="text-xs text-on-surface-variant mt-0.5">Affiché sur les quittances et documents officiels</p>
+                  </div>
+                  <div className="flex flex-col gap-2 flex-shrink-0">
+                    <label className="flex items-center gap-1.5 px-3 py-2 bg-secondary text-on-secondary rounded-xl text-xs font-semibold cursor-pointer hover:bg-secondary/90 transition-colors">
+                      <Icon name="upload" size={13} /> {org.stamp ? 'Changer' : 'Ajouter cachet'}
+                      <input type="file" accept="image/*" className="hidden" onChange={handleStampChange} />
+                    </label>
+                    {org.stamp && (
+                      <button onClick={() => setOrg(o => ({ ...o, stamp: '' }))}
                         className="text-xs text-error text-center hover:underline">Supprimer</button>
                     )}
                   </div>
