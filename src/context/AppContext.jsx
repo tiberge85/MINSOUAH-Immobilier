@@ -316,9 +316,9 @@ export function AppProvider({ children }) {
           )
         );
 
-        // Settings docs — org settings are per-org (orgSettings/{orgId})
+        // Settings docs — org settings are per-org (settings/{orgId})
         const orgSettingsDocRef = sessionOrgId
-          ? wsDoc('orgSettings', sessionOrgId)
+          ? wsDoc('settings', sessionOrgId)
           : wsDoc('settings', 'org'); // SUPER_ADMIN fallback
         unsubs.push(
           onSnapshot(orgSettingsDocRef,
@@ -880,14 +880,14 @@ export function AppProvider({ children }) {
           } else if (sType === 'notif') {
             const orgData = { ...st.orgSettings, notif: data };
             const orgRef = st.currentUser?.orgId
-              ? wsDoc('orgSettings', st.currentUser.orgId)
+              ? wsDoc('settings', st.currentUser.orgId)
               : wsDoc('settings', 'org');
             await setDoc(orgRef, orgData);
             setState((s) => ({ ...s, orgSettings: orgData }));
           } else {
             const orgData = { ...st.orgSettings, ...(data || payload) };
             const orgRef = st.currentUser?.orgId
-              ? wsDoc('orgSettings', st.currentUser.orgId)
+              ? wsDoc('settings', st.currentUser.orgId)
               : wsDoc('settings', 'org');
             await setDoc(orgRef, orgData);
             setState((s) => ({ ...s, orgSettings: orgData }));
