@@ -117,7 +117,8 @@ export default function Login() {
         id: user.id, role: user.role, name: user.name, initials: user.initials,
         email: user.email, color: user.color, avatar: user.avatar || null,
         personId: user.personId || null, firstLogin: user.firstLogin || false,
-        orgId: user.orgId || 'default',
+        orgId:  user.orgId  || 'default',
+        orgIds: user.orgIds || [user.orgId || 'default'],
       },
     });
   };
