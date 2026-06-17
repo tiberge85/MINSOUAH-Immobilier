@@ -94,6 +94,7 @@ export default function Settings() {
   });
 
   /* ── Org ── */
+  const isSciNora = /sci\s*nora/i.test(orgSettings?.companyName || '');
   const [org, setOrg] = useState({
     companyName:  orgSettings?.companyName  || 'Minsouah Immobilier',
     tagline:      orgSettings?.tagline      || '',
@@ -111,8 +112,8 @@ export default function Settings() {
     rccm:         orgSettings?.rccm         || '',
     currency:     orgSettings?.currency     || 'XOF',
     language:     orgSettings?.language     || 'fr',
-    logo:         orgSettings?.logo         || SCI_NORA_LOGO,
-    stamp:        orgSettings?.stamp        || SCI_NORA_STAMP,
+    logo:         orgSettings?.logo         || (isSciNora ? SCI_NORA_LOGO  : ''),
+    stamp:        orgSettings?.stamp        || (isSciNora ? SCI_NORA_STAMP : ''),
   });
 
   /* ── Notifications ── */

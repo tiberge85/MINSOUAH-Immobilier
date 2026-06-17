@@ -23,8 +23,8 @@ const statusIcon = { 'Payé': 'check_circle', 'Impayé': 'cancel', 'En retard': 
 /* ── Penalty Report HTML ──────────────────────────────────────────────────── */
 function buildPenaltyReportHTML(penaltyList, month, orgSettings) {
   const org = orgSettings || {};
-  const orgLogo  = org.logo  || SCI_NORA_LOGO;
-  const orgStamp = org.stamp || SCI_NORA_STAMP;
+  const orgLogo  = org.logo  || '';
+  const orgStamp = org.stamp || '';
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
   const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
   const totalLoyer = penaltyList.reduce((s, i) => s + (i.rent || 0), 0);
@@ -114,8 +114,8 @@ function buildPenaltyReportHTML(penaltyList, month, orgSettings) {
 /* ── Arrears Report HTML ──────────────────────────────────────────────────── */
 function buildArrearsReportHTML(arrearsByTenant, arrearsTotal, orgSettings) {
   const org = orgSettings || {};
-  const orgLogo  = org.logo  || SCI_NORA_LOGO;
-  const orgStamp = org.stamp || SCI_NORA_STAMP;
+  const orgLogo  = org.logo  || '';
+  const orgStamp = org.stamp || '';
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
   const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
   const totalTenants = arrearsByTenant.length;
@@ -218,8 +218,8 @@ function buildArrearsReportHTML(arrearsByTenant, arrearsTotal, orgSettings) {
 /* ── Monthly Report HTML ──────────────────────────────────────────────────── */
 function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], advance = [], contracts = [], expenses = []) {
   const org = orgSettings || {};
-  const orgLogo  = org.logo  || SCI_NORA_LOGO;
-  const orgStamp = org.stamp || SCI_NORA_STAMP;
+  const orgLogo  = org.logo  || '';
+  const orgStamp = org.stamp || '';
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
   const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
 

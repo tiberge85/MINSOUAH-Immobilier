@@ -2,8 +2,8 @@ import { SCI_NORA_LOGO, SCI_NORA_STAMP } from './sciNoraAssets.js';
 
 export function buildReceiptHTML(payment, orgSettings, signatures = {}, nextPaymentDate = null) {
   const org = orgSettings || {};
-  const orgLogo  = org.logo  || SCI_NORA_LOGO;
-  const orgStamp = org.stamp || SCI_NORA_STAMP;
+  const orgLogo  = org.logo  || '';
+  const orgStamp = org.stamp || '';
   const receiptNum = `QUI-${payment.id}-${Date.now().toString().slice(-5)}`;
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
   return `<!DOCTYPE html>
