@@ -73,6 +73,20 @@ export default function Layout() {
   const { dark, toggle: toggleDark } = useTheme();
   const { currentUser } = state;
   const unpaidCount = (state.payments || []).filter(p => p.status !== 'Payé').length;
+
+  /* ── Org switcher ── */
+  const [showOrgMenu, setShowOrgMenu] = useState(false);
+  const orgMenuRef = useRef(null);
+  const userOrgIds = currentUser?.orgIds || [currentUser?.orgId || 'default'];
+  const activeOrg  = (state.organizations || []).find(o => o.id === currentUser?.orgId);
+  const availableOrgs = (state.organizations || []).filter(o => userOrgIds.includes(o.id));
+  const multiOrg = availableOrgs.length > 1;
+  useEffect(() => {
+    if (!showOrgMenu) return;
+    const handler = (e) => { if (orgMenuRef.current && !orgMenuRef.current.contains(e.target)) setShowOrgMenu(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showOrgMenu]);
   const title = pageTitles[location.pathname] || 'Minsouah';
   const allowedPaths = ROLE_NAV[currentUser?.role];
   const visibleNav = (allowedPaths
@@ -259,6 +273,36 @@ export default function Layout() {
             L'immobilier réinventé
           </p>
         </div>
+
+        {/* Org switcher */}
+        {multiOrg && (
+          <div className="px-sm mb-sm relative" ref={orgMenuRef}>
+            <button
+              onClick={() => setShowOrgMenu(v => !v)}
+              className="w-full flex items-center justify-between gap-2 bg-surface-container-high rounded-xl px-3 py-2 text-left hover:bg-surface-container transition-colors"
+            >
+              <div className="min-w-0">
+                <p className="text-label-xs text-on-surface-variant uppercase tracking-widest mb-0.5">Organisation</p>
+                <p className="text-label-sm font-semibold text-on-surface truncate">{activeOrg?.name || currentUser?.orgId}</p>
+              </div>
+              <Icon name="unfold_more" size={18} className="text-on-surface-variant flex-shrink-0" />
+            </button>
+            {showOrgMenu && (
+              <div className="absolute left-3 right-3 top-full mt-1 bg-surface-container-highest rounded-xl shadow-lg overflow-hidden z-50 border border-outline-variant">
+                {availableOrgs.map(org => (
+                  <button
+                    key={org.id}
+                    onClick={() => { setShowOrgMenu(false); dispatch({ type: 'SWITCH_ORG', payload: org.id }); }}
+                    className={`w-full text-left px-4 py-2.5 text-label-sm hover:bg-surface-container transition-colors flex items-center gap-2 ${org.id === currentUser?.orgId ? 'font-bold text-primary' : 'text-on-surface'}`}
+                  >
+                    {org.id === currentUser?.orgId && <Icon name="check" size={16} />}
+                    <span className={org.id === currentUser?.orgId ? '' : 'ml-[20px]'}>{org.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* User */}
         <div className="px-sm mb-md flex items-center gap-sm bg-surface-container-high mx-sm rounded-xl py-sm">

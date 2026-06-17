@@ -100,6 +100,9 @@ export default function SuperAdmin() {
   const [restoreConfirm, setRestoreConfirm] = useState(null);
   const [restoreLoading, setRestoreLoading] = useState(false);
 
+  // ── Multi-org modal ───────────────────────────────────────────────────
+  const [multiOrgModal, setMultiOrgModal] = useState(null); // { user } | null
+
   // ── Reset state ───────────────────────────────────────────────────────
   const [resetModal, setResetModal] = useState(false);
   const [resetStep, setResetStep] = useState(1);
@@ -758,15 +761,16 @@ export default function SuperAdmin() {
                           {orgUsers.length === 0
                             ? <p className="text-xs text-on-surface-variant italic">Aucun utilisateur</p>
                             : (
-                              <div className="bg-surface rounded-xl overflow-hidden border border-outline-variant/20">
-                                <table className="w-full text-left">
+                              <div className="bg-surface rounded-xl border border-outline-variant/20 overflow-x-auto">
+                                <table className="min-w-full text-left">
                                   <thead className="bg-surface-container">
                                     <tr className="text-[10px] text-on-surface-variant uppercase tracking-wide">
-                                      <th className="px-3 py-2">Nom</th>
-                                      <th className="px-3 py-2">Email</th>
-                                      <th className="px-3 py-2">Rôle</th>
-                                      <th className="px-3 py-2">Téléphone</th>
-                                      <th className="px-3 py-2">Connexion</th>
+                                      <th className="px-3 py-2 whitespace-nowrap">Nom</th>
+                                      <th className="px-3 py-2 whitespace-nowrap">Email</th>
+                                      <th className="px-3 py-2 whitespace-nowrap">Rôle</th>
+                                      <th className="px-3 py-2 whitespace-nowrap">Téléphone</th>
+                                      <th className="px-3 py-2 whitespace-nowrap">Connexion</th>
+                                      <th className="px-3 py-2 whitespace-nowrap">Accès</th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-outline-variant/10">
@@ -783,6 +787,16 @@ export default function SuperAdmin() {
                                         <td className="px-3 py-2.5"><span className="text-[10px] bg-surface-container px-1.5 py-0.5 rounded font-semibold text-on-surface-variant">{ROLE_LABELS[u.role] || u.role}</span></td>
                                         <td className="px-3 py-2.5 text-xs text-on-surface-variant">{u.phone || '—'}</td>
                                         <td className="px-3 py-2.5 text-xs text-on-surface-variant">{u.lastLogin ? new Date(u.lastLogin).toLocaleDateString('fr-FR') : '—'}</td>
+                                        <td className="px-3 py-2.5">
+                                          <button
+                                            onClick={() => setMultiOrgModal({ user: u })}
+                                            className="flex items-center gap-1 text-[10px] bg-primary/10 text-primary px-2 py-1 rounded-lg font-semibold hover:bg-primary/20 transition-colors"
+                                            title="Gérer les accès multi-organisation"
+                                          >
+                                            <Icon name="domain" size={11} />
+                                            {(u.orgIds?.length || 1) > 1 ? `${u.orgIds.length} orgs` : '1 org'}
+                                          </button>
+                                        </td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -1489,6 +1503,59 @@ export default function SuperAdmin() {
           </div>
         </div>
       )}
+
+      {/* ── Multi-org access modal ── */}
+      {multiOrgModal && (() => {
+        const u = multiOrgModal.user;
+        const currentOrgIds = u.orgIds?.length ? u.orgIds : [u.orgId || 'default'];
+        const allOrgs = state.organizations || [];
+        const toggle = (orgId) => {
+          const next = currentOrgIds.includes(orgId)
+            ? currentOrgIds.filter(id => id !== orgId)
+            : [...currentOrgIds, orgId];
+          if (next.length === 0) return; // at least 1 org
+          setMultiOrgModal({ user: { ...u, orgIds: next } });
+        };
+        const save = async () => {
+          const updatedOrgIds = multiOrgModal.user.orgIds?.length
+            ? multiOrgModal.user.orgIds
+            : [multiOrgModal.user.orgId || 'default'];
+          await dispatch({ type: 'UPDATE_USER', payload: { ...u, orgIds: updatedOrgIds } });
+          showToast('Accès mis à jour');
+          setMultiOrgModal(null);
+        };
+        return (
+          <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-4">
+            <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-black text-base text-on-surface">Accès multi-organisation</h3>
+                <button onClick={() => setMultiOrgModal(null)} className="text-on-surface-variant hover:text-on-surface"><Icon name="close" size={20} /></button>
+              </div>
+              <p className="text-xs text-on-surface-variant mb-4">
+                Sélectionnez les organisations accessibles pour <strong>{u.name}</strong>.
+              </p>
+              <div className="flex flex-col gap-2 mb-5">
+                {allOrgs.map(org => {
+                  const orgIds = multiOrgModal.user.orgIds?.length ? multiOrgModal.user.orgIds : [multiOrgModal.user.orgId || 'default'];
+                  const checked = orgIds.includes(org.id);
+                  const isPrimary = org.id === u.orgId;
+                  return (
+                    <label key={org.id} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition-colors ${checked ? 'bg-primary/10 border-primary/30' : 'bg-surface-container border-outline-variant/20 hover:bg-surface-container-high'}`}>
+                      <input type="checkbox" checked={checked} onChange={() => toggle(org.id)} className="accent-primary w-4 h-4" />
+                      <span className="text-sm font-medium text-on-surface flex-1">{org.name}</span>
+                      {isPrimary && <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold">Principal</span>}
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setMultiOrgModal(null)} className="px-4 py-2 text-sm text-on-surface-variant hover:text-on-surface transition-colors">Annuler</button>
+                <button onClick={save} className="px-4 py-2 text-sm bg-primary text-on-primary rounded-xl font-bold hover:bg-primary/90 transition-colors">Enregistrer</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Platform Reset modal (3 steps) ── */}
       {resetModal && (

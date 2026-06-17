@@ -466,7 +466,8 @@ export function AppProvider({ children }) {
             id: u.id, role: u.role, name: u.name, initials: u.initials,
             email: u.email, color: u.color, avatar: u.avatar || null,
             personId: u.personId || null, firstLogin: u.firstLogin || false,
-            orgId: u.orgId || 'default',
+            orgId:   u.orgId   || 'default',
+            orgIds:  u.orgIds  || [u.orgId || 'default'],
           };
           try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch { /* quota */ }
           // Write usersByUid BEFORE reloading so Firestore rules pass on first write
@@ -480,6 +481,14 @@ export function AppProvider({ children }) {
             } catch { /* proceed anyway */ }
           }
           // Reload so Firestore subscriptions restart with the correct orgId filter
+          window.location.reload();
+          break;
+        }
+        case 'SWITCH_ORG': {
+          try {
+            const saved = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+            localStorage.setItem(SESSION_KEY, JSON.stringify({ ...saved, orgId: payload }));
+          } catch { /* ignore */ }
           window.location.reload();
           break;
         }
