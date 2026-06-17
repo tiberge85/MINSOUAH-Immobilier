@@ -316,9 +316,12 @@ export function AppProvider({ children }) {
           )
         );
 
-        // Settings docs
+        // Settings docs — org settings are per-org (orgSettings/{orgId})
+        const orgSettingsDocRef = sessionOrgId
+          ? wsDoc('orgSettings', sessionOrgId)
+          : wsDoc('settings', 'org'); // SUPER_ADMIN fallback
         unsubs.push(
-          onSnapshot(wsDoc('settings', 'org'),
+          onSnapshot(orgSettingsDocRef,
             (snap) => { if (snap.exists()) setState((s) => ({ ...s, orgSettings: { ...DEFAULT_ORG, ...snap.data() } })); },
             () => {}
           ),
@@ -876,11 +879,17 @@ export function AppProvider({ children }) {
             setState((s) => ({ ...s, currentUser: updated }));
           } else if (sType === 'notif') {
             const orgData = { ...st.orgSettings, notif: data };
-            await setDoc(wsDoc('settings', 'org'), orgData);
+            const orgRef = st.currentUser?.orgId
+              ? wsDoc('orgSettings', st.currentUser.orgId)
+              : wsDoc('settings', 'org');
+            await setDoc(orgRef, orgData);
             setState((s) => ({ ...s, orgSettings: orgData }));
           } else {
             const orgData = { ...st.orgSettings, ...(data || payload) };
-            await setDoc(wsDoc('settings', 'org'), orgData);
+            const orgRef = st.currentUser?.orgId
+              ? wsDoc('orgSettings', st.currentUser.orgId)
+              : wsDoc('settings', 'org');
+            await setDoc(orgRef, orgData);
             setState((s) => ({ ...s, orgSettings: orgData }));
           }
           break;
