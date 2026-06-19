@@ -19,7 +19,7 @@ const ChartTooltip = ({ active, payload, label }) => {
       <p className="font-label-md text-on-surface mb-1">{label}</p>
       {payload.map((p) => (
         <p key={p.dataKey} style={{ color: p.color }}>
-          {p.name}: {fmtK(p.value)}k FCFA
+          {p.name}: {fmtK(p.value)} FCFA
         </p>
       ))}
     </div>
@@ -204,14 +204,14 @@ export default function Dashboard() {
     },
     {
       label: 'Revenu Mensuel',
-      value: `${fmtK(monthlyRevenue)}k FCFA`,
+      value: `${fmtK(monthlyRevenue)} FCFA`,
       sub: 'Contrats actifs cumulés',
       subIcon: 'trending_up', subColor: 'text-green-600',
       icon: 'payments', iconBg: 'bg-green-100 text-green-700',
     },
     {
       label: 'Total Encaissé',
-      value: `${fmtK(totalCollected)}k FCFA`,
+      value: `${fmtK(totalCollected)} FCFA`,
       sub: `Taux recouvrement ${recoveryRate}%`,
       subIcon: recoveryRate >= 80 ? 'check_circle' : 'warning',
       subColor: recoveryRate >= 80 ? 'text-green-600' : 'text-amber-600',
@@ -219,7 +219,7 @@ export default function Dashboard() {
     },
     {
       label: 'Impayés',
-      value: `${fmtK(unpaidAmount)}k FCFA`,
+      value: `${fmtK(unpaidAmount)} FCFA`,
       sub: `${unpaidPayments.length} paiement(s) en retard`,
       subIcon: unpaidAmount > 0 ? 'error' : 'check_circle',
       subColor: unpaidAmount > 0 ? 'text-error' : 'text-green-600',

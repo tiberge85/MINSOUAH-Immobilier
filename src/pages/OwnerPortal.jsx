@@ -514,9 +514,9 @@ export default function OwnerPortal() {
       <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-md">
         <KpiCard label="Biens" value={ownerProperties.length} sub={`${occupiedCount} occ · ${freeCount} libre`} icon="apartment" color="bg-primary/10 text-primary" />
         <KpiCard label="Occupation" value={`${occupancyRate}%`} sub={`${activeContractsCount} contrat(s)`} icon="donut_large" color={occupancyRate >= 80 ? 'bg-green-100 text-green-700' : occupancyRate >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-error/10 text-error'} />
-        <KpiCard label="Loyer/mois" value={fmtK(expectedMonthly)+'k'} sub={`An: ${fmtK(expectedAnnual)}k`} icon="trending_up" color="bg-green-100 text-green-700" />
-        <KpiCard label="Encaissé" value={fmtK(collectedTotal)+'k'} sub={`${periodPayments.filter(p=>p.status==='Payé').length} paiem.`} icon="check_circle" color="bg-primary/10 text-primary" />
-        <KpiCard label="Impayés" value={fmtK(pendingAmount)+'k'} sub={pendingAmount > 0 ? `${periodPayments.filter(p=>p.status!=='Payé').length} en att.` : 'À jour'} icon="warning" color={pendingAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700'} />
+        <KpiCard label="Loyer/mois" value={fmtK(expectedMonthly)+' FCFA'} sub={`An: ${fmtK(expectedAnnual)} FCFA`} icon="trending_up" color="bg-green-100 text-green-700" />
+        <KpiCard label="Encaissé" value={fmtK(collectedTotal)+' FCFA'} sub={`${periodPayments.filter(p=>p.status==='Payé').length} paiem.`} icon="check_circle" color="bg-primary/10 text-primary" />
+        <KpiCard label="Impayés" value={fmtK(pendingAmount)+' FCFA'} sub={pendingAmount > 0 ? `${periodPayments.filter(p=>p.status!=='Payé').length} en att.` : 'À jour'} icon="warning" color={pendingAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700'} />
         <KpiCard
           label="Recouvrement"
           value={recoveryRate !== null ? `${recoveryRate}%` : '—'}
@@ -698,7 +698,7 @@ export default function OwnerPortal() {
                         <p className="font-semibold text-on-surface text-body-sm truncate">{c.propertyName || c.bien || '—'}</p>
                         <p className="text-[11px] text-on-surface-variant truncate">{c.tenant} · Bail : {c.endDate || '—'}</p>
                       </div>
-                      <span className="font-bold text-primary text-body-sm flex-shrink-0 ml-2">{fmtK(c.rent)}k</span>
+                      <span className="font-bold text-primary text-body-sm flex-shrink-0 ml-2">{fmt(c.rent)}</span>
                     </div>
                   ))}
                 </div>
@@ -806,29 +806,163 @@ export default function OwnerPortal() {
       )}
 
       {/* ── FINANCE ──────────────────────────────────────────────── */}
-      {activeTab === 'finance' && (
+      {activeTab === 'finance' && (() => {
+        // Arriérés: owner payments that are unpaid from past months
+        const now2 = new Date();
+        const ownerArrears = ownerPayments.filter(p => {
+          if (p.status === 'Payé' || p.status === 'Annulé') return false;
+          if (!p.month) return false;
+          const MNAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+          const [mn, yr] = p.month.split(' ');
+          const idx = MNAMES.indexOf(mn);
+          if (idx === -1) return false;
+          const y = parseInt(yr);
+          return y < now2.getFullYear() || (y === now2.getFullYear() && idx < now2.getMonth());
+        });
+        const arrearsByTenantOwner = Object.values(ownerArrears.reduce((acc, p) => {
+          const key = (p.tenantName || '—').toLowerCase();
+          if (!acc[key]) acc[key] = { name: p.tenantName || '—', months: [], total: 0 };
+          acc[key].months.push(p.month);
+          acc[key].total += p.amount || 0;
+          return acc;
+        }, {})).sort((a, b) => b.total - a.total);
+
+        // Per-property revenue
+        const revenueByProp = ownerProperties.map(p => {
+          const propNorm = (p.name || '').toLowerCase().trim();
+          const collected = ownerPayments.filter(pm =>
+            pm.status === 'Payé' && (pm.propertyName || '').toLowerCase().trim() === propNorm
+          ).reduce((s, pm) => s + (pm.amount || 0), 0);
+          const contract = ownerContracts.filter(isActiveContract).find(c =>
+            (c.propertyName || '').toLowerCase().trim() === propNorm
+          );
+          return { name: p.name, collected, rent: contract?.rent || p.rent || 0 };
+        }).filter(d => d.collected > 0 || d.rent > 0);
+
+        // Recovery rate per month
+        const recovRateData = monthlyRevData.map(d => ({
+          mois: d.mois,
+          taux: d.attendu > 0 ? Math.round(d.revenus / d.attendu * 100) : 0,
+        }));
+
+        return (
         <div className="flex flex-col gap-gutter">
-          {/* Cashflow line chart */}
-          <div className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20">
-            <h3 className="font-h3 text-h3 text-on-surface mb-1">Cashflow cumulatif</h3>
-            <p className="text-body-sm text-on-surface-variant mb-lg">Revenus encaissés sur l'année</p>
-            <div className="h-40 sm:h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={monthlyRevData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="4" stroke="#d2c5ae" strokeOpacity={0.3} vertical={false} />
-                  <XAxis dataKey="mois" tick={{ fill: '#817662', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: '#817662', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={36} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Line type="monotone" dataKey="revenus" name="Revenus" stroke="#785a00" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
-                </LineChart>
-              </ResponsiveContainer>
+
+          {/* Arrears alert */}
+          {ownerArrears.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-md">
+              <h4 className="font-bold text-red-800 mb-3 flex items-center gap-2">
+                <Icon name="warning" size={16} className="text-red-600" />
+                Arriérés — {ownerArrears.length} paiement(s) en retard · {fmt(ownerArrears.reduce((s,p)=>s+(p.amount||0),0))} dus
+              </h4>
+              <div className="flex flex-col gap-2">
+                {arrearsByTenantOwner.map(g => (
+                  <div key={g.name} className="bg-white rounded-lg px-3 py-2 flex items-center justify-between gap-2 border border-red-100">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm text-red-900">{g.name}</p>
+                      <p className="text-xs text-red-600">{g.months.join(' · ')}</p>
+                    </div>
+                    <span className="font-black text-red-700 text-sm flex-shrink-0">{fmt(g.total)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
+          )}
+
+          {/* Charts row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-gutter">
+            {/* Cashflow line chart */}
+            <div className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20">
+              <h3 className="font-h3 text-h3 text-on-surface mb-1">Encaissements mensuel</h3>
+              <p className="text-body-sm text-on-surface-variant mb-md">Attendu vs encaissé vs impayé</p>
+              <div className="h-44">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={monthlyRevData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="4" stroke="#d2c5ae" strokeOpacity={0.3} vertical={false} />
+                    <XAxis dataKey="mois" tick={{ fill: '#817662', fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: '#817662', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={34} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="attendu" name="Attendu" fill="#d2c5ae" radius={[3,3,0,0]} />
+                    <Bar dataKey="revenus" name="Encaissé" fill="#785a00" radius={[3,3,0,0]} />
+                    <Bar dataKey="impayés" name="Impayés" fill="#ba1a1a" radius={[3,3,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex gap-md mt-2 pt-2 border-t border-outline-variant/20">
+                {[['#d2c5ae','Attendu'],['#785a00','Encaissé'],['#ba1a1a','Impayés']].map(([c,l]) => (
+                  <div key={l} className="flex items-center gap-1">
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background:c}} />
+                    <span className="text-[10px] text-on-surface-variant">{l}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Recovery rate line chart */}
+            <div className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20">
+              <h3 className="font-h3 text-h3 text-on-surface mb-1">Taux de recouvrement</h3>
+              <p className="text-body-sm text-on-surface-variant mb-md">% encaissé vs attendu par mois</p>
+              <div className="h-44">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={recovRateData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="4" stroke="#d2c5ae" strokeOpacity={0.3} vertical={false} />
+                    <XAxis dataKey="mois" tick={{ fill: '#817662', fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: '#817662', fontSize: 10 }} axisLine={false} tickLine={false} domain={[0,100]} unit="%" width={38} />
+                    <Tooltip formatter={(v) => [`${v}%`, 'Taux']} />
+                    <Line type="monotone" dataKey="taux" name="Taux" stroke="#785a00" strokeWidth={2.5} dot={{ r: 3, fill: '#785a00' }} activeDot={{ r: 5 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          {/* Revenue by property */}
+          {revenueByProp.length > 0 && (
+            <div className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20">
+              <h3 className="font-h3 text-h3 text-on-surface mb-1">Revenus par bien</h3>
+              <p className="text-body-sm text-on-surface-variant mb-md">Encaissé cumulé · loyer mensuel attendu</p>
+              <div className="h-44">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={revenueByProp} layout="vertical" margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="4" stroke="#d2c5ae" strokeOpacity={0.3} horizontal={false} />
+                    <XAxis type="number" tick={{ fill: '#817662', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} />
+                    <YAxis type="category" dataKey="name" tick={{ fill: '#817662', fontSize: 10 }} axisLine={false} tickLine={false} width={90} />
+                    <Tooltip formatter={(v, n) => [fmt(v), n === 'collected' ? 'Encaissé' : 'Loyer/mois']} />
+                    <Bar dataKey="rent" name="Loyer/mois" fill="#d2c5ae" radius={[0,4,4,0]} />
+                    <Bar dataKey="collected" name="Encaissé" fill="#785a00" radius={[0,4,4,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex gap-md mt-2 pt-2 border-t border-outline-variant/20">
+                {[['#d2c5ae','Loyer/mois attendu'],['#785a00','Total encaissé']].map(([c,l]) => (
+                  <div key={l} className="flex items-center gap-1">
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background:c}} />
+                    <span className="text-[10px] text-on-surface-variant">{l}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Financial summary */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-md">
+            {[
+              { l: 'Loyer attendu/mois', v: fmt(expectedMonthly), c: 'text-primary' },
+              { l: 'Revenu annuel estimé', v: fmt(expectedAnnual), c: 'text-primary' },
+              { l: 'Total encaissé', v: fmt(collectedTotal), c: 'text-green-700' },
+              { l: 'Total arriérés', v: fmt(ownerArrears.reduce((s,p)=>s+(p.amount||0),0)), c: ownerArrears.length > 0 ? 'text-red-700' : 'text-green-700' },
+            ].map(item => (
+              <div key={item.l} className="bg-surface-container-lowest rounded-xl p-3 border border-outline-variant/20 text-center shadow-card">
+                <p className="text-[10px] text-on-surface-variant uppercase tracking-wide mb-1">{item.l}</p>
+                <p className={`font-black text-sm ${item.c}`}>{item.v}</p>
+              </div>
+            ))}
           </div>
 
           {/* Payments table */}
           <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
             <div className="px-md py-md border-b border-outline-variant/20 flex items-center justify-between">
-              <h3 className="font-h3 text-h3 text-on-surface">Tous les Paiements</h3>
+              <h3 className="font-h3 text-h3 text-on-surface">Détail des paiements</h3>
               <div className="flex gap-2">
                 <span className="text-label-sm text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
                   {ownerPayments.filter(p => p.status === 'Payé').length} payés
@@ -880,7 +1014,8 @@ export default function OwnerPortal() {
             )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* ── MAINTENANCE ──────────────────────────────────────────── */}
       {activeTab === 'maintenance' && (

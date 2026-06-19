@@ -1711,9 +1711,20 @@ export default function Payments() {
                         <p className="text-xs text-on-surface-variant">{p.tenantName}</p>
                       </td>
                       <td className="px-4 py-3.5 text-right">
-                        <span className={`font-bold text-sm ${p.status === 'Payé' ? 'text-green-700' : 'text-red-700'}`}>
-                          {fmt(p.amount)}
-                        </span>
+                        {(() => {
+                          const amt = p.amount || 0;
+                          const contract = amt === 0 ? (contracts || []).find(c =>
+                            (c.tenant || '').toLowerCase().trim() === (p.tenantName || '').toLowerCase().trim() &&
+                            (c.status === 'Actif' || c.status === 'Expirant')
+                          ) : null;
+                          const display = amt > 0 ? amt : (contract?.rent || 0);
+                          return (
+                            <span className={`font-bold text-sm ${p.status === 'Payé' ? 'text-green-700' : 'text-red-700'}`}>
+                              {fmt(display)}
+                              {amt === 0 && display > 0 && <span className="block text-[10px] font-normal text-on-surface-variant">(loyer contrat)</span>}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3.5 text-sm text-on-surface">{p.dueDate || '—'}</td>
                       <td className="px-4 py-3.5 text-sm text-on-surface">{p.paidDate || <span className="text-on-surface-variant">—</span>}</td>
