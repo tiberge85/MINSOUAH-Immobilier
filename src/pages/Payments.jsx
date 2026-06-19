@@ -9,6 +9,16 @@ import { SCI_NORA_LOGO, SCI_NORA_STAMP } from '../lib/sciNoraAssets';
 
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
+// Parse dates stored as dd/mm/yyyy OR ISO yyyy-mm-dd
+function parseTxDate(str) {
+  if (!str) return null;
+  if (str.includes('/')) {
+    const [d, m, y] = str.split('/');
+    return new Date(Number(y), Number(m) - 1, Number(d));
+  }
+  return new Date(str);
+}
+
 const fmt = n => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
 const phoneForWA = raw => { const d = (raw || '').replace(/\D/g, ''); if (!d) return ''; return d.startsWith('225') ? d : '225' + d; };
 
@@ -982,8 +992,8 @@ export default function Payments() {
     const [mn, yr] = selectedMonth.split(' ');
     return (transactions || []).filter(t => {
       if (!t.date || t.positive) return false;
-      const d = new Date(t.date);
-      return d.getFullYear() === Number(yr) && MONTH_NAMES[d.getMonth()] === mn;
+      const d = parseTxDate(t.date);
+      return d && d.getFullYear() === Number(yr) && MONTH_NAMES[d.getMonth()] === mn;
     });
   })();
 
@@ -1930,8 +1940,8 @@ export default function Payments() {
         const [reportMonthName, reportYear] = selectedMonth.split(' ');
         const monthTransactions = transactions.filter(t => {
           if (!t.date) return false;
-          const d = new Date(t.date);
-          return d.getFullYear() === Number(reportYear) && MONTH_NAMES[d.getMonth()] === reportMonthName;
+          const d = parseTxDate(t.date);
+          return d && d.getFullYear() === Number(reportYear) && MONTH_NAMES[d.getMonth()] === reportMonthName;
         });
         const totalDepenses = monthTransactions.filter(t => !t.positive).reduce((s, t) => s + Math.abs(t.amount || 0), 0);
         const solde = totalCollected - totalDepenses;
