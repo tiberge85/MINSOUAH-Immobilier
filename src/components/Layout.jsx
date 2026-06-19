@@ -112,14 +112,26 @@ export default function Layout() {
     return null;
   };
 
-  // Auto-generated notifications
-  const notifications = useMemo(() => {
+  /* ── Notifications ── */
+  const NOTIF_KEY = `minsouah_read_notifs_${currentUser?.id || 'guest'}`;
+  const [readIds, setReadIds] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(NOTIF_KEY) || '[]')); } catch { return new Set(); }
+  });
+  const markRead = (ids) => {
+    setReadIds(prev => {
+      const next = new Set([...prev, ...ids]);
+      try { localStorage.setItem(NOTIF_KEY, JSON.stringify([...next])); } catch { /* quota */ }
+      return next;
+    });
+  };
+
+  const allNotifications = useMemo(() => {
     const now = Date.now();
     return [
       ...(state.payments || [])
         .filter(p => p.status === 'Impayé' || p.status === 'En retard')
-        .slice(0, 4)
-        .map(p => ({ id: `pay-${p.id}`, icon: 'payments', color: 'text-error', bg: 'bg-error/10', label: `Loyer impayé`, sub: `${p.tenantName || ''} — ${p.month || ''}`, path: '/payments' })),
+        .slice(0, 8)
+        .map(p => ({ id: `pay-${p.id}`, icon: 'payments', color: 'text-error', bg: 'bg-error/10', label: 'Loyer impayé', sub: `${p.tenantName || ''} — ${p.month || ''}`, path: '/payments' })),
       ...(state.contracts || [])
         .filter(c => {
           if (c.status !== 'Actif' || !c.endDate || c.endDate === '—') return false;
@@ -137,6 +149,8 @@ export default function Layout() {
         .map(c => ({ id: `msg-${c.id}`, icon: 'mail', color: 'text-primary', bg: 'bg-primary/10', label: 'Nouveau message', sub: c.contact?.name || 'Messagerie', path: '/inbox' })),
     ];
   }, [state.payments, state.contracts, state.tickets, state.conversations]);
+
+  const notifications = allNotifications.filter(n => !readIds.has(n.id));
 
   // Idle session timeout
   const IDLE_MS = ((state.systemSettings?.sessionTimeout) || 30) * 60 * 1000;
@@ -440,20 +454,36 @@ export default function Layout() {
               {showNotif && (
                 <div className="fixed right-4 top-16 sm:top-20 w-96 max-w-[calc(100vw-1rem)] bg-surface rounded-2xl shadow-xl border border-outline-variant/20 z-[200] overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-outline-variant/10">
-                    <p className="font-bold text-on-surface text-sm">Notifications</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-on-surface text-sm">Notifications</p>
+                      {notifications.length > 0 && (
+                        <span className="text-xs bg-error text-on-error px-2 py-0.5 rounded-full font-bold">{notifications.length}</span>
+                      )}
+                    </div>
                     {notifications.length > 0 && (
-                      <span className="text-xs bg-error text-on-error px-2 py-0.5 rounded-full font-bold">{notifications.length}</span>
+                      <button
+                        onClick={() => markRead(notifications.map(n => n.id))}
+                        className="text-xs text-primary hover:text-primary/70 font-semibold transition-colors"
+                      >
+                        Tout marquer lu
+                      </button>
                     )}
                   </div>
                   <div className="max-h-[28rem] overflow-y-auto">
                     {notifications.length === 0 ? (
                       <div className="text-center py-8 text-on-surface-variant">
                         <Icon name="check_circle" size={32} className="opacity-30 mb-2 text-green-600" />
-                        <p className="text-xs">Aucune notification</p>
+                        <p className="text-xs">Aucune nouvelle notification</p>
+                        {allNotifications.length > 0 && (
+                          <button onClick={() => { setReadIds(new Set()); try { localStorage.removeItem(NOTIF_KEY); } catch {} }}
+                            className="mt-2 text-xs text-primary underline">
+                            Réafficher tout ({allNotifications.length})
+                          </button>
+                        )}
                       </div>
                     ) : notifications.map(n => (
                       <button key={n.id}
-                        onClick={() => { setShowNotif(false); navigate(n.path); }}
+                        onClick={() => { markRead([n.id]); setShowNotif(false); navigate(n.path); }}
                         className="w-full flex items-start gap-3 px-4 py-3 hover:bg-surface-container transition-colors border-b border-outline-variant/10 last:border-0 text-left cursor-pointer">
                         <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${n.bg}`}>
                           <Icon name={n.icon} size={16} className={n.color} />
@@ -462,7 +492,13 @@ export default function Layout() {
                           <p className="text-sm font-semibold text-on-surface leading-snug">{n.label}</p>
                           <p className="text-xs text-on-surface mt-0.5 break-words leading-snug">{n.sub}</p>
                         </div>
-                        <Icon name="chevron_right" size={16} className="text-on-surface-variant flex-shrink-0 mt-1" />
+                        <button
+                          onClick={e => { e.stopPropagation(); markRead([n.id]); }}
+                          className="text-on-surface-variant hover:text-primary transition-colors flex-shrink-0 mt-1 p-0.5"
+                          title="Marquer comme lu"
+                        >
+                          <Icon name="close" size={14} />
+                        </button>
                       </button>
                     ))}
                   </div>
