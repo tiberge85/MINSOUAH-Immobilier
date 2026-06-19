@@ -225,6 +225,188 @@ function buildArrearsReportHTML(arrearsByTenant, arrearsTotal, orgSettings) {
   </body></html>`;
 }
 
+/* ── Global Report HTML ───────────────────────────────────────────────────── */
+function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], arrearsByTenant = [], advanceTenants = [], orgSettings = {} }) {
+  const org = orgSettings;
+  const orgLogo = org.logo || '';
+  const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
+  const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  // Active contracts
+  const activeContracts = contracts.filter(c => c.status === 'Actif' || c.status === 'Expirant');
+
+  // Payments for the current month
+  const [curMonthName, curYear] = currentMonth.split(' ');
+  const curMonthPmts = payments.filter(p => p.month === currentMonth);
+  const paidNames = new Set(curMonthPmts.filter(p => p.status === 'Payé').map(p => (p.tenantName || '').toLowerCase().trim()));
+  const advanceNames = new Set(advanceTenants.map(a => (a.tenantName || '').toLowerCase().trim()));
+
+  // Expected this month = active contracts not in advance period
+  const expectedContracts = activeContracts.filter(c => !advanceNames.has((c.tenant || '').toLowerCase().trim()));
+  const totalExpected = expectedContracts.reduce((s, c) => s + (c.rent || 0), 0);
+  const totalCollected = curMonthPmts.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+  const totalArrieres = arrearsByTenant.reduce((s, g) => s + g.total, 0);
+
+  // Build contract rows for current month
+  const contractRows = expectedContracts.map(c => {
+    const tKey = (c.tenant || '').toLowerCase().trim();
+    const isPaid = paidNames.has(tKey);
+    const pmt = curMonthPmts.find(p => (p.tenantName || '').toLowerCase().trim() === tKey && p.status === 'Payé');
+    const statusLabel = isPaid ? 'Payé' : 'Impayé';
+    const statusStyle = isPaid
+      ? 'color:#15803d;font-weight:700;background:#dcfce7;padding:2px 8px;border-radius:4px'
+      : 'color:#b91c1c;font-weight:700;background:#fee2e2;padding:2px 8px;border-radius:4px';
+    return `<tr>
+      <td style="padding:8px 10px">${c.propertyName || '—'}</td>
+      <td style="padding:8px 10px;font-weight:600">${c.tenant || '—'}</td>
+      <td style="padding:8px 10px;text-align:right">${fCFA(c.rent)}</td>
+      <td style="padding:8px 10px;text-align:right">${isPaid ? fCFA(pmt?.amount || c.rent) : '—'}</td>
+      <td style="padding:8px 10px;text-align:center"><span style="${statusStyle}">${statusLabel}</span></td>
+    </tr>`;
+  }).join('');
+
+  // Arrears rows per tenant
+  const arrearsRows = arrearsByTenant.length > 0
+    ? arrearsByTenant.map(g => {
+        const monthList = g.payments.map(p => `${p.month} (${fCFA(p.amount)})`).join(', ');
+        return `<tr>
+          <td style="padding:8px 10px;font-weight:700;color:#92400e">${g.tenantName}</td>
+          <td style="padding:8px 10px;font-size:11px;color:#6b7280">${monthList}</td>
+          <td style="padding:8px 10px;text-align:right;font-weight:800;color:#b91c1c">${fCFA(g.total)}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="3" style="padding:12px;text-align:center;color:#bbb;font-style:italic">Aucun arriéré</td></tr>';
+
+  // Advance rows
+  const advanceRows = advanceTenants.length > 0
+    ? advanceTenants.map(a => {
+        const startDate = a.paymentStartDate ? new Date(a.paymentStartDate).toLocaleDateString('fr-FR') : '—';
+        return `<tr>
+          <td style="padding:8px 10px;font-weight:700;color:#0369a1">${a.tenantName}</td>
+          <td style="padding:8px 10px">${a.propertyName || '—'}</td>
+          <td style="padding:8px 10px;text-align:right">${fCFA(a.amount)}</td>
+          <td style="padding:8px 10px;text-align:center;font-weight:700;color:#0369a1">${startDate}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="4" style="padding:12px;text-align:center;color:#bbb;font-style:italic">Aucun locataire en avance</td></tr>';
+
+  const paidCount = expectedContracts.filter(c => paidNames.has((c.tenant || '').toLowerCase().trim())).length;
+  const unpaidCount = expectedContracts.length - paidCount;
+  const recoveryRate = totalExpected > 0 ? Math.round(totalCollected / totalExpected * 100) : 0;
+  const rateColor = recoveryRate >= 80 ? '#15803d' : recoveryRate >= 50 ? '#b45309' : '#b91c1c';
+
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<title>Rapport Global — ${currentMonth}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  @page{size:A4 portrait;margin:12mm 14mm}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#1c1b19;background:#fff;font-size:12px}
+  .page{padding:14px 18px}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #785a00;padding-bottom:10px;margin-bottom:16px}
+  .brand{font-size:20px;font-weight:900;color:#785a00}
+  .brand-sub{font-size:9px;color:#817662;text-transform:uppercase;letter-spacing:2px;margin-top:2px}
+  .org-logo{max-height:52px;max-width:130px;object-fit:contain}
+  .doc-info{text-align:right}
+  .doc-info h2{font-size:15px;font-weight:700;color:#1c1b19}
+  .doc-info p{font-size:10px;color:#817662;margin-top:2px}
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+  .kpi{background:#fff8f2;border:1px solid #e3d9cc;border-radius:8px;padding:10px 12px;text-align:center}
+  .kpi-l{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#817662;font-weight:700;margin-bottom:4px}
+  .kpi-v{font-size:16px;font-weight:900}
+  .kpi-s{font-size:9px;color:#817662;margin-top:2px}
+  .rate-bar{background:#f0e8de;border-radius:4px;height:10px;margin:8px 0;overflow:hidden}
+  .rate-fill{height:100%;border-radius:4px;background:${rateColor}}
+  section{margin-bottom:18px}
+  section h2{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:#785a00;font-weight:800;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #e3d9cc}
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  thead tr{background:#f9f5f0}
+  th{padding:7px 10px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#817662;border-bottom:1px solid #e3d9cc}
+  tr:nth-child(even){background:#fafaf9}
+  tr:hover{background:#fff8f2}
+  .footer{margin-top:14px;padding-top:8px;border-top:1px solid #e3d9cc;font-size:9px;color:#b0a090;text-align:center}
+  @media print{html,body{height:100%}}
+</style>
+</head><body><div class="page">
+
+  <div class="header">
+    <div>
+      ${orgLogo
+        ? `<img src="${orgLogo}" alt="logo" class="org-logo"/>`
+        : `<div class="brand">${org.companyName || 'Minsouah'}</div><div class="brand-sub">${org.tagline || "L'immobilier réinventé"}</div>`
+      }
+    </div>
+    <div class="doc-info">
+      <h2>Rapport Global de Gestion</h2>
+      <p>Période de référence : <strong>${currentMonth}</strong></p>
+      <p>Édité le ${today}</p>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="kpi-l">Attendu ce mois</div>
+      <div class="kpi-v" style="color:#785a00">${fCFA(totalExpected)}</div>
+      <div class="kpi-s">${expectedContracts.length} contrat(s) actif(s)</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">Encaissé</div>
+      <div class="kpi-v" style="color:#15803d">${fCFA(totalCollected)}</div>
+      <div class="kpi-s">${paidCount} payé(s) · ${recoveryRate}%</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">Impayés (mois)</div>
+      <div class="kpi-v" style="color:#b45309">${fCFA(totalExpected - totalCollected)}</div>
+      <div class="kpi-s">${unpaidCount} locataire(s)</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">Arriérés cumulés</div>
+      <div class="kpi-v" style="color:#b91c1c">${fCFA(totalArrieres)}</div>
+      <div class="kpi-s">${arrearsByTenant.length} locataire(s) en retard</div>
+    </div>
+  </div>
+
+  <div style="margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:#817662;margin-bottom:4px">
+      <span>Taux de recouvrement mensuel</span><span style="font-weight:800;color:${rateColor}">${recoveryRate}%</span>
+    </div>
+    <div class="rate-bar"><div class="rate-fill" style="width:${recoveryRate}%"></div></div>
+  </div>
+
+  <!-- Current month detail -->
+  <section>
+    <h2>Point des paiements — ${currentMonth}</h2>
+    <table>
+      <thead><tr><th>Propriété</th><th>Locataire</th><th>Loyer attendu</th><th>Montant reçu</th><th style="text-align:center">Statut</th></tr></thead>
+      <tbody>${contractRows || '<tr><td colspan="5" style="padding:12px;text-align:center;color:#bbb;font-style:italic">Aucun contrat actif</td></tr>'}</tbody>
+    </table>
+  </section>
+
+  <!-- Arrears -->
+  <section>
+    <h2>Arriérés — Mois antérieurs non réglés</h2>
+    <table>
+      <thead><tr><th>Locataire</th><th>Mois concernés</th><th style="text-align:right">Total dû</th></tr></thead>
+      <tbody>${arrearsRows}</tbody>
+      ${arrearsByTenant.length > 0 ? `<tfoot><tr style="background:#fef2f2;font-weight:800"><td colspan="2" style="padding:8px 10px;color:#b91c1c">TOTAL ARRIÉRÉS</td><td style="padding:8px 10px;text-align:right;color:#b91c1c">${fCFA(totalArrieres)}</td></tr></tfoot>` : ''}
+    </table>
+  </section>
+
+  <!-- Advance -->
+  <section>
+    <h2>Locataires en période d'avance</h2>
+    <table>
+      <thead><tr><th>Locataire</th><th>Propriété</th><th style="text-align:right">Loyer mensuel</th><th style="text-align:center">1er paiement dû le</th></tr></thead>
+      <tbody>${advanceRows}</tbody>
+    </table>
+  </section>
+
+  <div class="footer">${org.companyName || 'Minsouah'} · Rapport Global · ${today}</div>
+</div>
+<script>window.onload=()=>window.print();</script>
+</body></html>`;
+}
+
 /* ── Monthly Report HTML ──────────────────────────────────────────────────── */
 function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], advance = [], contracts = [], expenses = []) {
   const org = orgSettings || {};
@@ -1294,6 +1476,19 @@ export default function Payments() {
     if (win) { win.document.write(html); win.document.close(); }
   };
 
+  const handlePrintGlobalReport = () => {
+    const html = buildGlobalReportHTML({
+      currentMonth: selectedMonth,
+      contracts,
+      payments,
+      arrearsByTenant,
+      advanceTenants: reportAdvance,
+      orgSettings,
+    });
+    const win = window.open('', '_blank', 'width=900,height=700');
+    if (win) { win.document.write(html); win.document.close(); }
+  };
+
   const sendWhatsAppReminder = (p) => {
     const phone = phoneForWA(p.tenantPhone);
     if (!phone) { alert('Numéro de téléphone manquant pour ce locataire.'); return; }
@@ -1952,7 +2147,10 @@ export default function Payments() {
               <h3 className="font-bold text-on-surface text-base">Rapport — {selectedMonth}</h3>
               <p className="text-sm text-on-surface-variant mt-0.5">{reportPaid.length} payés · {reportUnpaid.length} impayés</p>
             </div>
-            <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintReport}>Imprimer / Exporter</Btn>
+            <div className="flex gap-2 flex-wrap">
+              <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintReport}>Rapport mensuel</Btn>
+              <Btn icon="analytics" variant="primary" onClick={handlePrintGlobalReport}>Rapport global</Btn>
+            </div>
           </div>
 
           {/* Financial bilan */}
