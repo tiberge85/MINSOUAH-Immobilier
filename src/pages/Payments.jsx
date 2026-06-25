@@ -1599,10 +1599,15 @@ export default function Payments() {
 
   const handleCloseMonth = async () => {
     setClosureLoading(true);
-    await dispatch({ type: 'CLOSE_MONTH', payload: { month: selectedMonth, closedAt: new Date().toISOString(), note: closureNote } });
-    setClosureLoading(false);
-    setClosureModal(false);
-    setClosureNote('');
+    try {
+      await dispatch({ type: 'CLOSE_MONTH', payload: { month: selectedMonth, closedAt: new Date().toISOString(), note: closureNote } });
+      setClosureModal(false);
+      setClosureNote('');
+    } catch (err) {
+      alert('Erreur lors de la clôture : ' + (err?.message || 'Vérifiez votre connexion.'));
+    } finally {
+      setClosureLoading(false);
+    }
   };
 
   const handleReopenMonth = async (month) => {
