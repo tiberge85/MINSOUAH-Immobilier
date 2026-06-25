@@ -1089,19 +1089,18 @@ export default function Payments() {
 
     return (tenants || []).filter(t => {
       const tName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
-      const viaContract = (contracts || []).some(c => {
+      return (contracts || []).some(c => {
         if (c.status !== 'Actif' && c.status !== 'Expirant') return false;
         const tenantMatch = String(c.tenantId) === String(t.id) || c.tenant === tName;
-        const propMatch =
-          propNameMatch(c.propertyName, selected.propertyName) ||
-          propNameMatch(c.propertyName, selected.buildingName) ||
-          String(c.propertyId) === String(selected.buildingId);
+        // For a specific unit, only match on the exact unit name — never on buildingId/buildingName
+        // (all units share the same buildingId, which would return wrong tenants)
+        const propMatch = selected.isUnit
+          ? propNameMatch(c.propertyName, selected.propertyName)
+          : (propNameMatch(c.propertyName, selected.propertyName) ||
+             propNameMatch(c.propertyName, selected.buildingName) ||
+             String(c.propertyId) === String(selected.buildingId));
         return tenantMatch && propMatch;
       });
-      const directMatch =
-        (t.property || '').includes(selected.buildingName) ||
-        (t.property || '').includes(selected.propertyName);
-      return viaContract || directMatch;
     });
   }, [payForm.propertyKey, allPropertyOptions, tenants, contracts]);
 
@@ -1322,9 +1321,12 @@ export default function Payments() {
       return (contracts || []).some(c => {
         if (c.status !== 'Actif' && c.status !== 'Expirant') return false;
         const tenantOk = String(c.tenantId) === String(t.id) || c.tenant === tName;
-        const propOk = propNameMatch(c.propertyName, opt.propertyName)
-                    || propNameMatch(c.propertyName, opt.buildingName)
-                    || String(c.propertyId) === String(opt.buildingId);
+        // Unit: only exact name match. Building: allow buildingId/buildingName fallbacks.
+        const propOk = opt.isUnit
+          ? propNameMatch(c.propertyName, opt.propertyName)
+          : (propNameMatch(c.propertyName, opt.propertyName) ||
+             propNameMatch(c.propertyName, opt.buildingName) ||
+             String(c.propertyId) === String(opt.buildingId));
         return tenantOk && propOk;
       });
     });
