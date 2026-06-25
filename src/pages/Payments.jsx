@@ -1049,6 +1049,7 @@ export default function Payments() {
             buildingId: prop.id,
             buildingName: prop.name,
             unitId: unit.id,
+            unitNumber: unit.number,
             rent: unit.rent,
             isUnit: true,
           });
@@ -1067,16 +1068,22 @@ export default function Payments() {
     return opts;
   }, [properties]);
 
-  /* ── Property name fuzzy match (used in contract lookups) ── */
+  /* ── Property name fuzzy match helpers ── */
   const propNameMatch = (a, b) => {
     if (!a || !b) return false;
     if (a === b) return true;
     return a.startsWith(b + ' (') || b.startsWith(a + ' (');
   };
-  // Normalize for accent/dash/case-insensitive comparison
   const normProp = s => (s || '').toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[—–\-]/g, '-').replace(/\s+/g, ' ').trim();
+  // Strip trailing floor suffix "(RDC)" / "()" for loose comparison
+  const stripFloor = s => normProp(s).replace(/\s*\([^)]*\)\s*$/, '').trim();
+  // Check if two property names match under any normalization
+  const propMatch = (cName, optName) =>
+    propNameMatch(cName, optName) ||
+    normProp(cName) === normProp(optName) ||
+    stripFloor(cName) === stripFloor(optName);
 
   /* ── Tenants matching the selected property (no paid exclusion — allows advance payments) ── */
   const paidThisMonthSet = useMemo(() => new Set(
@@ -1094,19 +1101,21 @@ export default function Payments() {
     return (tenants || []).filter(t => {
       const tName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
       return (contracts || []).some(c => {
-        // Include active contracts + brouillon (draft contracts also link a tenant to a property)
         if (!['Actif', 'Expirant', 'Brouillon'].includes(c.status)) return false;
-        const tenantMatch = String(c.tenantId) === String(t.id) || c.tenant === tName;
-        // For a specific unit, only match on the exact unit name — never on buildingId/buildingName
-        // (all units share the same buildingId, which would return wrong tenants)
-        const propMatch = selected.isUnit
-          ? (propNameMatch(c.propertyName, selected.propertyName) ||
-             normProp(c.propertyName) === normProp(selected.propertyName))
-          : (propNameMatch(c.propertyName, selected.propertyName) ||
-             propNameMatch(c.propertyName, selected.buildingName) ||
-             normProp(c.propertyName) === normProp(selected.propertyName) ||
-             String(c.propertyId) === String(selected.buildingId));
-        return tenantMatch && propMatch;
+        const tenantOk = String(c.tenantId) === String(t.id) || c.tenant === tName;
+        if (!tenantOk) return false;
+        if (selected.isUnit) {
+          // Tier 1: name-based match (exact / floor-stripped / normalized)
+          if (propMatch(c.propertyName, selected.propertyName)) return true;
+          // Tier 2: building ID + unit number appears in contract property name
+          if (String(c.propertyId) === String(selected.buildingId) && selected.unitNumber &&
+              normProp(c.propertyName).includes(normProp(selected.unitNumber))) return true;
+          // Tier 3 (last resort): building ID alone — for contracts that only store building name
+          return String(c.propertyId) === String(selected.buildingId);
+        }
+        return propMatch(c.propertyName, selected.propertyName) ||
+               propMatch(c.propertyName, selected.buildingName) ||
+               String(c.propertyId) === String(selected.buildingId);
       });
     });
   }, [payForm.propertyKey, allPropertyOptions, tenants, contracts]);
@@ -1328,15 +1337,30 @@ export default function Payments() {
       return (contracts || []).some(c => {
         if (!['Actif', 'Expirant', 'Brouillon'].includes(c.status)) return false;
         const tenantOk = String(c.tenantId) === String(t.id) || c.tenant === tName;
-        const propOk = opt.isUnit
-          ? (propNameMatch(c.propertyName, opt.propertyName) ||
-             normProp(c.propertyName) === normProp(opt.propertyName))
-          : (propNameMatch(c.propertyName, opt.propertyName) ||
-             propNameMatch(c.propertyName, opt.buildingName) ||
-             normProp(c.propertyName) === normProp(opt.propertyName) ||
-             String(c.propertyId) === String(opt.buildingId));
-        return tenantOk && propOk;
+        if (!tenantOk) return false;
+        if (opt.isUnit) {
+          if (propMatch(c.propertyName, opt.propertyName)) return true;
+          if (String(c.propertyId) === String(opt.buildingId) && opt.unitNumber &&
+              normProp(c.propertyName).includes(normProp(opt.unitNumber))) return true;
+          return String(c.propertyId) === String(opt.buildingId);
+        }
+        return propMatch(c.propertyName, opt.propertyName) ||
+               propMatch(c.propertyName, opt.buildingName) ||
+               String(c.propertyId) === String(opt.buildingId);
       });
+    });
+    // For units with multiple building-level matches, prefer the one whose contract
+    // propertyName actually contains the unit number (most specific match first)
+    linked.sort((a, b) => {
+      if (!opt?.isUnit || !opt?.unitNumber) return 0;
+      const un = normProp(opt.unitNumber);
+      const aHas = (contracts || []).some(c => ['Actif','Expirant','Brouillon'].includes(c.status) &&
+        (String(c.tenantId) === String(a.id) || c.tenant === (a.name || '')) &&
+        normProp(c.propertyName).includes(un));
+      const bHas = (contracts || []).some(c => ['Actif','Expirant','Brouillon'].includes(c.status) &&
+        (String(c.tenantId) === String(b.id) || c.tenant === (b.name || '')) &&
+        normProp(c.propertyName).includes(un));
+      return (bHas ? 1 : 0) - (aHas ? 1 : 0);
     });
     const match = linked.length >= 1 ? linked[0] : null;
     setPayForm(f => ({ ...f, propertyKey: val, tenantId: match ? String(match.id) : '', amount: opt?.rent || '' }));
