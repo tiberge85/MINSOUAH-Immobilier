@@ -194,6 +194,7 @@ export function AppProvider({ children }) {
     payments: [], transactions: [], tickets: [], inspections: [],
     conversations: [], users: [], organizations: [], licenses: [], activityLog: [], revenueData: [],
     listings: [], listingClients: [], listingUnlocks: [],
+    monthClosures: [],
     currentUser: null,
     orgSettings: DEFAULT_ORG,
     systemSettings: DEFAULT_SYSTEM,
@@ -295,7 +296,7 @@ export function AppProvider({ children }) {
         sub('users');
         // entity collections: filtered by orgId for non-admin users
         ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
-          'tickets', 'inspections', 'conversations'].forEach(c => sub(c, true));
+          'tickets', 'inspections', 'conversations', 'monthClosures'].forEach(c => sub(c, true));
 
         // Listings + client profiles (marketplace — no org filter)
         sub('listings');
@@ -694,12 +695,18 @@ export function AppProvider({ children }) {
         case 'DELETE_PAYMENT':
           await deleteDoc(wsDoc('payments', payload));
           break;
-        case 'MARK_PAYMENT_PAID':
+        case 'MARK_PAYMENT_PAID': {
+          const pmtToMark = st.payments.find(p => p.id === payload);
+          const isClosed = pmtToMark && (st.monthClosures || []).some(
+            c => c.month === pmtToMark.month && c.orgId === orgId
+          );
           await updateDoc(wsDoc('payments', payload), {
             status: 'Payé',
             paidDate: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
+            ...(isClosed ? { postCloture: true } : {}),
           });
           break;
+        }
         case 'SEND_REMINDER': {
           const p = st.payments.find((p) => p.id === payload);
           if (p) {
@@ -708,6 +715,41 @@ export function AppProvider({ children }) {
               reminderCount: (p.reminderCount || 0) + 1,
               status: p.status === 'Impayé' ? 'En retard' : p.status,
             });
+          }
+          break;
+        }
+
+        // ── MONTH CLOSURE ─────────────────────────────────────────────────────
+        case 'CLOSE_MONTH': {
+          // payload: { month, closedAt, note }
+          const { month, closedAt, note } = payload;
+          const monthPayments = st.payments.filter(p => p.month === month);
+          const totalExpected = monthPayments.reduce((s, p) => s + (p.amount || 0), 0);
+          const totalCollected = monthPayments.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+          const totalUnpaid = monthPayments.filter(p => p.status !== 'Payé' && p.status !== 'Annulé').reduce((s, p) => s + (p.amount || 0), 0);
+          const paidIds = monthPayments.filter(p => p.status === 'Payé').map(p => p.id);
+          const id = `closure_${month.replace(' ', '_')}_${orgId}`;
+          const closureDoc = {
+            id, month, orgId,
+            closedAt: closedAt || new Date().toISOString(),
+            closedBy: st.currentUser?.name || '',
+            note: note || '',
+            snapshot: { totalExpected, totalCollected, totalUnpaid, paidCount: paidIds.length, paidIds },
+          };
+          await setDoc(wsDoc('monthClosures', id), closureDoc);
+          // Mark all unpaid payments for this month as post-clôture
+          const unpaidPmts = monthPayments.filter(p => p.status !== 'Payé' && p.status !== 'Annulé');
+          for (const p of unpaidPmts) {
+            await updateDoc(wsDoc('payments', p.id), { postCloture: true }).catch(() => {});
+          }
+          break;
+        }
+        case 'REOPEN_MONTH': {
+          await deleteDoc(wsDoc('monthClosures', `closure_${payload.replace(' ', '_')}_${orgId}`)).catch(() => {});
+          // Remove postCloture flag from payments of this month
+          const pmts = st.payments.filter(p => p.month === payload && p.postCloture);
+          for (const p of pmts) {
+            await updateDoc(wsDoc('payments', p.id), { postCloture: false }).catch(() => {});
           }
           break;
         }

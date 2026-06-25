@@ -864,10 +864,107 @@ function Field({ label, required, children }) {
 
 const inputCls = 'w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary';
 
+/* ── Post-clôture report ──────────────────────────────────────────────────── */
+function buildPostClotureHTML(closure, postPmts, orgSettings) {
+  const org = orgSettings || {};
+  const orgLogo = org.logo || '';
+  const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
+  const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const snap = closure.snapshot || {};
+  const closedDate = closure.closedAt ? new Date(closure.closedAt).toLocaleDateString('fr-FR') : '—';
+  const totalPost = postPmts.reduce((s, p) => s + (p.amount || 0), 0);
+  const newTotal = (snap.totalCollected || 0) + totalPost;
+  const newRate = snap.totalExpected > 0 ? Math.round(newTotal / snap.totalExpected * 100) : 0;
+
+  const postRows = postPmts.map(p => `<tr>
+    <td style="padding:8px 10px">${p.propertyName || '—'}</td>
+    <td style="padding:8px 10px;font-weight:600">${p.tenantName || '—'}</td>
+    <td style="padding:8px 10px;text-align:right;font-weight:700;color:#15803d">${fCFA(p.amount)}</td>
+    <td style="padding:8px 10px">${p.paidDate || '—'}</td>
+    <td style="padding:8px 10px">${p.method || '—'}</td>
+  </tr>`).join('');
+
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<title>Paiements post-clôture — ${closure.month}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  @page{size:A4 portrait;margin:12mm 14mm}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#1c1b19;font-size:12px;background:#fff}
+  .page{padding:14px 18px}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #785a00;padding-bottom:10px;margin-bottom:16px}
+  .brand{font-size:20px;font-weight:900;color:#785a00}
+  .org-logo{max-height:52px;max-width:130px;object-fit:contain}
+  .doc-info{text-align:right}
+  .doc-info h2{font-size:14px;font-weight:700}
+  .doc-info p{font-size:10px;color:#817662;margin-top:2px}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700}
+  .badge-amber{background:#fef3c7;color:#92400e}
+  .badge-green{background:#dcfce7;color:#15803d}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+  .box{background:#fff8f2;border:1px solid #e3d9cc;border-radius:8px;padding:12px}
+  .box-title{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#817662;font-weight:700;margin-bottom:6px}
+  .box-row{display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid #f0e8de}
+  .box-row:last-child{border:none;font-weight:800}
+  table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px}
+  thead tr{background:#785a00}
+  th{padding:7px 10px;text-align:left;font-size:10px;color:#fff;text-transform:uppercase;letter-spacing:.5px}
+  tr:nth-child(even){background:#fafaf9}
+  .footer{margin-top:14px;padding-top:8px;border-top:1px solid #e3d9cc;font-size:9px;color:#b0a090;text-align:center}
+  @media print{html,body{height:100%}}
+</style>
+</head><body><div class="page">
+  <div class="header">
+    <div>
+      ${orgLogo ? `<img src="${orgLogo}" alt="logo" class="org-logo"/>` : `<div class="brand">${org.companyName || 'Minsouah'}</div>`}
+    </div>
+    <div class="doc-info">
+      <h2>Paiements Post-Clôture</h2>
+      <p>Mois de référence : <strong>${closure.month}</strong></p>
+      <p>Clôture effectuée le : ${closedDate}</p>
+      <p>Édité le ${today}</p>
+    </div>
+  </div>
+
+  <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:#92400e">
+    <strong>⚠ Ce rapport concerne des paiements reçus APRÈS la clôture du mois ${closure.month}.</strong>
+    ${closure.closedBy ? ` Clôture effectuée par ${closure.closedBy}.` : ''}
+    ${closure.note ? `<br>Note : ${closure.note}` : ''}
+  </div>
+
+  <div class="grid2">
+    <div class="box">
+      <div class="box-title">Bilan de clôture initial</div>
+      <div class="box-row"><span>Attendu</span><span>${fCFA(snap.totalExpected)}</span></div>
+      <div class="box-row"><span>Encaissé à la clôture</span><span style="color:#15803d;font-weight:700">${fCFA(snap.totalCollected)}</span></div>
+      <div class="box-row"><span>Impayés à la clôture</span><span style="color:#b91c1c;font-weight:700">${fCFA(snap.totalUnpaid)}</span></div>
+    </div>
+    <div class="box">
+      <div class="box-title">Après paiements post-clôture</div>
+      <div class="box-row"><span>Reçu post-clôture</span><span style="color:#0369a1;font-weight:700">${fCFA(totalPost)}</span></div>
+      <div class="box-row"><span>Total encaissé cumulé</span><span style="color:#15803d;font-weight:800">${fCFA(newTotal)}</span></div>
+      <div class="box-row"><span>Taux de recouvrement révisé</span><span style="font-weight:800;color:${newRate >= 80 ? '#15803d' : '#b45309'}">${newRate}%</span></div>
+    </div>
+  </div>
+
+  <h3 style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#785a00;font-weight:800;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #e3d9cc">
+    Détail des paiements post-clôture (${postPmts.length})
+  </h3>
+  <table>
+    <thead><tr><th>Propriété</th><th>Locataire</th><th style="text-align:right">Montant</th><th>Date paiement</th><th>Mode</th></tr></thead>
+    <tbody>${postRows || '<tr><td colspan="5" style="text-align:center;padding:12px;color:#bbb;font-style:italic">Aucun paiement post-clôture</td></tr>'}</tbody>
+    ${postPmts.length > 0 ? `<tfoot><tr style="background:#dcfce7;font-weight:800"><td colspan="2" style="padding:8px 10px;color:#15803d">TOTAL POST-CLÔTURE</td><td style="padding:8px 10px;text-align:right;color:#15803d">${fCFA(totalPost)}</td><td colspan="2"></td></tr></tfoot>` : ''}
+  </table>
+
+  <div class="footer">${org.companyName || 'Minsouah'} · Rapport Post-Clôture ${closure.month} · ${today}</div>
+</div>
+<script>window.onload=()=>window.print();</script>
+</body></html>`;
+}
+
 /* ── Main component ─────────────────────────────────────────────────────── */
 export default function Payments() {
   const { state, dispatch } = useApp();
-  const { payments = [], properties = [], tenants = [], contracts = [], transactions = [], orgSettings } = state;
+  const { payments = [], properties = [], tenants = [], contracts = [], transactions = [], orgSettings, monthClosures = [] } = state;
 
   const now = new Date();
   const currentMonthLabel = `${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`;
@@ -894,6 +991,11 @@ export default function Payments() {
 
   /* ── Reminder modal ── */
   const [reminderModal, setReminderModal] = useState(null);
+
+  /* ── Month closure modal ── */
+  const [closureModal, setClosureModal] = useState(false);
+  const [closureNote, setClosureNote]   = useState('');
+  const [closureLoading, setClosureLoading] = useState(false);
 
   /* ── Arrears add modal ── */
   const [arrearsAddModal, setArrearsAddModal] = useState(false);
@@ -1485,6 +1587,34 @@ export default function Payments() {
       advanceTenants: reportAdvance,
       orgSettings,
     });
+    const win = window.open('', '_blank', 'width=900,height=700');
+    if (win) { win.document.write(html); win.document.close(); }
+  };
+
+  /* ── Month closure helpers ── */
+  const orgId = state.currentUser?.orgId || 'default';
+  const closureForMonth = (month) =>
+    monthClosures.find(c => c.month === month && (c.orgId === orgId || !c.orgId));
+  const isClosed = (month) => !!closureForMonth(month);
+
+  const handleCloseMonth = async () => {
+    setClosureLoading(true);
+    await dispatch({ type: 'CLOSE_MONTH', payload: { month: selectedMonth, closedAt: new Date().toISOString(), note: closureNote } });
+    setClosureLoading(false);
+    setClosureModal(false);
+    setClosureNote('');
+  };
+
+  const handleReopenMonth = async (month) => {
+    if (!window.confirm(`Rouvrir le mois ${month} ? Les paiements post-clôture resteront en place.`)) return;
+    await dispatch({ type: 'REOPEN_MONTH', payload: month });
+  };
+
+  const handlePrintPostCloture = (month) => {
+    const closure = closureForMonth(month);
+    if (!closure) return;
+    const postPmts = payments.filter(p => p.month === month && p.postCloture && p.status === 'Payé');
+    const html = buildPostClotureHTML(closure, postPmts, orgSettings);
     const win = window.open('', '_blank', 'width=900,height=700');
     if (win) { win.document.write(html); win.document.close(); }
   };
@@ -2161,6 +2291,17 @@ export default function Payments() {
             <div className="flex gap-2 flex-wrap">
               <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintReport}>Rapport mensuel</Btn>
               <Btn icon="analytics" variant="primary" onClick={handlePrintGlobalReport}>Rapport global</Btn>
+              {isClosed(selectedMonth) ? (
+                <>
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-800 text-xs font-bold rounded-xl border border-green-200">
+                    <Icon name="lock" size={13} /> Mois clôturé
+                  </span>
+                  <Btn icon="receipt_long" variant="amber" onClick={() => handlePrintPostCloture(selectedMonth)}>Fiche post-clôture</Btn>
+                  <Btn icon="lock_open" variant="secondary" onClick={() => handleReopenMonth(selectedMonth)}>Rouvrir</Btn>
+                </>
+              ) : (
+                <Btn icon="lock" variant="green" onClick={() => setClosureModal(true)}>Clôturer le mois</Btn>
+              )}
             </div>
           </div>
 
@@ -2826,6 +2967,70 @@ export default function Payments() {
           </div>
         </div>
       )}
+
+      {/* ── Month closure modal ── */}
+      {closureModal && (() => {
+        const monthPmtsAll = payments.filter(p => p.month === selectedMonth);
+        const paidPmts  = monthPmtsAll.filter(p => p.status === 'Payé');
+        const unpaidPmts = monthPmtsAll.filter(p => p.status !== 'Payé' && p.status !== 'Annulé');
+        const totalCollected = paidPmts.reduce((s, p) => s + (p.amount || 0), 0);
+        const totalUnpaid    = unpaidPmts.reduce((s, p) => s + (p.amount || 0), 0);
+        return (
+          <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
+            <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Icon name="lock" size={20} className="text-amber-700" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-on-surface">Clôturer {selectedMonth}</h3>
+                  <p className="text-xs text-on-surface-variant">Un snapshot sera enregistré. Les paiements ultérieurs seront marqués post-clôture.</p>
+                </div>
+              </div>
+
+              <div className="bg-surface-container rounded-xl p-4 mb-4 flex flex-col gap-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-on-surface-variant">Paiements reçus</span>
+                  <span className="font-bold text-green-700">{fmt(totalCollected)} ({paidPmts.length})</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-on-surface-variant">Impayés restants</span>
+                  <span className={`font-bold ${unpaidPmts.length > 0 ? 'text-red-700' : 'text-green-700'}`}>{fmt(totalUnpaid)} ({unpaidPmts.length})</span>
+                </div>
+                <div className="border-t border-outline-variant/20 pt-2 flex justify-between text-sm">
+                  <span className="font-semibold text-on-surface">Taux de recouvrement</span>
+                  <span className="font-black text-primary">
+                    {(totalCollected + totalUnpaid) > 0 ? Math.round(totalCollected / (totalCollected + totalUnpaid) * 100) : 0}%
+                  </span>
+                </div>
+              </div>
+
+              <div className="mb-5">
+                <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5">Note de clôture (optionnel)</label>
+                <textarea
+                  value={closureNote}
+                  onChange={e => setClosureNote(e.target.value)}
+                  rows={2}
+                  placeholder="Ex: Versement effectué le 15/06/2026..."
+                  className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary resize-none"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button onClick={() => { setClosureModal(false); setClosureNote(''); }}
+                  className="flex-1 py-2.5 text-sm text-on-surface-variant border border-outline-variant rounded-xl hover:bg-surface-container transition-colors">
+                  Annuler
+                </button>
+                <button onClick={handleCloseMonth} disabled={closureLoading}
+                  className="flex-1 py-2.5 text-sm font-bold text-white bg-amber-600 rounded-xl hover:bg-amber-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
+                  <Icon name="lock" size={16} />
+                  {closureLoading ? 'En cours…' : `Clôturer ${selectedMonth}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
