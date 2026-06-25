@@ -1086,10 +1086,9 @@ export default function Payments() {
         if (c.status !== 'Actif' && c.status !== 'Expirant') return false;
         const tenantMatch = String(c.tenantId) === String(t.id) || c.tenant === tName;
         const propMatch =
-          c.propertyName === selected.propertyName ||
-          c.propertyName === selected.buildingName ||
-          String(c.propertyId) === String(selected.buildingId) ||
-          (selected.isUnit && String(c.buildingId) === String(selected.buildingId));
+          propNameMatch(c.propertyName, selected.propertyName) ||
+          propNameMatch(c.propertyName, selected.buildingName) ||
+          String(c.propertyId) === String(selected.buildingId);
         return tenantMatch && propMatch;
       });
       const directMatch =
@@ -1320,27 +1319,35 @@ export default function Payments() {
   /* ── Handlers ── */
   const handlePropertySelect = (val) => {
     const opt = allPropertyOptions.find(o => o.value === val);
-    const contract = contractByProp(opt);
-    const match = tenantFromContract(contract);
+    const linked = !opt ? [] : (tenants || []).filter(t => {
+      const tName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
+      return (contracts || []).some(c => {
+        if (c.status !== 'Actif' && c.status !== 'Expirant') return false;
+        const tenantOk = String(c.tenantId) === String(t.id) || c.tenant === tName;
+        const propOk = propNameMatch(c.propertyName, opt.propertyName)
+                    || propNameMatch(c.propertyName, opt.buildingName)
+                    || String(c.propertyId) === String(opt.buildingId);
+        return tenantOk && propOk;
+      });
+    });
+    const match = linked.length >= 1 ? linked[0] : null;
     setPayForm(f => ({ ...f, propertyKey: val, tenantId: match ? String(match.id) : '', amount: opt?.rent || '' }));
   };
 
   const handleTenantSelect = (val) => {
     if (!val) { setPayForm(f => ({ ...f, tenantId: '' })); return; }
-    if (!payForm.propertyKey) {
-      const tenant = (tenants || []).find(t => String(t.id) === String(val));
-      const tenantName = tenant ? (tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim()) : '';
-      const contract = (contracts || []).find(c =>
-        (c.status === 'Actif' || c.status === 'Expirant') &&
-        (c.tenant === tenantName || (c.tenantId && String(c.tenantId) === String(val)))
-      );
-      const matchOpt = propOptFromContract(contract);
-      if (matchOpt) {
-        setPayForm(f => ({ ...f, tenantId: val, propertyKey: matchOpt.value, amount: matchOpt.rent || f.amount }));
-        return;
-      }
+    const tenant = (tenants || []).find(t => String(t.id) === String(val));
+    const tenantName = tenant ? (tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim()) : '';
+    const contract = (contracts || []).find(c =>
+      (c.status === 'Actif' || c.status === 'Expirant') &&
+      (c.tenant === tenantName || (c.tenantId && String(c.tenantId) === String(val)))
+    );
+    const matchOpt = propOptFromContract(contract);
+    if (matchOpt) {
+      setPayForm(f => ({ ...f, tenantId: val, propertyKey: matchOpt.value, amount: matchOpt.rent || f.amount }));
+    } else {
+      setPayForm(f => ({ ...f, tenantId: val }));
     }
-    setPayForm(f => ({ ...f, tenantId: val }));
   };
 
   /* ── Tracking filter: bidirectional auto-fill ── */

@@ -359,7 +359,22 @@ ${sectionsHtml}
   const onContractPropChange = (e) => {
     const opt = availablePropertyOptions.find(o => String(o.value) === String(e.target.value));
     if (opt) {
-      const linkedTenant = tenants.find(t => normN(t.property) === normN(opt.label));
+      // First try direct property field match, then fall back to active contract lookup
+      let linkedTenant = tenants.find(t => normN(t.property) === normN(opt.label));
+      if (!linkedTenant) {
+        const activeContract = contracts.find(c =>
+          (c.status === 'Actif' || c.status === 'Expirant') &&
+          (normN(c.propertyName || '') === normN(opt.label) ||
+           normN(c.propertyName || '') === normN(opt.buildingName || '') ||
+           String(c.propertyId) === String(opt.buildingId))
+        );
+        if (activeContract) {
+          linkedTenant = tenants.find(t =>
+            normN(t.name) === normN(activeContract.tenant || '') ||
+            (activeContract.tenantId && String(t.id) === String(activeContract.tenantId))
+          );
+        }
+      }
       setCForm(f => ({
         ...f,
         propertyId: opt.buildingId,
@@ -947,7 +962,36 @@ ${sectionsHtml}
                 <label className="form-label">Locataire *</label>
                 <SearchSelect
                   value={String(tenants.find(t => t.name === cForm.tenant)?.id || '')}
-                  onChange={v => { const t = tenants.find(x => String(x.id) === String(v)); if (t) setCForm(f => ({ ...f, tenant: t.name })); }}
+                  onChange={v => {
+                    const t = tenants.find(x => String(x.id) === String(v));
+                    if (!t) return;
+                    if (!cForm.propertyName) {
+                      // Auto-fill property from active contract when no property selected yet
+                      const activeContract = contracts.find(c =>
+                        (c.status === 'Actif' || c.status === 'Expirant') &&
+                        (normN(c.tenant || '') === normN(t.name || '') ||
+                         (c.tenantId && String(c.tenantId) === String(t.id)))
+                      );
+                      if (activeContract) {
+                        const matchOpt = availablePropertyOptions.find(o =>
+                          normN(o.label) === normN(activeContract.propertyName || '') ||
+                          normN(o.label) === normN(activeContract.buildingName || '') ||
+                          String(o.buildingId) === String(activeContract.propertyId)
+                        );
+                        if (matchOpt) {
+                          setCForm(f => ({
+                            ...f,
+                            tenant: t.name,
+                            propertyId: matchOpt.buildingId,
+                            propertyName: matchOpt.label,
+                            rent: f.rent || String(matchOpt.rent || ''),
+                          }));
+                          return;
+                        }
+                      }
+                    }
+                    setCForm(f => ({ ...f, tenant: t.name }));
+                  }}
                   options={tenants.map(t => ({ value: String(t.id), label: t.name }))}
                   placeholder="— Rechercher un locataire —"
                 />

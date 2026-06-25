@@ -204,6 +204,13 @@ export default function Inspections() {
     return opts;
   }, [properties]);
 
+  // ── Property name fuzzy match helper (same as Payments)
+  const propNameMatch = (a, b) => {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    return a.startsWith(b + ' (') || b.startsWith(a + ' (');
+  };
+
   // ── Forms
   const blankForm = { type: 'ENTRY', propertyKey: '', propertyId: '', propertyName: '', unitRef: '', tenantId: '', scheduledDate: '', notes: '' };
   const [form, setForm] = useState(blankForm);
@@ -597,7 +604,23 @@ export default function Inspections() {
                 const opt = allPropertyOptions.find(o => o.value === v);
                 if (!opt) { setForm(f => ({ ...f, propertyKey: '', propertyId: '', propertyName: '', unitRef: '' })); return; }
                 const norm = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-                const linked = tenants.find(t => norm(t.property) === norm(opt.label));
+                // First try direct property field match
+                let linked = tenants.find(t => norm(t.property) === norm(opt.label));
+                // Fallback: scan active contracts using propNameMatch
+                if (!linked) {
+                  const activeContract = (contracts || []).find(c =>
+                    (c.status === 'Actif' || c.status === 'Expirant') &&
+                    (propNameMatch(c.propertyName, opt.label) ||
+                     propNameMatch(c.propertyName, opt.buildingName) ||
+                     String(c.propertyId) === String(opt.buildingId))
+                  );
+                  if (activeContract) {
+                    linked = tenants.find(t =>
+                      norm(t.name) === norm(activeContract.tenant || '') ||
+                      (activeContract.tenantId && String(t.id) === String(activeContract.tenantId))
+                    );
+                  }
+                }
                 setForm(f => ({
                   ...f,
                   propertyKey: opt.value,
@@ -626,21 +649,36 @@ export default function Inspections() {
               value={form.tenantId}
               onChange={v => {
                 const tenant = tenants.find(t => String(t.id) === v);
-                if (tenant?.property) {
-                  const opt = allPropertyOptions.find(o => o.label === tenant.property);
-                  if (opt) {
-                    setForm(f => ({
-                      ...f,
-                      tenantId: v,
-                      propertyKey: opt.value,
-                      propertyId: String(opt.buildingId),
-                      propertyName: opt.label,
-                      unitRef: opt.unitNumber || '',
-                    }));
-                    return;
+                const norm = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+                // Try direct label match first
+                let opt = tenant?.property ? allPropertyOptions.find(o => o.label === tenant.property) : null;
+                // Fallback: scan active contracts for this tenant
+                if (!opt) {
+                  const activeContract = (contracts || []).find(c =>
+                    (c.status === 'Actif' || c.status === 'Expirant') &&
+                    (norm(c.tenant || '') === norm(tenant?.name || '') ||
+                     (c.tenantId && String(c.tenantId) === String(v)))
+                  );
+                  if (activeContract) {
+                    opt = allPropertyOptions.find(o =>
+                      propNameMatch(o.label, activeContract.propertyName) ||
+                      propNameMatch(o.buildingName, activeContract.propertyName) ||
+                      String(o.buildingId) === String(activeContract.propertyId)
+                    );
                   }
                 }
-                setForm(f => ({ ...f, tenantId: v }));
+                if (opt) {
+                  setForm(f => ({
+                    ...f,
+                    tenantId: v,
+                    propertyKey: opt.value,
+                    propertyId: String(opt.buildingId),
+                    propertyName: opt.label,
+                    unitRef: opt.unitNumber || '',
+                  }));
+                } else {
+                  setForm(f => ({ ...f, tenantId: v }));
+                }
               }}
               options={tenants.map(t => ({ value: String(t.id), label: t.name + (t.property ? ` — ${t.property}` : '') }))}
               placeholder="— Rechercher un locataire —"
