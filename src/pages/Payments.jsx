@@ -2969,43 +2969,47 @@ export default function Payments() {
       )}
 
       {/* ── Month closure modal ── */}
-      {closureModal && (() => {
-        const monthPmtsAll = payments.filter(p => p.month === selectedMonth);
-        const paidPmts  = monthPmtsAll.filter(p => p.status === 'Payé');
-        const unpaidPmts = monthPmtsAll.filter(p => p.status !== 'Payé' && p.status !== 'Annulé');
-        const totalCollected = paidPmts.reduce((s, p) => s + (p.amount || 0), 0);
-        const totalUnpaid    = unpaidPmts.reduce((s, p) => s + (p.amount || 0), 0);
-        return (
-          <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
-            <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <Icon name="lock" size={20} className="text-amber-700" />
-                </div>
-                <div>
-                  <h3 className="font-black text-base text-on-surface">Clôturer {selectedMonth}</h3>
-                  <p className="text-xs text-on-surface-variant">Un snapshot sera enregistré. Les paiements ultérieurs seront marqués post-clôture.</p>
-                </div>
-              </div>
-
-              <div className="bg-surface-container rounded-xl p-4 mb-4 flex flex-col gap-2">
+      <ModalWrap
+        open={closureModal}
+        onClose={() => { setClosureModal(false); setClosureNote(''); }}
+        title={`Clôturer ${selectedMonth}`}
+        size="sm"
+        footer={
+          <>
+            <Btn variant="secondary" onClick={() => { setClosureModal(false); setClosureNote(''); }}>Annuler</Btn>
+            <button onClick={handleCloseMonth} disabled={closureLoading}
+              className="px-4 py-2 text-sm font-bold text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition-colors flex items-center gap-2 disabled:opacity-60">
+              <Icon name="lock" size={16} />
+              {closureLoading ? 'En cours…' : 'Clôturer'}
+            </button>
+          </>
+        }
+      >
+        {(() => {
+          const monthPmtsAll = payments.filter(p => p.month === selectedMonth);
+          const paidPmts   = monthPmtsAll.filter(p => p.status === 'Payé');
+          const unpaidPmts = monthPmtsAll.filter(p => p.status !== 'Payé' && p.status !== 'Annulé');
+          const totalColl  = paidPmts.reduce((s, p) => s + (p.amount || 0), 0);
+          const totalUnp   = unpaidPmts.reduce((s, p) => s + (p.amount || 0), 0);
+          const rate = (totalColl + totalUnp) > 0 ? Math.round(totalColl / (totalColl + totalUnp) * 100) : 0;
+          return (
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-on-surface-variant">Un snapshot sera enregistré. Les paiements reçus après cette date seront marqués <strong>post-clôture</strong>.</p>
+              <div className="bg-surface-container rounded-xl p-4 flex flex-col gap-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-on-surface-variant">Paiements reçus</span>
-                  <span className="font-bold text-green-700">{fmt(totalCollected)} ({paidPmts.length})</span>
+                  <span className="font-bold text-green-700">{fmt(totalColl)} ({paidPmts.length})</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-on-surface-variant">Impayés restants</span>
-                  <span className={`font-bold ${unpaidPmts.length > 0 ? 'text-red-700' : 'text-green-700'}`}>{fmt(totalUnpaid)} ({unpaidPmts.length})</span>
+                  <span className={`font-bold ${unpaidPmts.length > 0 ? 'text-red-700' : 'text-green-700'}`}>{fmt(totalUnp)} ({unpaidPmts.length})</span>
                 </div>
                 <div className="border-t border-outline-variant/20 pt-2 flex justify-between text-sm">
                   <span className="font-semibold text-on-surface">Taux de recouvrement</span>
-                  <span className="font-black text-primary">
-                    {(totalCollected + totalUnpaid) > 0 ? Math.round(totalCollected / (totalCollected + totalUnpaid) * 100) : 0}%
-                  </span>
+                  <span className="font-black text-primary">{rate}%</span>
                 </div>
               </div>
-
-              <div className="mb-5">
+              <div>
                 <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5">Note de clôture (optionnel)</label>
                 <textarea
                   value={closureNote}
@@ -3015,22 +3019,10 @@ export default function Payments() {
                   className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary resize-none"
                 />
               </div>
-
-              <div className="flex gap-2">
-                <button onClick={() => { setClosureModal(false); setClosureNote(''); }}
-                  className="flex-1 py-2.5 text-sm text-on-surface-variant border border-outline-variant rounded-xl hover:bg-surface-container transition-colors">
-                  Annuler
-                </button>
-                <button onClick={handleCloseMonth} disabled={closureLoading}
-                  className="flex-1 py-2.5 text-sm font-bold text-white bg-amber-600 rounded-xl hover:bg-amber-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
-                  <Icon name="lock" size={16} />
-                  {closureLoading ? 'En cours…' : `Clôturer ${selectedMonth}`}
-                </button>
-              </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
+      </ModalWrap>
     </div>
   );
 }
