@@ -1408,6 +1408,7 @@ export default function Payments() {
       paidDate: today,
       reminderSent: false,
       reminderCount: 0,
+      ...(isClosed(payForm.month) ? { postCloture: true } : {}),
     };
     dispatch({ type: 'ADD_PAYMENT', payload: newPayment });
     setPayModal(false);
@@ -1553,6 +1554,7 @@ export default function Payments() {
           isArrear: true,
           reminderSent: false,
           reminderCount: 0,
+          ...(arrearsAddForm.status === 'Payé' && isClosed(month) ? { postCloture: true } : {}),
         },
       });
     });
@@ -1618,7 +1620,17 @@ export default function Payments() {
   const handlePrintPostCloture = (month) => {
     const closure = closureForMonth(month);
     if (!closure) return;
-    const postPmts = payments.filter(p => p.month === month && p.postCloture && p.status === 'Payé');
+    const closedAt = closure.closedAt ? new Date(closure.closedAt) : null;
+    // Include payments flagged postCloture OR paid after the closure date
+    const postPmts = payments.filter(p => {
+      if (p.month !== month || p.status !== 'Payé') return false;
+      if (p.postCloture) return true;
+      if (closedAt && p.paidDate) {
+        const pd = parseTxDate(p.paidDate) || new Date(p.paidDate);
+        return pd > closedAt;
+      }
+      return false;
+    });
     const html = buildPostClotureHTML(closure, postPmts, orgSettings);
     const win = window.open('', '_blank', 'width=900,height=700');
     if (win) { win.document.write(html); win.document.close(); }
