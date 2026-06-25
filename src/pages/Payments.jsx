@@ -1073,6 +1073,10 @@ export default function Payments() {
     if (a === b) return true;
     return a.startsWith(b + ' (') || b.startsWith(a + ' (');
   };
+  // Normalize for accent/dash/case-insensitive comparison
+  const normProp = s => (s || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[—–\-]/g, '-').replace(/\s+/g, ' ').trim();
 
   /* ── Tenants matching the selected property (no paid exclusion — allows advance payments) ── */
   const paidThisMonthSet = useMemo(() => new Set(
@@ -1090,14 +1094,17 @@ export default function Payments() {
     return (tenants || []).filter(t => {
       const tName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
       return (contracts || []).some(c => {
-        if (c.status !== 'Actif' && c.status !== 'Expirant') return false;
+        // Include active contracts + brouillon (draft contracts also link a tenant to a property)
+        if (!['Actif', 'Expirant', 'Brouillon'].includes(c.status)) return false;
         const tenantMatch = String(c.tenantId) === String(t.id) || c.tenant === tName;
         // For a specific unit, only match on the exact unit name — never on buildingId/buildingName
         // (all units share the same buildingId, which would return wrong tenants)
         const propMatch = selected.isUnit
-          ? propNameMatch(c.propertyName, selected.propertyName)
+          ? (propNameMatch(c.propertyName, selected.propertyName) ||
+             normProp(c.propertyName) === normProp(selected.propertyName))
           : (propNameMatch(c.propertyName, selected.propertyName) ||
              propNameMatch(c.propertyName, selected.buildingName) ||
+             normProp(c.propertyName) === normProp(selected.propertyName) ||
              String(c.propertyId) === String(selected.buildingId));
         return tenantMatch && propMatch;
       });
@@ -1319,13 +1326,14 @@ export default function Payments() {
     const linked = !opt ? [] : (tenants || []).filter(t => {
       const tName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
       return (contracts || []).some(c => {
-        if (c.status !== 'Actif' && c.status !== 'Expirant') return false;
+        if (!['Actif', 'Expirant', 'Brouillon'].includes(c.status)) return false;
         const tenantOk = String(c.tenantId) === String(t.id) || c.tenant === tName;
-        // Unit: only exact name match. Building: allow buildingId/buildingName fallbacks.
         const propOk = opt.isUnit
-          ? propNameMatch(c.propertyName, opt.propertyName)
+          ? (propNameMatch(c.propertyName, opt.propertyName) ||
+             normProp(c.propertyName) === normProp(opt.propertyName))
           : (propNameMatch(c.propertyName, opt.propertyName) ||
              propNameMatch(c.propertyName, opt.buildingName) ||
+             normProp(c.propertyName) === normProp(opt.propertyName) ||
              String(c.propertyId) === String(opt.buildingId));
         return tenantOk && propOk;
       });
@@ -1339,7 +1347,7 @@ export default function Payments() {
     const tenant = (tenants || []).find(t => String(t.id) === String(val));
     const tenantName = tenant ? (tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim()) : '';
     const contract = (contracts || []).find(c =>
-      (c.status === 'Actif' || c.status === 'Expirant') &&
+      ['Actif', 'Expirant', 'Brouillon'].includes(c.status) &&
       (c.tenant === tenantName || (c.tenantId && String(c.tenantId) === String(val)))
     );
     const matchOpt = propOptFromContract(contract);
