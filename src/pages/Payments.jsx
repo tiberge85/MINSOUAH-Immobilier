@@ -1067,6 +1067,13 @@ export default function Payments() {
     return opts;
   }, [properties]);
 
+  /* ── Property name fuzzy match (used in contract lookups) ── */
+  const propNameMatch = (a, b) => {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    return a.startsWith(b + ' (') || b.startsWith(a + ' (');
+  };
+
   /* ── Tenants matching the selected property (no paid exclusion — allows advance payments) ── */
   const paidThisMonthSet = useMemo(() => new Set(
     (payments || [])
@@ -1281,15 +1288,6 @@ export default function Payments() {
   })();
 
   /* ── Shared helpers for contract-based auto-fill ── */
-  // Contracts store tenant as a name string (not ID) and propertyName as the full label.
-  // We match by propertyName first (exact, includes unit number) to avoid cross-unit confusion.
-  // Flexible name match: handles floor suffix differences ("Apt 3B" vs "Apt 3B (RDC)")
-  const propNameMatch = (a, b) => {
-    if (!a || !b) return false;
-    if (a === b) return true;
-    return a.startsWith(b + ' (') || b.startsWith(a + ' (');
-  };
-
   const contractByProp = (opt) => {
     if (!opt) return null;
     return (contracts || []).find(c =>
