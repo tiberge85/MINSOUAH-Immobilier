@@ -252,7 +252,7 @@ export default function Referrers() {
         title={selected ? `${selected.name}${selected.company ? ' — ' + selected.company : ''}` : ''}
         size="md"
       >
-          <div className="flex flex-col gap-4 max-h-[70vh] overflow-y-auto">
+        {selected && <div className="flex flex-col gap-4">
             {/* Infos */}
             <div className="grid grid-cols-2 gap-3 text-sm">
               {selected.phone && (
@@ -357,7 +357,7 @@ export default function Referrers() {
                 </div>
               </div>
             )}
-          </div>
+          </div>}
       </Modal>
     </div>
   );

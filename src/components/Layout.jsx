@@ -340,7 +340,7 @@ export default function Layout() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 flex flex-col gap-1 px-1">
+        <nav className="flex-1 flex flex-col gap-1 px-1 overflow-y-auto">
           {visibleNav.map((item) => (
             <NavLink
               key={item.path}
