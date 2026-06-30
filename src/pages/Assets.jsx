@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
@@ -151,16 +151,24 @@ export default function Assets() {
     const matchCat = filter === 'Tous' || p.type === filter;
     const q = search.toLowerCase();
     const matchSearch = p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q) || (p.owner || '').toLowerCase().includes(q);
-    let matchStatus = true;
-    if (statusFilter) {
-      if (p.isBuilding) {
-        matchStatus = (p.units || []).some(u => u.status === statusFilter);
-      } else {
-        matchStatus = p.status === statusFilter;
-      }
-    }
-    return matchCat && matchSearch && matchStatus;
+    return matchCat && matchSearch;
   });
+
+  // Quand un filtre de statut est actif → affichage à plat (unités individuelles)
+  const displayItems = useMemo(() => {
+    if (!statusFilter) return filtered.map(p => ({ _type: p.isBuilding ? 'building' : 'property', data: p }));
+    const items = [];
+    filtered.forEach(p => {
+      if (p.isBuilding) {
+        (p.units || [])
+          .filter(u => u.status === statusFilter)
+          .forEach(u => items.push({ _type: 'unit', data: u, building: p }));
+      } else if (p.status === statusFilter) {
+        items.push({ _type: 'property', data: p });
+      }
+    });
+    return items;
+  }, [statusFilter, filtered]);
 
   // ── Stats ──────────────────────────────────────────────────────────────────
   const totalUnits = properties.reduce((s, p) => s + (p.isBuilding ? (p.units?.length || 0) : 1), 0);
@@ -363,30 +371,54 @@ export default function Assets() {
       </div>
 
       {/* Grille des biens */}
-      {filtered.length === 0 ? (
+      {statusFilter && (
+        <div className="flex items-center gap-2 text-sm text-on-surface-variant">
+          <Icon name="filter_list" size={16} />
+          <span><strong className="text-on-surface">{displayItems.length}</strong> appartement{displayItems.length !== 1 ? 's' : ''} — statut : <strong className="text-primary">{statusFilter === 'Disponible' ? 'Libre' : statusFilter}</strong></span>
+          <button onClick={() => setStatusFilter(null)} className="ml-auto text-xs text-primary hover:underline flex items-center gap-1">
+            <Icon name="close" size={14} /> Effacer le filtre
+          </button>
+        </div>
+      )}
+      {displayItems.length === 0 ? (
         <div className="text-center py-16 text-on-surface-variant">
           <Icon name="search_off" size={48} className="mb-4 opacity-30 mx-auto" />
           <p>Aucun bien trouvé</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filtered.map(p => (
-            p.isBuilding ? (
-              <BuildingCard key={p.id} building={p}
-                onDetail={() => { setTarget(p); setModal('detail'); setAddingUnitToDetail(false); setDetailUnitEdit(null); }}
-                onEdit={() => openEdit(p)}
-                onDelete={() => { setTarget(p); setModal('delete'); }}
-                onQr={() => setQrModal(p)}
-              />
-            ) : (
+          {displayItems.map((item, idx) => {
+            if (item._type === 'unit') {
+              return (
+                <UnitFlatCard
+                  key={`${item.building.id}-${item.data.id || idx}`}
+                  unit={item.data}
+                  building={item.building}
+                  onBuildingDetail={() => { setTarget(item.building); setModal('detail'); setAddingUnitToDetail(false); setDetailUnitEdit(null); }}
+                />
+              );
+            }
+            if (item._type === 'building') {
+              const p = item.data;
+              return (
+                <BuildingCard key={p.id} building={p}
+                  onDetail={() => { setTarget(p); setModal('detail'); setAddingUnitToDetail(false); setDetailUnitEdit(null); }}
+                  onEdit={() => openEdit(p)}
+                  onDelete={() => { setTarget(p); setModal('delete'); }}
+                  onQr={() => setQrModal(p)}
+                />
+              );
+            }
+            const p = item.data;
+            return (
               <PropertyCard key={p.id} property={p}
                 onDetail={() => { setTarget(p); setModal('detail'); }}
                 onEdit={() => openEdit(p)}
                 onDelete={() => { setTarget(p); setModal('delete'); }}
                 onQr={() => setQrModal(p)}
               />
-            )
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -832,6 +864,49 @@ export default function Assets() {
 }
 
 // ── Cartes ────────────────────────────────────────────────────────────────────
+function UnitFlatCard({ unit, building, onBuildingDetail }) {
+  const statusColor = {
+    'Loué':        'bg-green-100 text-green-800 border-green-200',
+    'Disponible':  'bg-blue-50 text-blue-700 border-blue-200',
+    'Maintenance': 'bg-red-50 text-red-700 border-red-200',
+  }[unit.status] || 'bg-surface-container text-on-surface border-outline-variant/20';
+
+  return (
+    <div onClick={onBuildingDetail} className="bg-surface rounded-2xl overflow-hidden border border-outline-variant/20 shadow-sm hover:shadow-md transition-shadow cursor-pointer group">
+      <div className="relative h-36 overflow-hidden bg-surface-container">
+        {building.image
+          ? <img src={building.image} alt={building.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" onError={e => e.target.style.display = 'none'} />
+          : <div className="w-full h-full flex items-center justify-center"><Icon name="apartment" size={44} className="text-outline-variant" /></div>
+        }
+        <div className="absolute top-3 left-3">
+          <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${statusColor}`}>{unit.status}</span>
+        </div>
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-3 py-2">
+          <p className="text-white text-xs font-semibold truncate">{building.name}</p>
+        </div>
+      </div>
+      <div className="p-4">
+        <h3 className="font-bold text-on-surface mb-0.5">{unit.number}</h3>
+        <p className="text-xs text-on-surface-variant flex items-center gap-1 mb-3">
+          <Icon name="location_on" size={12} />{building.address}
+        </p>
+        <div className="flex flex-wrap gap-2 text-xs text-on-surface-variant mb-3">
+          <span className="flex items-center gap-1"><Icon name="layers" size={12} />{unit.floor}</span>
+          <span className="flex items-center gap-1"><Icon name="category" size={12} />{unit.type}</span>
+          {unit.surface > 0 && <span className="flex items-center gap-1"><Icon name="straighten" size={12} />{unit.surface} m²</span>}
+          {unit.rooms > 0 && <span className="flex items-center gap-1"><Icon name="door_open" size={12} />{unit.rooms} p.</span>}
+        </div>
+        <div className="flex items-center justify-between pt-3 border-t border-outline-variant/10">
+          <span className="text-xs text-on-surface-variant flex items-center gap-1">
+            <Icon name="person" size={12} />{building.owner || '—'}
+          </span>
+          <span className="font-bold text-primary text-sm">{fmt(unit.rent)}/mois</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BuildingCard({ building, onDetail, onEdit, onDelete, onQr }) {
   const units = building.units || [];
   const loued = units.filter(u => u.status === 'Loué').length;
