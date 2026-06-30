@@ -427,30 +427,24 @@ export default function Maintenance() {
               </div>
             </div>
 
-            {/* Prestataire info in detail */}
-            {(detailTicket.prestataire || detailTicket.prestatairePhone || detailTicket.devisAmount) && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-sm flex flex-col gap-xs">
-                <p className="text-label-sm font-label-sm text-amber-800 uppercase tracking-wider mb-1">Prestataire</p>
-                {detailTicket.prestataire && (
-                  <div className="flex items-center gap-sm text-body-sm text-amber-900">
-                    <Icon name="handyman" size={15} />
-                    <span className="font-medium">{detailTicket.prestataire}</span>
-                  </div>
-                )}
-                {detailTicket.prestatairePhone && (
-                  <div className="flex items-center gap-sm text-body-sm text-amber-900">
-                    <Icon name="phone" size={15} />
-                    <a href={`tel:${detailTicket.prestatairePhone}`} className="hover:underline">{detailTicket.prestatairePhone}</a>
-                  </div>
-                )}
-                {detailTicket.devisAmount && (
-                  <div className="flex items-center gap-sm text-body-sm text-amber-900 font-semibold">
-                    <Icon name="payments" size={15} />
-                    <span>{parseFloat(detailTicket.devisAmount).toLocaleString('fr-FR')} FCFA</span>
-                  </div>
-                )}
+            {/* Prestataire info in detail — always visible */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-sm flex flex-col gap-xs">
+              <p className="text-label-sm font-label-sm text-amber-800 uppercase tracking-wider mb-1">Prestataire</p>
+              <div className="flex items-center gap-sm text-body-sm text-amber-900">
+                <Icon name="handyman" size={15} />
+                <span className="font-medium">{detailTicket.prestataire || <span className="italic opacity-60">Non défini</span>}</span>
               </div>
-            )}
+              <div className="flex items-center gap-sm text-body-sm text-amber-900">
+                <Icon name="phone" size={15} />
+                {detailTicket.prestatairePhone
+                  ? <a href={`tel:${detailTicket.prestatairePhone}`} className="hover:underline">{detailTicket.prestatairePhone}</a>
+                  : <span className="italic opacity-60">—</span>}
+              </div>
+              <div className="flex items-center gap-sm text-body-sm text-amber-900 font-semibold">
+                <Icon name="payments" size={15} />
+                <span>{detailTicket.devisAmount ? parseFloat(detailTicket.devisAmount).toLocaleString('fr-FR') + ' FCFA' : <span className="italic font-normal opacity-60">Aucun devis</span>}</span>
+              </div>
+            </div>
 
             {/* Progress stepper */}
             <div className="flex items-center justify-between mt-sm">

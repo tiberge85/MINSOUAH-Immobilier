@@ -3,6 +3,8 @@ import { useParams } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
+const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
+
 const BRAND = '#785a00';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
@@ -39,7 +41,7 @@ export default function PublicTenantPortal() {
 
   useEffect(() => {
     if (!token) { setNotFound(true); setLoading(false); return; }
-    getDoc(doc(db, 'workspaces', 'default', 'tenantPortals', token))
+    getDoc(doc(db, 'workspaces', WS, 'tenantPortals', token))
       .then((snap) => {
         if (!snap.exists()) {
           setNotFound(true);

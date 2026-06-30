@@ -36,6 +36,7 @@ const navItems = [
   { path: '/inspections', label: 'États des lieux',   icon: 'home_work',               mobileIcon: 'home_work' },
   { path: '/calendar',     label: 'Calendrier',         icon: 'calendar_month',          mobileIcon: 'calendar_month' },
   { path: '/insurance',    label: 'Assurances',          icon: 'verified_user',           mobileIcon: 'verified_user' },
+  { path: '/referrers',   label: 'Apporteurs d\'affaire', icon: 'group_add',              mobileIcon: 'group_add' },
   { path: '/concierge',   label: 'Mon Espace',        icon: 'supervised_user_circle',  mobileIcon: 'supervised_user_circle', roles: ['CONCIERGE'] },
   { path: '/inbox',       label: 'Messagerie',        icon: 'support_agent',           mobileIcon: 'mail' },
 ];
@@ -50,6 +51,7 @@ const pageTitles = {
   '/inspections':     'États des lieux',
   '/calendar':       'Calendrier',
   '/insurance':      'Assurances',
+  '/referrers':      'Apporteurs d\'affaire',
   '/inbox':           'Messagerie',
   '/portal/tenant':   'Portail Locataires',
   '/portal/owner':    'Portail Propriétaires',

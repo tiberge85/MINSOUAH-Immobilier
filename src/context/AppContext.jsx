@@ -198,6 +198,7 @@ export function AppProvider({ children }) {
     insurances: [],
     budgets: [],
     tenantPortals: [],
+    referrers: [],
     currentUser: null,
     orgSettings: DEFAULT_ORG,
     systemSettings: DEFAULT_SYSTEM,
@@ -300,7 +301,7 @@ export function AppProvider({ children }) {
         // entity collections: filtered by orgId for non-admin users
         ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
           'tickets', 'inspections', 'conversations', 'monthClosures',
-          'insurances', 'budgets'].forEach(c => sub(c, true));
+          'insurances', 'budgets', 'referrers'].forEach(c => sub(c, true));
 
         sub('tenantPortals'); // publicly readable portal tokens
 
@@ -796,6 +797,37 @@ export function AppProvider({ children }) {
           // Return token via a state hack: dispatch a local action
           // Store in session storage for immediate access
           try { sessionStorage.setItem('lastPortalToken', token); } catch {}
+          break;
+        }
+
+        // ── REFERRERS (apporteurs d'affaire) ─────────────────────────────────
+        case 'ADD_REFERRER': {
+          const id = `ref_${Date.now()}`;
+          await setDoc(wsDoc('referrers', id), { ...payload, id, orgId, createdAt: new Date().toISOString(), referrals: [] });
+          break;
+        }
+        case 'UPDATE_REFERRER':
+          await setDoc(wsDoc('referrers', payload.id), { ...payload, orgId });
+          break;
+        case 'DELETE_REFERRER':
+          await deleteDoc(wsDoc('referrers', payload));
+          break;
+        case 'ADD_REFERRAL': {
+          const { referrerId, referral } = payload;
+          const ref = (stateRef.current.referrers || []).find(r => r.id === referrerId);
+          if (!ref) break;
+          const referrals = [...(ref.referrals || []), { ...referral, id: `ral_${Date.now()}`, addedAt: new Date().toISOString() }];
+          await setDoc(wsDoc('referrers', referrerId), { ...ref, referrals }, { merge: true });
+          break;
+        }
+        case 'TOGGLE_REFERRAL_PAID': {
+          const { referrerId, referralId } = payload;
+          const ref = (stateRef.current.referrers || []).find(r => r.id === referrerId);
+          if (!ref) break;
+          const referrals = (ref.referrals || []).map(r =>
+            r.id === referralId ? { ...r, paid: !r.paid, paidDate: !r.paid ? new Date().toLocaleDateString('fr-FR') : '' } : r
+          );
+          await setDoc(wsDoc('referrers', referrerId), { ...ref, referrals }, { merge: true });
           break;
         }
 

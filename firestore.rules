@@ -197,6 +197,9 @@ service cloud.firestore {
     // ── Insurances ────────────────────────────────────────────────────────────
     match /workspaces/{wsId}/insurances/{id} { allow read, write: if allowOrgDoc(wsId); }
 
+    // ── Apporteurs d'affaire ──────────────────────────────────────────────────
+    match /workspaces/{wsId}/referrers/{id} { allow read, write: if allowOrgDoc(wsId); }
+
     // ── Budgets (monthly targets) ─────────────────────────────────────────────
     match /workspaces/{wsId}/budgets/{id} { allow read, write: if allowOrgDoc(wsId); }
 
