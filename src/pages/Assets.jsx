@@ -131,6 +131,7 @@ export default function Assets() {
   const properties = state.properties || [];
 
   const [filter, setFilter]         = useState('Tous');
+  const [statusFilter, setStatusFilter] = useState(null); // null | 'Loué' | 'Disponible' | 'Maintenance'
   const [search, setSearch]         = useState('');
   const [modal, setModal]           = useState(null); // 'add' | 'edit' | 'detail' | 'delete'
   const [target, setTarget]         = useState(null);
@@ -150,7 +151,15 @@ export default function Assets() {
     const matchCat = filter === 'Tous' || p.type === filter;
     const q = search.toLowerCase();
     const matchSearch = p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q) || (p.owner || '').toLowerCase().includes(q);
-    return matchCat && matchSearch;
+    let matchStatus = true;
+    if (statusFilter) {
+      if (p.isBuilding) {
+        matchStatus = (p.units || []).some(u => u.status === statusFilter);
+      } else {
+        matchStatus = p.status === statusFilter;
+      }
+    }
+    return matchCat && matchSearch && matchStatus;
   });
 
   // ── Stats ──────────────────────────────────────────────────────────────────
@@ -166,6 +175,10 @@ export default function Assets() {
   const maintenance = properties.reduce((s, p) => {
     if (p.isBuilding) return s + (p.units?.filter(u => u.status === 'Maintenance').length || 0);
     return p.status === 'Maintenance' ? s + 1 : s;
+  }, 0);
+  const libres = properties.reduce((s, p) => {
+    if (p.isBuilding) return s + (p.units?.filter(u => u.status === 'Disponible').length || 0);
+    return p.status === 'Disponible' ? s + 1 : s;
   }, 0);
 
   // ── Gestion formulaire ─────────────────────────────────────────────────────
@@ -293,22 +306,37 @@ export default function Assets() {
   return (
     <div className="px-4 md:px-6 pt-6 pb-20 max-w-7xl mx-auto">
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      {/* Stats — cliquables pour filtrer */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {[
-          { label: 'Unités totales',  value: totalUnits, icon: 'apartment',      color: 'text-primary' },
-          { label: 'Louées',          value: loued,      icon: 'check_circle',   color: 'text-green-600' },
-          { label: 'En maintenance',  value: maintenance, icon: 'build',         color: 'text-error' },
-          { label: 'Revenus mensuels', value: fmt(revenue), icon: 'trending_up', color: 'text-on-primary-container', highlight: true },
-        ].map(s => (
-          <div key={s.label} className={`p-4 rounded-2xl border border-outline-variant/20 flex flex-col gap-2 ${s.highlight ? 'bg-primary-container' : 'bg-surface'}`}>
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">{s.label}</span>
-              <Icon name={s.icon} size={20} className={s.color} />
-            </div>
-            <p className={`text-lg md:text-2xl font-black truncate ${s.highlight ? 'text-on-primary-container' : 'text-on-surface'}`}>{s.value}</p>
-          </div>
-        ))}
+          { label: 'Total',       value: totalUnits,  icon: 'apartment',    color: 'text-primary',     statusVal: null },
+          { label: 'Loués',       value: loued,       icon: 'check_circle', color: 'text-green-600',   statusVal: 'Loué' },
+          { label: 'Libres',      value: libres,      icon: 'lock_open',    color: 'text-blue-600',    statusVal: 'Disponible' },
+          { label: 'Maintenance', value: maintenance, icon: 'build',        color: 'text-error',       statusVal: 'Maintenance' },
+          { label: 'Revenus/mois', value: fmt(revenue), icon: 'trending_up', color: 'text-on-primary-container', highlight: true, statusVal: '__revenue__' },
+        ].map(s => {
+          const isActive = s.statusVal !== '__revenue__' && statusFilter === s.statusVal;
+          return (
+            <button
+              key={s.label}
+              onClick={() => s.statusVal !== '__revenue__' && setStatusFilter(prev => prev === s.statusVal ? null : s.statusVal)}
+              className={`p-4 rounded-2xl border-2 flex flex-col gap-2 text-left transition-all duration-150 ${
+                s.highlight
+                  ? 'bg-primary-container border-transparent cursor-default'
+                  : isActive
+                    ? 'bg-surface border-primary shadow-md scale-[1.02]'
+                    : 'bg-surface border-outline-variant/20 hover:border-primary/40 hover:shadow-sm cursor-pointer'
+              }`}
+            >
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">{s.label}</span>
+                <Icon name={s.icon} size={20} className={s.color} />
+              </div>
+              <p className={`text-lg md:text-2xl font-black truncate ${s.highlight ? 'text-on-primary-container' : isActive ? 'text-primary' : 'text-on-surface'}`}>{s.value}</p>
+              {isActive && <span className="text-xs text-primary font-semibold">Filtre actif · Cliquer pour annuler</span>}
+            </button>
+          );
+        })}
       </div>
 
       {/* Filtres + Recherche */}
