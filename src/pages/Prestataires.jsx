@@ -244,9 +244,19 @@ export default function Prestataires() {
                 placeholder="contact@exemple.com" className={inputCls} />
             </Field>
             <Field label="Spécialité">
-              <select value={form.specialty} onChange={e => setForm(f => ({ ...f, specialty: e.target.value }))} className={selectCls}>
+              <select value={SPECIALTIES.includes(form.specialty) ? form.specialty : 'Autre'}
+                onChange={e => setForm(f => ({ ...f, specialty: e.target.value, specialtyDetail: e.target.value !== 'Autre' ? '' : f.specialtyDetail }))}
+                className={selectCls}>
                 {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
+              {(!SPECIALTIES.slice(0, -1).includes(form.specialty) || form.specialty === 'Autre') && (
+                <input
+                  value={form.specialtyDetail || ''}
+                  onChange={e => setForm(f => ({ ...f, specialtyDetail: e.target.value, specialty: e.target.value || 'Autre' }))}
+                  placeholder="Préciser la spécialité…"
+                  className={inputCls + ' mt-2'}
+                />
+              )}
             </Field>
             <Field label="Type de tarif">
               <select value={form.rateType} onChange={e => setForm(f => ({ ...f, rateType: e.target.value }))} className={selectCls}>

@@ -209,7 +209,21 @@ export default function Maintenance() {
                 {/* Header */}
                 <div className="flex justify-between items-start mb-sm">
                   <Badge label={ticket.priority} />
-                  <span className="text-label-sm text-on-surface-variant">{ticket.id}</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-label-sm text-on-surface-variant">{ticket.id}</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm(`Supprimer le ticket "${ticket.title}" ?`)) {
+                          dispatch({ type: 'DELETE_TICKET', payload: ticket.id });
+                        }
+                      }}
+                      className="ml-1 p-1 rounded-lg hover:bg-error/10 text-on-surface-variant hover:text-error transition-colors"
+                      title="Supprimer"
+                    >
+                      <Icon name="delete" size={14} />
+                    </button>
+                  </div>
                 </div>
 
                 <h3 className="font-h3 text-h3 text-on-surface mb-xs">{ticket.title}</h3>
@@ -408,6 +422,19 @@ export default function Maintenance() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setDetailTicket(null)}>Fermer</Button>
+            <Button
+              variant="secondary"
+              icon="delete"
+              onClick={() => {
+                if (window.confirm(`Supprimer le ticket "${detailTicket?.title}" ?`)) {
+                  dispatch({ type: 'DELETE_TICKET', payload: detailTicket.id });
+                  setDetailTicket(null);
+                }
+              }}
+              className="text-error border-error/30 hover:bg-error/10"
+            >
+              Supprimer
+            </Button>
             {detailTicket?.status !== 'Résolu' && (
               <Button
                 icon="arrow_forward"
