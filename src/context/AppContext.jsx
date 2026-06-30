@@ -199,6 +199,7 @@ export function AppProvider({ children }) {
     budgets: [],
     tenantPortals: [],
     referrers: [],
+    prestataires: [],
     currentUser: null,
     orgSettings: DEFAULT_ORG,
     systemSettings: DEFAULT_SYSTEM,
@@ -301,7 +302,7 @@ export function AppProvider({ children }) {
         // entity collections: filtered by orgId for non-admin users
         ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
           'tickets', 'inspections', 'conversations', 'monthClosures',
-          'insurances', 'budgets', 'referrers'].forEach(c => sub(c, true));
+          'insurances', 'budgets', 'referrers', 'prestataires'].forEach(c => sub(c, true));
 
         sub('tenantPortals'); // publicly readable portal tokens
 
@@ -799,6 +800,19 @@ export function AppProvider({ children }) {
           try { sessionStorage.setItem('lastPortalToken', token); } catch {}
           break;
         }
+
+        // ── PRESTATAIRES (contractors) ────────────────────────────────────────
+        case 'ADD_PRESTATAIRE': {
+          const id = `prest_${Date.now()}`;
+          await setDoc(wsDoc('prestataires', id), { ...payload, id, orgId, createdAt: new Date().toISOString() });
+          break;
+        }
+        case 'UPDATE_PRESTATAIRE':
+          await setDoc(wsDoc('prestataires', payload.id), { ...payload, orgId });
+          break;
+        case 'DELETE_PRESTATAIRE':
+          await deleteDoc(wsDoc('prestataires', payload));
+          break;
 
         // ── REFERRERS (apporteurs d'affaire) ─────────────────────────────────
         case 'ADD_REFERRER': {

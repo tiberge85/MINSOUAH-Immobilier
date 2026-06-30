@@ -31,6 +31,7 @@ const newTicketForm0 = {
 export default function Maintenance() {
   const { state, dispatch } = useApp();
   const tickets = state.tickets || [];
+  const prestataires = state.prestataires || [];
   const [priorityFilter, setPriorityFilter] = useState('Tous');
   const [typeFilter, setTypeFilter] = useState(null);
   const [search, setSearch] = useState('');
@@ -344,13 +345,37 @@ export default function Maintenance() {
           <div className="border-t border-outline-variant/30 pt-md">
             <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider mb-md">Prestataire (optionnel)</p>
             <div className="flex flex-col gap-md">
-              <Input
-                label="Prestataire"
-                placeholder="Nom de l'entreprise ou du technicien"
-                value={form.prestataire}
-                onChange={(e) => setForm((f) => ({ ...f, prestataire: e.target.value }))}
-                icon="handyman"
-              />
+              <div>
+                <label className="text-label-md font-label-md text-on-surface-variant block mb-1">Prestataire</label>
+                <select
+                  value={form.prestataire}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    const p = prestataires.find(x => x.name === name);
+                    setForm((f) => ({
+                      ...f,
+                      prestataire: name,
+                      prestatairePhone: p?.phone || f.prestatairePhone,
+                      prestataireId: p?.id || '',
+                    }));
+                  }}
+                  className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                >
+                  <option value="">— Sélectionner un prestataire —</option>
+                  {prestataires.map(p => (
+                    <option key={p.id} value={p.name}>{p.name}{p.company ? ` (${p.company})` : ''} — {p.specialty}</option>
+                  ))}
+                  <option value="__manual__">✏️ Saisie manuelle…</option>
+                </select>
+                {(form.prestataire === '__manual__' || (form.prestataire && !prestataires.find(p => p.name === form.prestataire))) && (
+                  <input
+                    className="mt-2 w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                    placeholder="Nom du prestataire"
+                    value={form.prestataire === '__manual__' ? '' : form.prestataire}
+                    onChange={(e) => setForm((f) => ({ ...f, prestataire: e.target.value }))}
+                  />
+                )}
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
                 <Input
                   label="Téléphone prestataire"

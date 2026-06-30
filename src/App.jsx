@@ -32,6 +32,7 @@ import Calendar      from './pages/Calendar';
 import Insurance     from './pages/Insurance';
 import PublicTenantPortal from './pages/PublicTenantPortal';
 import Referrers     from './pages/Referrers';
+import Prestataires  from './pages/Prestataires';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -269,7 +270,8 @@ function AppRoutes() {
         <Route path="settings"     element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="calendar"    element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'ACCOUNTANT']}><Calendar /></ProtectedRoute>} />
         <Route path="insurance"   element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER']}><Insurance /></ProtectedRoute>} />
-        <Route path="referrers"   element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER']}><Referrers /></ProtectedRoute>} />
+        <Route path="referrers"    element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER']}><Referrers /></ProtectedRoute>} />
+        <Route path="prestataires" element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'TECHNICIAN']}><Prestataires /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
 
