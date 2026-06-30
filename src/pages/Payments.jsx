@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import SearchSelect from '../components/SearchSelect';
@@ -964,7 +965,7 @@ function buildPostClotureHTML(closure, postPmts, orgSettings) {
 /* ── Main component ─────────────────────────────────────────────────────── */
 export default function Payments() {
   const { state, dispatch } = useApp();
-  const { payments = [], properties = [], tenants = [], contracts = [], transactions = [], orgSettings, monthClosures = [] } = state;
+  const { payments = [], properties = [], tenants = [], contracts = [], transactions = [], orgSettings, monthClosures = [], budgets = [] } = state;
 
   const now = new Date();
   const currentMonthLabel = `${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`;
@@ -996,6 +997,10 @@ export default function Payments() {
   const [closureModal, setClosureModal] = useState(false);
   const [closureNote, setClosureNote]   = useState('');
   const [closureLoading, setClosureLoading] = useState(false);
+
+  /* ── Budget vs Réalisé ── */
+  const [showBudgetEdit, setShowBudgetEdit] = useState(false);
+  const [budgetInput, setBudgetInput]       = useState('');
 
   /* ── Arrears add modal ── */
   const [arrearsAddModal, setArrearsAddModal] = useState(false);
@@ -1605,6 +1610,31 @@ export default function Payments() {
     const html = buildArrearsReportHTML(arrearsByTenant, arrearsTotal, orgSettings);
     const win = window.open('', '_blank', 'width=900,height=700');
     if (win) { win.document.write(html); win.document.close(); }
+  };
+
+  const handleExportExcel = () => {
+    const monthData = payments
+      .filter(p => p.month === selectedMonth)
+      .map(p => ({
+        'Mois': p.month, 'Propriété': p.propertyName || '',
+        'Locataire': p.tenantName || '', 'Montant (FCFA)': p.amount || 0,
+        'Statut': p.status || '', 'Date paiement': p.paidDate || '',
+        'Mode': p.method || '', 'Post-clôture': p.postCloture ? 'Oui' : 'Non',
+      }));
+    const allData = payments.map(p => ({
+      'Mois': p.month, 'Propriété': p.propertyName || '',
+      'Locataire': p.tenantName || '', 'Montant (FCFA)': p.amount || 0,
+      'Statut': p.status || '', 'Date paiement': p.paidDate || '', 'Mode': p.method || '',
+    }));
+    const tenantData = (state.tenants || []).map(t => ({
+      'Nom': t.name || '', 'Email': t.email || '', 'Téléphone': t.phone || '',
+      'Propriété': t.property || '', 'Loyer': t.rent || 0,
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(monthData), selectedMonth.slice(0, 30));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allData), 'Tous paiements');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tenantData), 'Locataires');
+    XLSX.writeFile(wb, `Minsouah_${selectedMonth.replace(' ', '_')}.xlsx`);
   };
 
   const handlePrintPenalties = () => {
@@ -2347,6 +2377,7 @@ export default function Payments() {
             <div className="flex gap-2 flex-wrap">
               <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintReport}>Rapport mensuel</Btn>
               <Btn icon="analytics" variant="primary" onClick={handlePrintGlobalReport}>Rapport global</Btn>
+              <Btn icon="download" variant="secondary" onClick={handleExportExcel}>Export Excel</Btn>
               {isClosed(selectedMonth) ? (
                 <>
                   <span className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-800 text-xs font-bold rounded-xl border border-green-200">
@@ -2432,6 +2463,54 @@ export default function Payments() {
               );
             })()}
           </div>
+
+          {/* ── Budget vs Réalisé ── */}
+          {(() => {
+            const budget = budgets.find(b => b.month === selectedMonth);
+            const target = budget?.targetAmount || 0;
+            const pct = target > 0 ? Math.min(100, Math.round(totalCollected / target * 100)) : 0;
+            return (
+              <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-bold text-sm text-on-surface flex items-center gap-2">
+                    <Icon name="track_changes" size={16} className="text-primary" />
+                    Budget vs Réalisé — {selectedMonth}
+                  </h4>
+                  <button onClick={() => setShowBudgetEdit(b => !b)} className="text-xs text-primary hover:underline">
+                    {budget ? 'Modifier objectif' : 'Définir un objectif'}
+                  </button>
+                </div>
+                {showBudgetEdit && (
+                  <div className="flex gap-2 mb-3">
+                    <input type="number" value={budgetInput} onChange={e => setBudgetInput(e.target.value)}
+                      placeholder="Objectif en FCFA" className="flex-1 border border-outline-variant rounded-lg px-3 py-1.5 text-sm bg-surface-container-lowest focus:outline-none focus:border-primary" />
+                    <button onClick={() => { dispatch({ type: 'SET_BUDGET', payload: { month: selectedMonth, targetAmount: Number(budgetInput) } }); setShowBudgetEdit(false); }}
+                      className="px-3 py-1.5 bg-primary text-on-primary text-sm font-semibold rounded-lg">
+                      Enregistrer
+                    </button>
+                  </div>
+                )}
+                {target > 0 ? (
+                  <>
+                    <div className="flex justify-between text-xs text-on-surface-variant mb-1.5">
+                      <span>Encaissé : <strong className="text-on-surface">{fmt(totalCollected)}</strong></span>
+                      <span>Objectif : <strong className="text-on-surface">{fmt(target)}</strong></span>
+                    </div>
+                    <div className="w-full bg-surface-container rounded-full h-3 overflow-hidden">
+                      <div className={`h-3 rounded-full transition-all ${pct >= 100 ? 'bg-green-500' : pct >= 70 ? 'bg-primary' : 'bg-amber-500'}`}
+                        style={{ width: `${pct}%` }} />
+                    </div>
+                    <div className="flex justify-between text-xs mt-1">
+                      <span className={`font-bold ${pct >= 100 ? 'text-green-700' : pct >= 70 ? 'text-primary' : 'text-amber-700'}`}>{pct}%</span>
+                      <span className="text-on-surface-variant">Reste : {fmt(Math.max(0, target - totalCollected))}</span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-on-surface-variant text-center py-2">Aucun objectif défini pour ce mois</p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Paid list */}
           {reportPaid.length > 0 && (

@@ -28,6 +28,9 @@ import ConciergePortal from './pages/ConciergePortal';
 import SuperAdmin     from './pages/SuperAdmin';
 import OrgRegistration from './pages/OrgRegistration';
 import Marketplace    from './pages/Marketplace';
+import Calendar      from './pages/Calendar';
+import Insurance     from './pages/Insurance';
+import PublicTenantPortal from './pages/PublicTenantPortal';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -248,6 +251,8 @@ function AppRoutes() {
         element={user ? <ChangePassword /> : <Navigate to="/login" replace />}
       />
 
+      <Route path="/locataire/:token" element={<PublicTenantPortal />} />
+
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER']}><Dashboard /></ProtectedRoute>} />
         <Route path="assets"       element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE']}><Assets /></ProtectedRoute>} />
@@ -261,6 +266,8 @@ function AppRoutes() {
         <Route path="portal/tenant" element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'TENANT']}><TenantPortal /></ProtectedRoute>} />
         <Route path="portal/owner"  element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'OWNER']}><OwnerPortal /></ProtectedRoute>} />
         <Route path="settings"     element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+        <Route path="calendar"    element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'ACCOUNTANT']}><Calendar /></ProtectedRoute>} />
+        <Route path="insurance"   element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER']}><Insurance /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
 

@@ -25,6 +25,7 @@ const statusIconMap = {
 const newTicketForm0 = {
   title: '', description: '', priority: 'Moyen', type: 'Plomberie',
   property: '', unit: '',
+  prestataire: '', prestatairePhone: '', devisAmount: '',
 };
 
 export default function Maintenance() {
@@ -49,11 +50,35 @@ export default function Maintenance() {
     return matchPriority && matchType && matchSearch;
   });
 
-  const stats = [
-    { label: 'Urgent', value: tickets.filter((t) => t.priority === 'Urgent').length, icon: 'priority_high', color: 'bg-error/10 text-error' },
-    { label: 'En Attente', value: tickets.filter((t) => t.status === 'En attente').length, icon: 'pending_actions', color: 'bg-primary-container/20 text-on-primary-container' },
-    { label: 'En Cours', value: tickets.filter((t) => t.status === 'En cours').length, icon: 'engineering', color: 'bg-tertiary/10 text-tertiary' },
-    { label: 'Résolu', value: tickets.filter((t) => t.status === 'Résolu').length, icon: 'check_circle', color: 'bg-green-100 text-green-700' },
+  // Cost total for currently filtered tickets
+  const totalCost = filtered.reduce((sum, t) => sum + (parseFloat(t.devisAmount) || 0), 0);
+
+  const quickStats = [
+    {
+      label: 'Ouverts',
+      value: tickets.filter((t) => t.status === 'En attente').length,
+      icon: 'pending_actions',
+      color: 'bg-primary-container/20 text-on-primary-container',
+    },
+    {
+      label: 'En Cours',
+      value: tickets.filter((t) => t.status === 'En cours').length,
+      icon: 'engineering',
+      color: 'bg-tertiary/10 text-tertiary',
+    },
+    {
+      label: 'Résolus',
+      value: tickets.filter((t) => t.status === 'Résolu').length,
+      icon: 'check_circle',
+      color: 'bg-green-100 text-green-700',
+    },
+    {
+      label: 'Coût total estimé',
+      value: tickets.reduce((s, t) => s + (parseFloat(t.devisAmount) || 0), 0).toLocaleString('fr-FR') + ' FCFA',
+      icon: 'payments',
+      color: 'bg-amber-100 text-amber-700',
+      wide: true,
+    },
   ];
 
   const handleSubmit = () => {
@@ -90,16 +115,16 @@ export default function Maintenance() {
   return (
     <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl max-w-7xl mx-auto flex flex-col gap-gutter">
 
-      {/* Stats */}
+      {/* Quick Stats Header */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-gutter">
-        {stats.map((s) => (
+        {quickStats.map((s) => (
           <div key={s.label} className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-center gap-md">
             <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${s.color}`}>
               <Icon name={s.icon} size={22} />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-on-surface-variant text-label-sm font-label-sm uppercase tracking-wider">{s.label}</p>
-              <p className="font-h2 text-h2 text-on-surface font-bold">{s.value}</p>
+              <p className={`font-bold text-on-surface truncate ${s.wide ? 'text-body-md' : 'font-h2 text-h2'}`}>{s.value}</p>
             </div>
           </div>
         ))}
@@ -153,6 +178,14 @@ export default function Maintenance() {
         </Button>
       </div>
 
+      {/* Filtered cost banner (shown when filter is active) */}
+      {(priorityFilter !== 'Tous' || typeFilter || search) && filtered.length > 0 && totalCost > 0 && (
+        <div className="flex items-center gap-sm bg-amber-50 border border-amber-200 rounded-xl px-md py-sm text-amber-800 text-body-sm">
+          <Icon name="payments" size={16} />
+          <span>Coût estimé pour la sélection&nbsp;: <strong>{totalCost.toLocaleString('fr-FR')} FCFA</strong></span>
+        </div>
+      )}
+
       {/* Empty state */}
       {filtered.length === 0 && (
         <div className="text-center py-xl text-on-surface-variant">
@@ -195,6 +228,18 @@ export default function Maintenance() {
                     <Icon name="calendar_today" size={16} />
                     <span>Signalé le : {ticket.reportedAt}</span>
                   </div>
+                  {ticket.prestataire && (
+                    <div className="flex items-center gap-sm text-on-surface-variant text-body-sm">
+                      <Icon name="handyman" size={16} />
+                      <span>{ticket.prestataire}</span>
+                    </div>
+                  )}
+                  {ticket.devisAmount && (
+                    <div className="flex items-center gap-sm text-amber-700 text-body-sm font-medium">
+                      <Icon name="payments" size={16} />
+                      <span>{parseFloat(ticket.devisAmount).toLocaleString('fr-FR')} FCFA</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Footer */}
@@ -294,6 +339,38 @@ export default function Maintenance() {
               icon="door_front"
             />
           </div>
+
+          {/* Prestataire section */}
+          <div className="border-t border-outline-variant/30 pt-md">
+            <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider mb-md">Prestataire (optionnel)</p>
+            <div className="flex flex-col gap-md">
+              <Input
+                label="Prestataire"
+                placeholder="Nom de l'entreprise ou du technicien"
+                value={form.prestataire}
+                onChange={(e) => setForm((f) => ({ ...f, prestataire: e.target.value }))}
+                icon="handyman"
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
+                <Input
+                  label="Téléphone prestataire"
+                  placeholder="Ex: +225 07 00 00 00"
+                  value={form.prestatairePhone}
+                  onChange={(e) => setForm((f) => ({ ...f, prestatairePhone: e.target.value }))}
+                  icon="phone"
+                  type="tel"
+                />
+                <Input
+                  label="Montant devis FCFA"
+                  placeholder="Ex: 150000"
+                  value={form.devisAmount}
+                  onChange={(e) => setForm((f) => ({ ...f, devisAmount: e.target.value }))}
+                  icon="payments"
+                  type="number"
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </Modal>
 
@@ -350,20 +427,58 @@ export default function Maintenance() {
               </div>
             </div>
 
-            {/* Progress tracker */}
+            {/* Prestataire info in detail */}
+            {(detailTicket.prestataire || detailTicket.prestatairePhone || detailTicket.devisAmount) && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-sm flex flex-col gap-xs">
+                <p className="text-label-sm font-label-sm text-amber-800 uppercase tracking-wider mb-1">Prestataire</p>
+                {detailTicket.prestataire && (
+                  <div className="flex items-center gap-sm text-body-sm text-amber-900">
+                    <Icon name="handyman" size={15} />
+                    <span className="font-medium">{detailTicket.prestataire}</span>
+                  </div>
+                )}
+                {detailTicket.prestatairePhone && (
+                  <div className="flex items-center gap-sm text-body-sm text-amber-900">
+                    <Icon name="phone" size={15} />
+                    <a href={`tel:${detailTicket.prestatairePhone}`} className="hover:underline">{detailTicket.prestatairePhone}</a>
+                  </div>
+                )}
+                {detailTicket.devisAmount && (
+                  <div className="flex items-center gap-sm text-body-sm text-amber-900 font-semibold">
+                    <Icon name="payments" size={15} />
+                    <span>{parseFloat(detailTicket.devisAmount).toLocaleString('fr-FR')} FCFA</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Progress stepper */}
             <div className="flex items-center justify-between mt-sm">
               {STATUS_STEPS.map((step, i) => {
-                const active = STATUS_STEPS.indexOf(detailTicket.status) >= i;
+                const currentIdx = STATUS_STEPS.indexOf(detailTicket.status);
+                const active = currentIdx >= i;
+                const isCurrent = currentIdx === i;
                 return (
                   <div key={step} className="flex items-center flex-1">
                     <div className="flex flex-col items-center gap-1">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${active ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'}`}>
-                        {active ? <Icon name="check" size={14} /> : <span className="text-xs">{i + 1}</span>}
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors border-2 ${
+                        active
+                          ? isCurrent
+                            ? 'bg-primary text-on-primary border-primary shadow-sm'
+                            : 'bg-primary text-on-primary border-primary'
+                          : 'bg-surface-container text-on-surface-variant border-outline-variant/40'
+                      }`}>
+                        {active && !isCurrent
+                          ? <Icon name="check" size={15} />
+                          : <span className="text-xs font-bold">{i + 1}</span>
+                        }
                       </div>
-                      <span className={`text-[10px] text-center font-medium ${active ? 'text-primary' : 'text-on-surface-variant'}`}>{step}</span>
+                      <span className={`text-[10px] text-center font-medium leading-tight ${
+                        isCurrent ? 'text-primary font-bold' : active ? 'text-primary' : 'text-on-surface-variant'
+                      }`}>{step}</span>
                     </div>
                     {i < STATUS_STEPS.length - 1 && (
-                      <div className={`flex-1 h-0.5 mx-1 transition-colors ${STATUS_STEPS.indexOf(detailTicket.status) > i ? 'bg-primary' : 'bg-outline-variant/40'}`} />
+                      <div className={`flex-1 h-0.5 mx-1 transition-colors ${currentIdx > i ? 'bg-primary' : 'bg-outline-variant/40'}`} />
                     )}
                   </div>
                 );

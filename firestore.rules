@@ -194,6 +194,18 @@ service cloud.firestore {
       allow write: if request.auth != null && isSuperAdmin(wsId);
     }
 
+    // ── Insurances ────────────────────────────────────────────────────────────
+    match /workspaces/{wsId}/insurances/{id} { allow read, write: if allowOrgDoc(wsId); }
+
+    // ── Budgets (monthly targets) ─────────────────────────────────────────────
+    match /workspaces/{wsId}/budgets/{id} { allow read, write: if allowOrgDoc(wsId); }
+
+    // ── Tenant portals (public QR code portal — any authenticated or anon user can read) ──
+    match /workspaces/{wsId}/tenantPortals/{id} {
+      allow read:  if true;
+      allow write: if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
+    }
+
     // ── Deny everything else ──────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

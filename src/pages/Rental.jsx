@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
+import { QRCodeSVG } from 'qrcode.react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import SignaturePad from '../components/SignaturePad';
@@ -33,6 +34,11 @@ export default function Rental() {
   const [target, setTarget] = useState(null);
   const [step, setStep] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState(null);
+
+  // ── QR Portail ────────────────────────────────────────────────────────────
+  const [qrTenant, setQrTenant] = useState(null);
+  const [portalToken, setPortalToken] = useState(null);
+  const [qrGenerating, setQrGenerating] = useState(false);
 
   // ── Import locataires ──────────────────────────────────────────────────────
   const [importRows, setImportRows] = useState([]);
@@ -694,6 +700,7 @@ ${sectionsHtml}
                   <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${STATUS_BADGE[t.status] || ''}`}>{t.status}</span>
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                  <IconBtn icon="qr_code" color="text-on-surface-variant" title="Portail locataire QR" onClick={() => { setQrTenant(t); setPortalToken(null); }} />
                   <IconBtn icon="edit" color="text-primary" onClick={() => openEditTenant(t)} />
                   <IconBtn icon="delete" color="text-error" onClick={() => setDeleteTarget({ type: 'tenant', data: t })} />
                 </div>
@@ -1240,6 +1247,117 @@ ${sectionsHtml}
 
           <ModalFooter onCancel={() => setModal(null)} onSave={saveOwner} disabled={!oForm.name} />
         </ModalWrap>
+      )}
+
+      {/* ── QR Portail locataire ────────────────────────────────────────── */}
+      {qrTenant && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) { setQrTenant(null); setPortalToken(null); } }}>
+          <div className="bg-surface rounded-3xl w-full max-w-sm shadow-2xl">
+            <div className="sticky top-0 bg-surface border-b border-outline-variant/20 px-6 py-4 flex justify-between items-center rounded-t-3xl">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-primary-container rounded-xl flex items-center justify-center">
+                  <Icon name="qr_code" size={18} className="text-on-primary-container" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-on-surface text-sm">Portail Locataire</h2>
+                  <p className="text-xs text-on-surface-variant truncate max-w-[180px]">{qrTenant.name}</p>
+                </div>
+              </div>
+              <button onClick={() => { setQrTenant(null); setPortalToken(null); }} className="text-on-surface-variant hover:text-on-surface">
+                <Icon name="close" size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 flex flex-col items-center gap-5">
+              {/* QR Code display */}
+              {portalToken ? (
+                <>
+                  <div className="p-4 bg-white rounded-2xl border border-outline-variant/20 shadow-sm" id="qr-portal-print">
+                    <QRCodeSVG
+                      value={`${window.location.origin}/#/locataire/${portalToken}`}
+                      size={200}
+                      fgColor="#785a00"
+                      bgColor="#ffffff"
+                      level="M"
+                    />
+                  </div>
+                  <div className="w-full bg-surface-container rounded-xl p-3 text-xs text-on-surface-variant break-all text-center">
+                    <span
+                      className="text-primary font-semibold cursor-pointer hover:underline"
+                      onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/#/locataire/${portalToken}`).then(() => alert('Lien copié !')).catch(() => {})}
+                      title="Cliquer pour copier"
+                    >
+                      {`${window.location.origin}/#/locataire/${portalToken}`}
+                    </span>
+                    <p className="mt-1 text-on-surface-variant/70">Cliquez sur l'URL pour copier</p>
+                  </div>
+                  <div className="flex gap-3 w-full">
+                    <button
+                      onClick={async () => {
+                        setQrGenerating(true);
+                        const tenantPayments = (state.payments || []).filter(p => p.tenantId === qrTenant.id || p.tenantName === qrTenant.name);
+                        dispatch({ type: 'GENERATE_TENANT_PORTAL', payload: { tenantId: qrTenant.id, tenantName: qrTenant.name, propertyName: qrTenant.property || '', payments: tenantPayments } });
+                        setTimeout(() => {
+                          const token = sessionStorage.getItem('lastPortalToken');
+                          if (token) setPortalToken(token);
+                          setQrGenerating(false);
+                        }, 1500);
+                      }}
+                      disabled={qrGenerating}
+                      className="flex-1 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      {qrGenerating ? <Icon name="progress_activity" size={14} className="animate-spin" /> : <Icon name="refresh" size={14} />}
+                      Rafraîchir
+                    </button>
+                    <button
+                      onClick={() => {
+                        const printWin = window.open('', '_blank');
+                        if (!printWin) return;
+                        const url = `${window.location.origin}/#/locataire/${portalToken}`;
+                        const svgEl = document.querySelector('#qr-portal-print svg');
+                        const svgHtml = svgEl ? svgEl.outerHTML : '';
+                        printWin.document.write(`<!DOCTYPE html><html><head><title>QR Portail — ${qrTenant.name}</title><style>body{font-family:Arial,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;background:#fff}h2{color:#785a00;margin:0 0 8px}p{color:#666;font-size:13px;margin:4px 0}a{color:#785a00;word-break:break-all}svg{margin:16px 0}@media print{button{display:none}}</style></head><body><h2>Portail Locataire</h2><p><strong>${qrTenant.name}</strong> — ${qrTenant.property || ''}</p>${svgHtml}<p>Scannez ce QR code ou visitez :</p><a href="${url}">${url}</a><br><br><button onclick="window.print()">Imprimer</button></body></html>`);
+                        printWin.document.close();
+                        printWin.onload = () => printWin.print();
+                      }}
+                      className="flex-1 py-2.5 text-sm font-bold text-on-primary bg-primary rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <Icon name="print" size={14} />Imprimer
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="w-full text-center py-4">
+                    <div className="w-16 h-16 rounded-2xl bg-primary-container/40 flex items-center justify-center mx-auto mb-3">
+                      <Icon name="qr_code_2" size={32} className="text-primary" />
+                    </div>
+                    <p className="text-sm text-on-surface font-semibold">{qrTenant.name}</p>
+                    <p className="text-xs text-on-surface-variant mt-1">{qrTenant.property || 'Aucun bien associé'}</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      setQrGenerating(true);
+                      const tenantPayments = (state.payments || []).filter(p => p.tenantId === qrTenant.id || p.tenantName === qrTenant.name);
+                      dispatch({ type: 'GENERATE_TENANT_PORTAL', payload: { tenantId: qrTenant.id, tenantName: qrTenant.name, propertyName: qrTenant.property || '', payments: tenantPayments } });
+                      setTimeout(() => {
+                        const token = sessionStorage.getItem('lastPortalToken');
+                        if (token) setPortalToken(token);
+                        setQrGenerating(false);
+                      }, 1500);
+                    }}
+                    disabled={qrGenerating}
+                    className="w-full py-3 text-sm font-bold text-on-primary bg-primary rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {qrGenerating
+                      ? <><Icon name="progress_activity" size={16} className="animate-spin" />Génération…</>
+                      : <><Icon name="qr_code" size={16} />Générer le portail</>}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Confirmation suppression ─────────────────────────────────────── */}

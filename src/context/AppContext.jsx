@@ -195,6 +195,9 @@ export function AppProvider({ children }) {
     conversations: [], users: [], organizations: [], licenses: [], activityLog: [], revenueData: [],
     listings: [], listingClients: [], listingUnlocks: [],
     monthClosures: [],
+    insurances: [],
+    budgets: [],
+    tenantPortals: [],
     currentUser: null,
     orgSettings: DEFAULT_ORG,
     systemSettings: DEFAULT_SYSTEM,
@@ -296,7 +299,10 @@ export function AppProvider({ children }) {
         sub('users');
         // entity collections: filtered by orgId for non-admin users
         ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
-          'tickets', 'inspections', 'conversations', 'monthClosures'].forEach(c => sub(c, true));
+          'tickets', 'inspections', 'conversations', 'monthClosures',
+          'insurances', 'budgets'].forEach(c => sub(c, true));
+
+        sub('tenantPortals'); // publicly readable portal tokens
 
         // Listings + client profiles (marketplace — no org filter)
         sub('listings');
@@ -751,6 +757,45 @@ export function AppProvider({ children }) {
           for (const p of pmts) {
             await updateDoc(wsDoc('payments', p.id), { postCloture: false }).catch(() => {});
           }
+          break;
+        }
+
+        // ── INSURANCES ────────────────────────────────────────────────────────────
+        case 'ADD_INSURANCE': {
+          const id = `ins_${Date.now()}`;
+          await setDoc(wsDoc('insurances', id), { ...payload, id, orgId, createdAt: new Date().toISOString() });
+          break;
+        }
+        case 'UPDATE_INSURANCE':
+          await setDoc(wsDoc('insurances', payload.id), { ...payload, orgId });
+          break;
+        case 'DELETE_INSURANCE':
+          await deleteDoc(wsDoc('insurances', payload));
+          break;
+
+        // ── BUDGETS (monthly collection targets) ─────────────────────────────────
+        case 'SET_BUDGET': {
+          const id = `budget_${payload.month.replace(' ', '_')}_${orgId}`;
+          await setDoc(wsDoc('budgets', id), { ...payload, id, orgId });
+          break;
+        }
+
+        // ── TENANT PORTALS (public QR portal) ─────────────────────────────────────
+        case 'GENERATE_TENANT_PORTAL': {
+          const { tenantId, tenantName, propertyName, payments: pmts } = payload;
+          const token = `${orgId}_${tenantId}_${Math.random().toString(36).slice(2, 10)}`;
+          const id = token;
+          const portalDoc = {
+            id, token, tenantId, tenantName, propertyName, orgId,
+            payments: pmts,
+            generatedAt: new Date().toISOString(),
+          };
+          await setDoc(wsDoc('tenantPortals', id), portalDoc);
+          // Also store the token on the tenant document
+          await updateDoc(wsDoc('tenants', tenantId), { portalToken: token }).catch(() => {});
+          // Return token via a state hack: dispatch a local action
+          // Store in session storage for immediate access
+          try { sessionStorage.setItem('lastPortalToken', token); } catch {}
           break;
         }
 

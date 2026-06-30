@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Legend,
@@ -204,6 +205,19 @@ export default function Finance() {
     setDeleteTxTarget(null);
   };
 
+  const handleExportExcel = () => {
+    const data = filteredTx.map(t => ({
+      'Date': t.date || '', 'Description': t.description || t.label || '',
+      'Entité': t.entity || '', 'Montant (FCFA)': t.amount || 0,
+      'Type': t.positive ? 'Revenu' : 'Dépense',
+      'Propriété': t.propertyName || t.property || '',
+      'Catégorie': t.type || '',
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Transactions');
+    XLSX.writeFile(wb, 'Finances_Minsouah.xlsx');
+  };
+
   return (
     <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl max-w-7xl mx-auto flex flex-col gap-gutter">
 
@@ -357,6 +371,9 @@ export default function Finance() {
             </Button>
             <Button icon="picture_as_pdf" variant="secondary" size="sm" onClick={handleExportPDF}>
               Export PDF
+            </Button>
+            <Button icon="download" variant="secondary" size="sm" onClick={handleExportExcel}>
+              Export Excel
             </Button>
           </div>
         </div>
