@@ -374,7 +374,7 @@ export default function Layout() {
 
         {/* Bottom — Portals + Settings */}
         <div className="px-1 pt-md border-t border-outline-variant/30 mt-auto flex flex-col gap-1">
-          {['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER'].includes(currentUser?.role) && (
+          {canView(currentUser, 'portals') && (
             <>
               <p className="px-margin text-label-sm text-on-surface-variant uppercase tracking-widest mb-1">Portails</p>
               <button
@@ -400,15 +400,17 @@ export default function Layout() {
               </button>
             </>
           )}
-          <div className="border-t border-outline-variant/30 mt-1 pt-1">
-            <button
-              onClick={() => { navigate('/settings'); setSidebarOpen(false); }}
-              className="flex items-center gap-md py-3 pl-margin text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all w-full rounded-r-full mr-4"
-            >
-              <Icon name="settings" />
-              <span className="font-label-md text-label-md">Paramètres</span>
-            </button>
-          </div>
+          {canView(currentUser, 'settings') && (
+            <div className="border-t border-outline-variant/30 mt-1 pt-1">
+              <button
+                onClick={() => { navigate('/settings'); setSidebarOpen(false); }}
+                className="flex items-center gap-md py-3 pl-margin text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all w-full rounded-r-full mr-4"
+              >
+                <Icon name="settings" />
+                <span className="font-label-md text-label-md">Paramètres</span>
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 

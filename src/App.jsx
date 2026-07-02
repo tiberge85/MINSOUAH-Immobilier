@@ -219,9 +219,14 @@ function ProtectedRoute({ children, allowedRoles, module }) {
     return <Navigate to={ROLE_HOME[user.role] || '/'} replace />;
   }
   // Fine-grained module gate — a restricted agent is redirected to the first
-  // page they CAN open (never a page they lack access to → no redirect loop).
-  if (module && !canView(user, module)) {
-    return <Navigate to={firstAllowedPath(user)} replace />;
+  // page they CAN open. TENANT/OWNER are exempt (portals/settings are their own
+  // surfaces). If the only landing spot is /settings itself, let them through to
+  // avoid a redirect loop.
+  if (module && !canView(user, module) && user.role !== 'TENANT' && user.role !== 'OWNER') {
+    const target = firstAllowedPath(user);
+    if (target !== '/settings' || module !== 'settings') {
+      return <Navigate to={target} replace />;
+    }
   }
   // License + org guard — SUPER_ADMIN is always exempt
   if (user.role !== 'SUPER_ADMIN') {
@@ -273,7 +278,7 @@ function AppRoutes() {
         <Route path="concierge"    element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE']}><ConciergePortal /></ProtectedRoute>} />
         <Route path="portal/tenant" element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'TENANT']}><TenantPortal /></ProtectedRoute>} />
         <Route path="portal/owner"  element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'OWNER']}><OwnerPortal /></ProtectedRoute>} />
-        <Route path="settings"     element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+        <Route path="settings"     element={<ProtectedRoute module="settings"><Settings /></ProtectedRoute>} />
         <Route path="calendar"    element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'ACCOUNTANT']} module="calendar"><Calendar /></ProtectedRoute>} />
         <Route path="insurance"   element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER']} module="insurance"><Insurance /></ProtectedRoute>} />
         <Route path="referrers"    element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER']} module="referrers"><Referrers /></ProtectedRoute>} />

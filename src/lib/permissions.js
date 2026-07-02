@@ -38,12 +38,17 @@ export const MODULES = [
   { key: 'referrers',    label: "Apporteurs d'affaire", icon: 'group_add',           path: '/referrers',    actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'prestataires', label: 'Prestataires',    icon: 'handyman',                 path: '/prestataires', actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'inbox',        label: 'Messagerie',      icon: 'support_agent',            path: '/inbox',        actions: ['view'] },
+  { key: 'portals',      label: 'Portails (locataires/propriétaires/concierge)', icon: 'people', path: null, actions: ['view'] },
+  { key: 'settings',     label: 'Paramètres',      icon: 'settings',                 path: null,            actions: ['view'] },
 ];
 
 export const MODULE_BY_KEY = Object.fromEntries(MODULES.map(m => [m.key, m]));
 
 // Map a route path → module key (used to gate nav items / routes).
-export const PATH_TO_MODULE = Object.fromEntries(MODULES.map(m => [m.path, m.key]));
+// Modules without a route (path === null, e.g. portals/settings) are excluded.
+export const PATH_TO_MODULE = Object.fromEntries(
+  MODULES.filter(m => m.path).map(m => [m.path, m.key])
+);
 
 /* ── Role-based defaults (reproduce the pre-permissions behaviour) ──────────── */
 
@@ -111,7 +116,10 @@ export function effectivePermissions(user) {
   if (!user) return {};
   if (FULL_ACCESS_ROLES.includes(user.role)) return fullPermissions();
   const perms = user.permissions;
-  if (perms && typeof perms === 'object' && Object.keys(perms).length) return perms;
+  // An EXPLICIT permissions object (even empty {}) is authoritative — an admin
+  // who unchecks every box means "no access", not "fall back to role default".
+  // Only a missing/null field falls back to defaults (legacy accounts).
+  if (perms && typeof perms === 'object') return perms;
   return defaultPermissionsForRole(user.role);
 }
 
@@ -141,7 +149,7 @@ export function canView(user, moduleKey) {
  */
 export function firstAllowedPath(user) {
   for (const m of MODULES) {
-    if (can(user, m.key, 'view')) return m.path;
+    if (m.path && can(user, m.key, 'view')) return m.path;
   }
   return '/settings';
 }

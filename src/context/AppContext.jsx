@@ -1033,6 +1033,15 @@ export function AppProvider({ children }) {
         }
         case 'UPDATE_USER': {
           await setDoc(wsDoc('users', payload.id), payload, { merge: true });
+          // `permissions` is a map field — setDoc({merge:true}) DEEP-merges maps,
+          // so unchecking a whole module would leave its key behind. Force-replace
+          // the entire map (and orgIds) so removals actually persist.
+          if (Object.prototype.hasOwnProperty.call(payload, 'permissions')) {
+            await updateDoc(wsDoc('users', payload.id), {
+              permissions: payload.permissions ?? null,
+              ...(payload.orgIds ? { orgIds: payload.orgIds } : {}),
+            }).catch(() => {});
+          }
           if (st.currentUser?.id === payload.id) {
             const updated = { ...st.currentUser, ...payload };
             try { localStorage.setItem(SESSION_KEY, JSON.stringify(updated)); } catch { /* quota */ }
