@@ -5,6 +5,7 @@ import Button from '../components/ui/Button';
 import Input, { Select } from '../components/ui/Input';
 import Modal from '../components/ui/Modal';
 import Icon from '../components/Icon';
+import { can } from '../lib/permissions';
 
 const PRIORITY_FILTERS = ['Tous', 'Urgent', 'Moyen', 'Bas'];
 const TYPE_FILTERS = ['Plomberie', 'HVAC', 'Électricité', 'Autre'];
@@ -30,6 +31,9 @@ const newTicketForm0 = {
 
 export default function Maintenance() {
   const { state, dispatch } = useApp();
+  const canCreate = can(state.currentUser, 'maintenance', 'create');
+  const canEdit   = can(state.currentUser, 'maintenance', 'edit');
+  const canDelete = can(state.currentUser, 'maintenance', 'delete');
   const tickets = state.tickets || [];
   const prestataires = state.prestataires || [];
   const [priorityFilter, setPriorityFilter] = useState('Tous');
@@ -174,9 +178,11 @@ export default function Maintenance() {
           ))}
         </div>
 
-        <Button icon="add_circle" onClick={() => setModalOpen(true)} className="ml-auto flex-shrink-0">
-          Nouveau Ticket
-        </Button>
+        {canCreate && (
+          <Button icon="add_circle" onClick={() => setModalOpen(true)} className="ml-auto flex-shrink-0">
+            Nouveau Ticket
+          </Button>
+        )}
       </div>
 
       {/* Filtered cost banner (shown when filter is active) */}
@@ -211,18 +217,20 @@ export default function Maintenance() {
                   <Badge label={ticket.priority} />
                   <div className="flex items-center gap-1">
                     <span className="text-label-sm text-on-surface-variant">{ticket.id}</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (window.confirm(`Supprimer le ticket "${ticket.title}" ?`)) {
-                          dispatch({ type: 'DELETE_TICKET', payload: ticket.id });
-                        }
-                      }}
-                      className="ml-1 p-1 rounded-lg hover:bg-error/10 text-on-surface-variant hover:text-error transition-colors"
-                      title="Supprimer"
-                    >
-                      <Icon name="delete" size={14} />
-                    </button>
+                    {canDelete && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`Supprimer le ticket "${ticket.title}" ?`)) {
+                            dispatch({ type: 'DELETE_TICKET', payload: ticket.id });
+                          }
+                        }}
+                        className="ml-1 p-1 rounded-lg hover:bg-error/10 text-on-surface-variant hover:text-error transition-colors"
+                        title="Supprimer"
+                      >
+                        <Icon name="delete" size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -273,7 +281,7 @@ export default function Maintenance() {
                         </div>
                         <span className="text-label-sm text-on-surface">{ticket.technician.name}</span>
                       </div>
-                    ) : (
+                    ) : canEdit ? (
                       <button
                         onClick={(e) => { e.stopPropagation(); setAssignModal(ticket); setTechnicianName(''); }}
                         className="px-sm py-xs bg-primary-container text-on-primary-container rounded-lg text-label-sm font-label-sm hover:brightness-95 transition-all flex items-center gap-1"
@@ -281,7 +289,7 @@ export default function Maintenance() {
                         <Icon name="person_add" size={14} />
                         Assigner
                       </button>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -299,7 +307,9 @@ export default function Maintenance() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Annuler</Button>
-            <Button icon="add_circle" onClick={handleSubmit}>Créer le Ticket</Button>
+            {canCreate && (
+              <Button icon="add_circle" onClick={handleSubmit}>Créer le Ticket</Button>
+            )}
           </>
         }
       >
@@ -422,20 +432,22 @@ export default function Maintenance() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setDetailTicket(null)}>Fermer</Button>
-            <Button
-              variant="secondary"
-              icon="delete"
-              onClick={() => {
-                if (window.confirm(`Supprimer le ticket "${detailTicket?.title}" ?`)) {
-                  dispatch({ type: 'DELETE_TICKET', payload: detailTicket.id });
-                  setDetailTicket(null);
-                }
-              }}
-              className="text-error border-error/30 hover:bg-error/10"
-            >
-              Supprimer
-            </Button>
-            {detailTicket?.status !== 'Résolu' && (
+            {canDelete && (
+              <Button
+                variant="secondary"
+                icon="delete"
+                onClick={() => {
+                  if (window.confirm(`Supprimer le ticket "${detailTicket?.title}" ?`)) {
+                    dispatch({ type: 'DELETE_TICKET', payload: detailTicket.id });
+                    setDetailTicket(null);
+                  }
+                }}
+                className="text-error border-error/30 hover:bg-error/10"
+              >
+                Supprimer
+              </Button>
+            )}
+            {canEdit && detailTicket?.status !== 'Résolu' && (
               <Button
                 icon="arrow_forward"
                 onClick={() => {
@@ -543,9 +555,11 @@ export default function Maintenance() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setAssignModal(null)}>Annuler</Button>
-            <Button icon="person_add" onClick={handleAssign} disabled={!technicianName.trim()}>
-              Assigner
-            </Button>
+            {canEdit && (
+              <Button icon="person_add" onClick={handleAssign} disabled={!technicianName.trim()}>
+                Assigner
+              </Button>
+            )}
           </>
         }
       >

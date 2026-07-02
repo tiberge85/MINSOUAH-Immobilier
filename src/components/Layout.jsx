@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
+import { canView, PATH_TO_MODULE } from '../lib/permissions';
 import Icon from './Icon';
 
 const ROLE_LABELS = {
@@ -16,14 +17,6 @@ const ROLE_LABELS = {
   ACCOUNTANT: 'Comptable',
   TECHNICIAN: 'Technicien',
   CONCIERGE:  'Concierge',
-};
-
-const ROLE_NAV = {
-  // legacy restricted roles (until migration runs)
-  CONCIERGE:  new Set(['/concierge', '/assets', '/rental', '/maintenance', '/inspections', '/inbox']),
-  TECHNICIAN: new Set(['/maintenance', '/inbox']),
-  ACCOUNTANT: new Set(['/finance', '/payments', '/inbox']),
-  // ORGANIZATION_ADMIN and AGENT see all nav — no restriction needed
 };
 
 const navItems = [
@@ -96,11 +89,15 @@ export default function Layout() {
     return () => document.removeEventListener('mousedown', handler);
   }, [showOrgMenu]);
   const title = pageTitles[location.pathname] || 'Minsouah';
-  const allowedPaths = ROLE_NAV[currentUser?.role];
-  const visibleNav = (allowedPaths
-    ? navItems.filter(i => allowedPaths.has(i.path))
-    : navItems
-  ).filter(i => !i.roles || i.roles.includes(currentUser?.role));
+  const visibleNav = navItems
+    // role-scoped items (e.g. Concierge portal) keep their explicit role gate
+    .filter(i => !i.roles || i.roles.includes(currentUser?.role))
+    // feature modules are gated by fine-grained permissions; items without a
+    // module mapping (e.g. /concierge) stay visible per their role gate above
+    .filter(i => {
+      const mod = PATH_TO_MODULE[i.path];
+      return !mod || canView(currentUser, mod);
+    });
 
   // Parse contract endDate — handles both "12/12/2025" and "12 Déc 2025" formats
   const parseContractDate = (str) => {

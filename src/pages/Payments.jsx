@@ -7,6 +7,7 @@ import SignaturePad from '../components/SignaturePad';
 import { buildReceiptHTML as buildReceiptHTMLShared } from '../lib/quittanceReport';
 import { sendEmail, buildReminderHtml } from '../lib/email';
 import { SCI_NORA_LOGO, SCI_NORA_STAMP } from '../lib/sciNoraAssets';
+import { can } from '../lib/permissions';
 
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
@@ -967,6 +968,11 @@ export default function Payments() {
   const { state, dispatch } = useApp();
   const { payments = [], properties = [], tenants = [], contracts = [], transactions = [], orgSettings, monthClosures = [], budgets = [] } = state;
 
+  // Fine-grained permissions for this module
+  const canCreate = can(state.currentUser, 'payments', 'create');
+  const canEdit   = can(state.currentUser, 'payments', 'edit');
+  const canDelete = can(state.currentUser, 'payments', 'delete');
+
   const now = new Date();
   const currentMonthLabel = `${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`;
   const todayDay = now.getDate();
@@ -1169,11 +1175,52 @@ export default function Payments() {
   const totalPending = monthPmts.filter(p => p.status !== 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
   const recoveryRate = monthPmts.length ? Math.round(monthPmts.filter(p => p.status === 'Payé').length / monthPmts.length * 100) : 0;
 
-  /* ── Current month unpaid (for Rappels tab) ── */
-  const currentMonthUnpaid = useMemo(() =>
-    payments.filter(p => p.month === currentMonthLabel && p.status !== 'Payé'),
-    [payments, currentMonthLabel]
-  );
+  /* ── Current month unpaid (for Rappels tab) ──
+     Combine explicit unpaid payment records with active-contract tenants who
+     have NO payment record yet for the current month (records are only created
+     when a payment is entered, so unpaid tenants have no record at all).
+     Tenants still in their advance period (paymentStartDate not yet reached)
+     are excluded. Mirrors the reportUnpaid / penaltyList logic. */
+  const currentMonthUnpaid = useMemo(() => {
+    const currentDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthRecords = (payments || []).filter(p => p.month === currentMonthLabel);
+    // Explicit unpaid records (real payment docs) keep their id / reminderCount
+    const explicit = monthRecords.filter(p => p.status !== 'Payé');
+    // Names already covered by a record this month (paid OR unpaid) — don't duplicate
+    const alreadyInMonth = new Set(
+      monthRecords.map(p => (p.tenantName || '').toLowerCase().trim()).filter(Boolean)
+    );
+
+    const synthesized = [];
+    (contracts || [])
+      .filter(c => c.status === 'Actif' || c.status === 'Expirant')
+      .filter(c => !alreadyInMonth.has((c.tenant || '').toLowerCase().trim()))
+      .forEach(c => {
+        const tenant = (tenants || []).find(t =>
+          (t.name || '').toLowerCase().trim() === (c.tenant || '').toLowerCase().trim() ||
+          (c.tenantId && String(t.id) === String(c.tenantId))
+        );
+        const psDate = tenant?.paymentStartDate ? new Date(tenant.paymentStartDate) : null;
+        // Skip tenants still in their advance period for the current month
+        if (psDate && currentDate < psDate) return;
+        synthesized.push({
+          id: `synth-${c.id}`,
+          isSynthetic: true,
+          contractId: c.id,
+          tenantId: c.tenantId || tenant?.id || null,
+          tenantName: c.tenant || '',
+          tenantPhone: tenant?.phone || '',
+          tenantEmail: tenant?.email || '',
+          propertyName: c.propertyName || '',
+          amount: c.rent || 0,
+          month: currentMonthLabel,
+          status: 'Impayé',
+          reminderCount: 0,
+        });
+      });
+
+    return [...explicit, ...synthesized];
+  }, [payments, currentMonthLabel, contracts, tenants, now]);
 
   /* ── Penalty list: active tenants who haven't paid for current month ── */
   const penaltyList = useMemo(() => {
@@ -1461,6 +1508,32 @@ export default function Payments() {
   };
 
   const handleMarkPaid = (id) => dispatch({ type: 'MARK_PAYMENT_PAID', payload: id });
+
+  // Mark an unpaid tenant paid — creates a record if none exists yet (synthetic
+  // entries from the Rappels tab have no payment doc to update).
+  const markUnpaidPaid = (p) => {
+    if (!p) return;
+    if (p.isSynthetic) {
+      dispatch({
+        type: 'ADD_PAYMENT',
+        payload: {
+          tenantId: p.tenantId || null,
+          tenantName: p.tenantName || '',
+          tenantPhone: p.tenantPhone || '',
+          tenantEmail: p.tenantEmail || '',
+          propertyName: p.propertyName || '',
+          amount: p.amount || 0,
+          month: p.month || currentMonthLabel,
+          status: 'Payé',
+          method: 'Espèces',
+          paidDate: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
+          reminderCount: 0,
+        },
+      });
+    } else {
+      dispatch({ type: 'MARK_PAYMENT_PAID', payload: p.id });
+    }
+  };
   const handleReminder = (p) => { dispatch({ type: 'SEND_REMINDER', payload: p.id }); setReminderModal(null); };
 
   const openEdit = (p) => {
@@ -1792,7 +1865,7 @@ export default function Payments() {
       {/* ── Header ── */}
       <div className="flex flex-wrap gap-sm items-center justify-between">
         <div className="flex flex-wrap gap-sm">
-          <Btn icon="add_circle" onClick={() => setPayModal(true)}>Enregistrer un paiement</Btn>
+          {canCreate && <Btn icon="add_circle" onClick={() => setPayModal(true)}>Enregistrer un paiement</Btn>}
         </div>
         <div className="flex items-center gap-sm bg-surface-container-lowest border border-outline-variant rounded-xl px-4 py-2">
           <Icon name="calendar_month" className="text-primary" size={16} />
@@ -1960,17 +2033,17 @@ export default function Payments() {
                           {p.status === 'Payé' && (
                             <Btn small icon="receipt" variant="secondary" onClick={() => openReceipt(p)}>Quittance</Btn>
                           )}
-                          {p.status !== 'Payé' && p.status !== 'Annulé' && (
+                          {p.status !== 'Payé' && p.status !== 'Annulé' && canEdit && (
                             <>
                               <Btn small icon="check_circle" variant="green" onClick={() => handleMarkPaid(p.id)}>Payé</Btn>
                               <Btn small icon="notifications" variant="amber" onClick={() => setReminderModal(p)}>Rappel</Btn>
                             </>
                           )}
-                          <Btn small icon="edit" variant="secondary" onClick={() => openEdit(p)}>Modifier</Btn>
-                          {p.status === 'Payé' && (
+                          {canEdit && <Btn small icon="edit" variant="secondary" onClick={() => openEdit(p)}>Modifier</Btn>}
+                          {p.status === 'Payé' && canEdit && (
                             <Btn small icon="block" variant="amber" onClick={() => handleCancel(p)}>Annuler</Btn>
                           )}
-                          <Btn small icon="delete" variant="danger" onClick={() => setDeleteConfirm(p)}>Supprimer</Btn>
+                          {canDelete && <Btn small icon="delete" variant="danger" onClick={() => setDeleteConfirm(p)}>Supprimer</Btn>}
                         </div>
                       </td>
                     </tr>
@@ -2094,7 +2167,7 @@ export default function Payments() {
                                 </button>
                               ) : null;
                             })()}
-                            <button onClick={() => handleMarkPaid(p.id)}
+                            <button onClick={() => markUnpaidPaid(p)}
                               className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-200 transition-colors">
                               <Icon name="check_circle" size={12} /> Marquer payé
                             </button>

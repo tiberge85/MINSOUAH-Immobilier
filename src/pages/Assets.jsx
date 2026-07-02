@@ -2,6 +2,7 @@ import { useState, useRef, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
+import { can } from '../lib/permissions';
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const CATEGORIES = ['Tous', 'Immeuble', 'Studio', '2 Pièces', '3 Pièces', 'Magasin'];
@@ -128,6 +129,9 @@ function UnitForm({ unit, onChange, onSave, onCancel }) {
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function Assets() {
   const { state, dispatch } = useApp();
+  const canCreate = can(state.currentUser, 'assets', 'create');
+  const canEdit   = can(state.currentUser, 'assets', 'edit');
+  const canDelete = can(state.currentUser, 'assets', 'delete');
   const properties = state.properties || [];
 
   const [filter, setFilter]         = useState('Tous');
@@ -363,10 +367,12 @@ export default function Assets() {
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..."
               className="w-full pl-9 pr-4 py-2 rounded-full border border-outline-variant/30 bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
           </div>
-          <button onClick={openAdd}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-full text-sm font-bold hover:bg-primary/90 transition-colors whitespace-nowrap">
-            <Icon name="add" size={18} /> Nouveau bien
-          </button>
+          {canCreate && (
+            <button onClick={openAdd}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-full text-sm font-bold hover:bg-primary/90 transition-colors whitespace-nowrap">
+              <Icon name="add" size={18} /> Nouveau bien
+            </button>
+          )}
         </div>
       </div>
 
@@ -406,6 +412,8 @@ export default function Assets() {
                   onEdit={() => openEdit(p)}
                   onDelete={() => { setTarget(p); setModal('delete'); }}
                   onQr={() => setQrModal(p)}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
                 />
               );
             }
@@ -416,6 +424,8 @@ export default function Assets() {
                 onEdit={() => openEdit(p)}
                 onDelete={() => { setTarget(p); setModal('delete'); }}
                 onQr={() => setQrModal(p)}
+                canEdit={canEdit}
+                canDelete={canDelete}
               />
             );
           })}
@@ -587,7 +597,7 @@ export default function Assets() {
                     <p className="font-semibold text-on-surface">
                       Appartements <span className="text-primary">({form.units.length})</span>
                     </p>
-                    {!addingUnit && (
+                    {canCreate && !addingUnit && (
                       <button onClick={() => { setNewUnit(EMPTY_UNIT); setAddingUnit(true); }}
                         className="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:bg-primary/90">
                         <Icon name="add" size={16} /> Ajouter un appartement
@@ -691,14 +701,18 @@ export default function Assets() {
                 ))}
               </div>
               <div className="flex gap-3">
-                <button onClick={() => { setModal('delete'); }}
-                  className="flex-1 py-2.5 rounded-xl border border-error text-error font-semibold text-sm hover:bg-error-container/30">
-                  Supprimer
-                </button>
-                <button onClick={() => { openEdit(target); }}
-                  className="flex-1 py-2.5 rounded-xl bg-primary text-on-primary font-semibold text-sm hover:bg-primary/90">
-                  Modifier
-                </button>
+                {canDelete && (
+                  <button onClick={() => { setModal('delete'); }}
+                    className="flex-1 py-2.5 rounded-xl border border-error text-error font-semibold text-sm hover:bg-error-container/30">
+                    Supprimer
+                  </button>
+                )}
+                {canEdit && (
+                  <button onClick={() => { openEdit(target); }}
+                    className="flex-1 py-2.5 rounded-xl bg-primary text-on-primary font-semibold text-sm hover:bg-primary/90">
+                    Modifier
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -745,7 +759,7 @@ export default function Assets() {
               {/* Liste des unités */}
               <div className="flex items-center justify-between mb-3">
                 <p className="font-semibold text-on-surface">Liste des appartements</p>
-                {!addingUnitToDetail && (
+                {canCreate && !addingUnitToDetail && (
                   <button onClick={() => { setNewDetailUnit(EMPTY_UNIT); setAddingUnitToDetail(true); setDetailUnitEdit(null); }}
                     className="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:bg-primary/90">
                     <Icon name="add" size={16} /> Ajouter
@@ -782,14 +796,18 @@ export default function Assets() {
             </div>
 
             <div className="sticky bottom-0 bg-surface border-t border-outline-variant/20 px-6 py-4 flex gap-3 rounded-b-3xl">
-              <button onClick={() => { setModal('delete'); }}
-                className="px-4 py-2 rounded-xl border border-error text-error font-semibold text-sm hover:bg-error-container/30">
-                Supprimer l'immeuble
-              </button>
-              <button onClick={() => openEdit(target)}
-                className="flex-1 py-2 rounded-xl bg-primary text-on-primary font-semibold text-sm hover:bg-primary/90">
-                Modifier les infos
-              </button>
+              {canDelete && (
+                <button onClick={() => { setModal('delete'); }}
+                  className="px-4 py-2 rounded-xl border border-error text-error font-semibold text-sm hover:bg-error-container/30">
+                  Supprimer l'immeuble
+                </button>
+              )}
+              {canEdit && (
+                <button onClick={() => openEdit(target)}
+                  className="flex-1 py-2 rounded-xl bg-primary text-on-primary font-semibold text-sm hover:bg-primary/90">
+                  Modifier les infos
+                </button>
+              )}
             </div>
           </div>
         </ModalOverlay>
@@ -907,7 +925,7 @@ function UnitFlatCard({ unit, building, onBuildingDetail }) {
   );
 }
 
-function BuildingCard({ building, onDetail, onEdit, onDelete, onQr }) {
+function BuildingCard({ building, onDetail, onEdit, onDelete, onQr, canEdit, canDelete }) {
   const units = building.units || [];
   const loued = units.filter(u => u.status === 'Loué').length;
   const libres = units.filter(u => u.status === 'Disponible').length;
@@ -931,12 +949,16 @@ function BuildingCard({ building, onDetail, onEdit, onDelete, onQr }) {
           <button onClick={e => { e.stopPropagation(); onQr(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-on-surface shadow hover:bg-white">
             <Icon name="qr_code" size={14} />
           </button>
-          <button onClick={e => { e.stopPropagation(); onEdit(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-primary shadow hover:bg-white">
-            <Icon name="edit" size={14} />
-          </button>
-          <button onClick={e => { e.stopPropagation(); onDelete(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-error shadow hover:bg-white">
-            <Icon name="delete" size={14} />
-          </button>
+          {canEdit && (
+            <button onClick={e => { e.stopPropagation(); onEdit(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-primary shadow hover:bg-white">
+              <Icon name="edit" size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button onClick={e => { e.stopPropagation(); onDelete(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-error shadow hover:bg-white">
+              <Icon name="delete" size={14} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -985,7 +1007,7 @@ function BuildingCard({ building, onDetail, onEdit, onDelete, onQr }) {
   );
 }
 
-function PropertyCard({ property, onDetail, onEdit, onDelete, onQr }) {
+function PropertyCard({ property, onDetail, onEdit, onDelete, onQr, canEdit, canDelete }) {
   return (
     <div onClick={onDetail} className="bg-surface rounded-2xl overflow-hidden border border-outline-variant/20 shadow-sm hover:shadow-md transition-shadow cursor-pointer group">
       <div className="relative h-44 overflow-hidden bg-surface-container">
@@ -1000,12 +1022,16 @@ function PropertyCard({ property, onDetail, onEdit, onDelete, onQr }) {
           <button onClick={e => { e.stopPropagation(); onQr(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-on-surface shadow hover:bg-white">
             <Icon name="qr_code" size={14} />
           </button>
-          <button onClick={e => { e.stopPropagation(); onEdit(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-primary shadow hover:bg-white">
-            <Icon name="edit" size={14} />
-          </button>
-          <button onClick={e => { e.stopPropagation(); onDelete(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-error shadow hover:bg-white">
-            <Icon name="delete" size={14} />
-          </button>
+          {canEdit && (
+            <button onClick={e => { e.stopPropagation(); onEdit(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-primary shadow hover:bg-white">
+              <Icon name="edit" size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button onClick={e => { e.stopPropagation(); onDelete(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-error shadow hover:bg-white">
+              <Icon name="delete" size={14} />
+            </button>
+          )}
         </div>
       </div>
       <div className="p-4">

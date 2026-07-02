@@ -6,6 +6,7 @@ import Icon from '../components/Icon';
 import SignaturePad from '../components/SignaturePad';
 import SearchSelect from '../components/SearchSelect';
 import { openContractReport } from '../lib/contractReport';
+import { can } from '../lib/permissions';
 
 const TABS = ['Contrats', 'Locataires', 'Propriétaires'];
 const CONTRACT_STATUSES = ['Tous', 'Actif', 'Expirant', 'Brouillon', 'Résilié'];
@@ -23,6 +24,9 @@ const STATUS_BADGE = {
 
 export default function Rental() {
   const { state, dispatch } = useApp();
+  const canCreate = can(state.currentUser, 'rental', 'create');
+  const canEdit   = can(state.currentUser, 'rental', 'edit');
+  const canDelete = can(state.currentUser, 'rental', 'delete');
   const { contracts = [], tenants = [], owners = [], properties = [] } = state;
 
   const [tab, setTab] = useState('Contrats');
@@ -593,18 +597,18 @@ ${sectionsHtml}
           })}
         </div>
         <div className="pb-1 flex-shrink-0 flex gap-2">
-          {tab === 'Contrats' && <Btn icon="note_add" onClick={openAddContract}>Nouveau Contrat</Btn>}
+          {tab === 'Contrats' && canCreate && <Btn icon="note_add" onClick={openAddContract}>Nouveau Contrat</Btn>}
           {tab === 'Locataires' && (
             <>
               <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
                 onChange={e => { const f = e.target.files?.[0]; if (f) parseImportFile(f); e.target.value = ''; }} />
-              <BtnSecondary icon="upload_file" onClick={() => fileInputRef.current?.click()}>Importer</BtnSecondary>
+              {canCreate && <BtnSecondary icon="upload_file" onClick={() => fileInputRef.current?.click()}>Importer</BtnSecondary>}
               <BtnSecondary icon="picture_as_pdf" onClick={exportTenantsPDF}>PDF</BtnSecondary>
               <BtnSecondary icon="download" onClick={exportTenants}>Excel</BtnSecondary>
-              <Btn icon="person_add" onClick={openAddTenant}>Ajouter Locataire</Btn>
+              {canCreate && <Btn icon="person_add" onClick={openAddTenant}>Ajouter Locataire</Btn>}
             </>
           )}
-          {tab === 'Propriétaires' && <Btn icon="add_business" onClick={openAddOwner}>Ajouter Propriétaire</Btn>}
+          {tab === 'Propriétaires' && canCreate && <Btn icon="add_business" onClick={openAddOwner}>Ajouter Propriétaire</Btn>}
         </div>
       </div>
 
@@ -657,8 +661,8 @@ ${sectionsHtml}
                               const org = state.orgSettings || {};
                               openContractReport(c, prop, org, { sigBailleur: c.sigBailleur, sigPreneur: c.sigPreneur });
                             }} />
-                          <IconBtn icon="edit" color="text-primary" onClick={() => openEditContract(c)} />
-                          <IconBtn icon="delete" color="text-error" onClick={() => setDeleteTarget({ type: 'contract', data: c })} />
+                          {canEdit && <IconBtn icon="edit" color="text-primary" onClick={() => openEditContract(c)} />}
+                          {canDelete && <IconBtn icon="delete" color="text-error" onClick={() => setDeleteTarget({ type: 'contract', data: c })} />}
                         </div>
                       </td>
                     </tr>
@@ -701,8 +705,8 @@ ${sectionsHtml}
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100">
                   <IconBtn icon="qr_code" color="text-on-surface-variant" title="Portail locataire QR" onClick={() => { setQrTenant(t); setPortalToken(null); }} />
-                  <IconBtn icon="edit" color="text-primary" onClick={() => openEditTenant(t)} />
-                  <IconBtn icon="delete" color="text-error" onClick={() => setDeleteTarget({ type: 'tenant', data: t })} />
+                  {canEdit && <IconBtn icon="edit" color="text-primary" onClick={() => openEditTenant(t)} />}
+                  {canDelete && <IconBtn icon="delete" color="text-error" onClick={() => setDeleteTarget({ type: 'tenant', data: t })} />}
                 </div>
               </div>
               {(() => {
@@ -777,8 +781,8 @@ ${sectionsHtml}
                     <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${STATUS_BADGE[o.status] || ''}`}>{o.status}</span></td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 justify-end">
-                        <IconBtn icon="edit" color="text-primary" onClick={() => openEditOwner(o)} />
-                        <IconBtn icon="delete" color="text-error" onClick={() => setDeleteTarget({ type: 'owner', data: o })} />
+                        {canEdit && <IconBtn icon="edit" color="text-primary" onClick={() => openEditOwner(o)} />}
+                        {canDelete && <IconBtn icon="delete" color="text-error" onClick={() => setDeleteTarget({ type: 'owner', data: o })} />}
                       </div>
                     </td>
                   </tr>

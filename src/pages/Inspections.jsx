@@ -5,6 +5,7 @@ import Modal from '../components/ui/Modal';
 import Icon from '../components/Icon';
 import SearchSelect from '../components/SearchSelect';
 import { openEDLReport, openSynthesisReport } from '../lib/inspectionReport';
+import { can } from '../lib/permissions';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const CATEGORIES = [
@@ -139,6 +140,9 @@ export default function Inspections() {
   const { state, dispatch } = useApp();
   const inspections = state.inspections || [];
   const { properties = [], tenants = [], contracts = [], currentUser } = state;
+  const canCreate = can(currentUser, 'inspections', 'create');
+  const canEdit   = can(currentUser, 'inspections', 'edit');
+  const canDelete = can(currentUser, 'inspections', 'delete');
 
   // ── Filters
   const [search, setSearch] = useState('');
@@ -381,13 +385,15 @@ export default function Inspections() {
             >
               <Icon name="picture_as_pdf" size={16} />
             </button>
-            <button
-              onClick={e => { e.stopPropagation(); setDeleteConfirm(insp.id); }}
-              className="w-8 h-8 rounded-full hover:bg-error/10 text-on-surface-variant hover:text-error flex items-center justify-center transition-all"
-              title="Supprimer"
-            >
-              <Icon name="delete" size={16} />
-            </button>
+            {canDelete && (
+              <button
+                onClick={e => { e.stopPropagation(); setDeleteConfirm(insp.id); }}
+                className="w-8 h-8 rounded-full hover:bg-error/10 text-on-surface-variant hover:text-error flex items-center justify-center transition-all"
+                title="Supprimer"
+              >
+                <Icon name="delete" size={16} />
+              </button>
+            )}
           </div>
         </div>
         <div className="space-y-1.5">
@@ -507,7 +513,7 @@ export default function Inspections() {
             </button>
           ))}
         </div>
-        {isAdmin && (
+        {isAdmin && canCreate && (
           <Button icon="add_circle" onClick={() => setCreateModal(true)} className="ml-auto flex-shrink-0">
             Nouvel état des lieux
           </Button>
@@ -726,7 +732,9 @@ export default function Inspections() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setDeleteConfirm(null)}>Annuler</Button>
-            <Button variant="danger" icon="delete" onClick={() => handleDelete(deleteConfirm)}>Supprimer</Button>
+            {canDelete && (
+              <Button variant="danger" icon="delete" onClick={() => handleDelete(deleteConfirm)}>Supprimer</Button>
+            )}
           </>
         }
       >

@@ -412,10 +412,22 @@ export function AppProvider({ children }) {
     if (!cu) return;
     if (cu.role === 'SUPER_ADMIN') return; // SUPER_ADMIN is never auto-logged out
     // If the logged-in user no longer exists in Firestore → force logout immediately
-    const stillExists = (state.users || []).some(u => String(u.id) === String(cu.id));
-    if (!stillExists) {
+    const fresh = (state.users || []).find(u => String(u.id) === String(cu.id));
+    if (!fresh) {
       localStorage.removeItem(SESSION_KEY);
       window.location.reload();
+      return;
+    }
+    // Keep the session's access fields in sync with the authoritative Firestore
+    // doc — the localStorage session doesn't carry `permissions`/`role`/`orgIds`,
+    // so without this a restricted agent would appear to have full access, and
+    // permission changes made by an admin wouldn't take effect until re-login.
+    const permsChanged = JSON.stringify(cu.permissions || null) !== JSON.stringify(fresh.permissions || null);
+    const orgsChanged  = JSON.stringify(cu.orgIds || null) !== JSON.stringify(fresh.orgIds || null);
+    if (cu.role !== fresh.role || permsChanged || orgsChanged || cu.suspended !== fresh.suspended) {
+      const synced = { ...cu, role: fresh.role, permissions: fresh.permissions ?? null, orgIds: fresh.orgIds || cu.orgIds, suspended: fresh.suspended };
+      try { localStorage.setItem(SESSION_KEY, JSON.stringify(synced)); } catch { /* quota */ }
+      setState((s) => ({ ...s, currentUser: synced }));
     }
   }, [state._bootstrapping, state.users]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -556,6 +568,7 @@ export function AppProvider({ children }) {
             personId: u.personId || null, firstLogin: u.firstLogin || false,
             orgId:   u.orgId   || 'default',
             orgIds:  u.orgIds  || [u.orgId || 'default'],
+            permissions: u.permissions || null,
           };
           try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch { /* quota */ }
           // Write usersByUid BEFORE reloading so Firestore rules pass on first write

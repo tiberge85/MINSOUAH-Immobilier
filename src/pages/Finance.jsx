@@ -8,6 +8,7 @@ import { useApp } from '../context/AppContext';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
+import { can } from '../lib/permissions';
 
 const typeFilterOpts = ['Tous', 'Loyer', 'Réparations', 'Taxes', 'Entretien', 'Charges', 'Autre'];
 const expenseTypes = ['Réparations', 'Taxes', 'Entretien', 'Charges', 'Autre'];
@@ -46,6 +47,9 @@ function parsePaidDate(str) {
 
 export default function Finance() {
   const { state, dispatch } = useApp();
+  const canCreate = can(state.currentUser, 'finance', 'create');
+  const canEdit   = can(state.currentUser, 'finance', 'edit');
+  const canDelete = can(state.currentUser, 'finance', 'delete');
   const { transactions = [], payments = [] } = state;
   const [chartType, setChartType] = useState('area');
   const [chartPeriod, setChartPeriod] = useState('12 Mois');
@@ -366,9 +370,11 @@ export default function Finance() {
                 className="pl-9 pr-md py-xs bg-surface-container-lowest border border-outline-variant rounded-lg text-body-sm focus:outline-none focus:border-primary w-44"
               />
             </div>
-            <Button icon="add_circle" size="sm" onClick={() => setExpenseModal(true)}>
-              Dépense
-            </Button>
+            {canCreate && (
+              <Button icon="add_circle" size="sm" onClick={() => setExpenseModal(true)}>
+                Dépense
+              </Button>
+            )}
             <Button icon="picture_as_pdf" variant="secondary" size="sm" onClick={handleExportPDF}>
               Export PDF
             </Button>
@@ -418,7 +424,7 @@ export default function Finance() {
                     {tx.positive ? '+' : ''}{tx.amount.toLocaleString('fr-FR')} FCFA
                   </td>
                   <td className="px-md py-4">
-                    {isManual && (
+                    {isManual && canDelete && (
                       <button
                         onClick={() => setDeleteTxTarget(tx)}
                         className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-full flex items-center justify-center text-error hover:bg-error/10 transition-all"

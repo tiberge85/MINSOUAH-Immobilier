@@ -8,6 +8,7 @@ import { auth } from '../lib/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { getPlan } from '../lib/planLimits';
 import { getDaysRemaining, getLicenseStatusInfo } from '../lib/licenses';
+import { MODULES, ACTIONS, FULL_ACCESS_ROLES, fullPermissions, effectivePermissions } from '../lib/permissions';
 import { SCI_NORA_LOGO, SCI_NORA_STAMP } from '../lib/sciNoraAssets';
 
 // Rôles autorisés par catégorie — SUPER_ADMIN a sa propre page /superadmin
@@ -1046,6 +1047,112 @@ const ALL_ROLES = [
 
 const ROLE_MAP = Object.fromEntries(ALL_ROLES.map(r => [r.value, r]));
 
+// Permissions apply only to staff roles that aren't full-access admins and aren't
+// portal-only accounts (tenant/owner). In practice: AGENT (+ legacy staff roles).
+const rolePermissionsApply = (role) =>
+  !FULL_ACCESS_ROLES.includes(role) && role !== 'TENANT' && role !== 'OWNER';
+
+/* ── Fine-grained permissions editor (module × action matrix) ──────────────── */
+function PermissionsEditor({ value, onChange }) {
+  const perms = value || {};
+
+  const toggle = (modKey, action) => {
+    const cur = new Set(perms[modKey] || []);
+    if (cur.has(action)) {
+      cur.delete(action);
+      if (action === 'view') cur.clear(); // no "view" → no access to the module at all
+    } else {
+      cur.add(action);
+      if (action !== 'view') cur.add('view'); // any action implies the ability to view
+    }
+    const next = { ...perms };
+    if (cur.size) next[modKey] = [...cur]; else delete next[modKey];
+    onChange(next);
+  };
+
+  const toggleModuleRow = (mod) => {
+    const cur = perms[mod.key] || [];
+    const next = { ...perms };
+    if (cur.length >= mod.actions.length) delete next[mod.key];
+    else next[mod.key] = [...mod.actions];
+    onChange(next);
+  };
+
+  const grantedCount = MODULES.filter(m => (perms[m.key] || []).includes('view')).length;
+
+  return (
+    <div className="md:col-span-2">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+        <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide flex items-center gap-1.5">
+          <Icon name="lock" size={14} className="text-primary" />
+          Accès autorisés · {grantedCount}/{MODULES.length} module(s)
+        </label>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => onChange(fullPermissions())}
+            className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+            Tout cocher
+          </button>
+          <button type="button" onClick={() => onChange({})}
+            className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-surface-container transition-colors">
+            Tout décocher
+          </button>
+        </div>
+      </div>
+      <div className="border border-outline-variant/30 rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-surface-container-high">
+              <tr>
+                <th className="text-left px-3 py-2 text-xs font-bold text-on-surface-variant uppercase tracking-wide">Fonction</th>
+                {ACTIONS.map(a => (
+                  <th key={a.key} className="px-2 py-2 text-xs font-bold text-on-surface-variant text-center w-20">{a.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/20">
+              {MODULES.map(mod => {
+                const cur = perms[mod.key] || [];
+                return (
+                  <tr key={mod.key} className="hover:bg-surface-container-low">
+                    <td className="px-3 py-2">
+                      <button type="button" onClick={() => toggleModuleRow(mod)}
+                        className="flex items-center gap-2 text-on-surface font-medium hover:text-primary transition-colors text-left">
+                        <Icon name={mod.icon} size={16} className="text-on-surface-variant" />
+                        {mod.label}
+                      </button>
+                    </td>
+                    {ACTIONS.map(a => {
+                      const supported = mod.actions.includes(a.key);
+                      const checked = cur.includes(a.key);
+                      return (
+                        <td key={a.key} className="px-2 py-2 text-center">
+                          {supported ? (
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggle(mod.key, a.key)}
+                              className="w-4 h-4 rounded border-outline-variant text-primary focus:ring-primary/40 cursor-pointer accent-primary"
+                            />
+                          ) : (
+                            <span className="text-outline">—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p className="text-xs text-on-surface-variant mt-1.5">
+        Cocher une action active automatiquement « Consulter ». Décocher « Consulter » retire tout l'accès au module.
+      </p>
+    </div>
+  );
+}
+
 function UserManagementTab({ state, dispatch, currentUser, showToast }) {
   // Only show users from the same org (state.users is unfiltered for cross-org login to work)
   const users = (state.users || []).filter(u =>
@@ -1059,7 +1166,7 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
   const [quickRoleUserId, setQuickRoleUserId] = useState(null);
   const [newUser, setNewUser] = useState({
     name: '', email: '', password: '', role: 'TENANT',
-    personId: null, firstLogin: true,
+    personId: null, firstLogin: true, permissions: null,
   });
   const importRef2 = useRef();
 
@@ -1093,6 +1200,9 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
       }
     }
     const hashedPw = await hashPwd(newUser.password);
+    const permissions = rolePermissionsApply(newUser.role)
+      ? (newUser.permissions || fullPermissions())
+      : null;
     dispatch({
       type: 'ADD_USER',
       payload: {
@@ -1103,10 +1213,11 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
         color: roleInfo.color,
         firstLogin: true,
         firebaseUid,
+        permissions,
       },
     });
     showToast(`Compte créé pour ${newUser.name} — mot de passe temporaire : ${newUser.password}`);
-    setNewUser({ name: '', email: '', password: '', role: 'TENANT', personId: null, firstLogin: true });
+    setNewUser({ name: '', email: '', password: '', role: 'TENANT', personId: null, firstLogin: true, permissions: null });
     setShowCreate(false);
   };
 
@@ -1130,7 +1241,15 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
     alert(`Mot de passe temporaire de ${u.name} :\n\n${tmpPw}\n\nCommuniquez-le à l'utilisateur. Il devra le changer à sa prochaine connexion.`);
   };
 
-  const openEdit = (u) => { setEditUser(u); setEditForm({ name: u.name, email: u.email, role: u.role, phone: u.phone || '', personId: u.personId || null }); };
+  const openEdit = (u) => {
+    setEditUser(u);
+    setEditForm({
+      name: u.name, email: u.email, role: u.role, phone: u.phone || '', personId: u.personId || null,
+      // reflect the user's *effective* access so the admin edits from the real state
+      permissions: rolePermissionsApply(u.role) ? effectivePermissions(u) : (u.permissions || null),
+      orgIds: u.orgIds?.length ? u.orgIds : [u.orgId || currentUser?.orgId || 'default'],
+    });
+  };
 
   const handleSaveEdit = () => {
     if (!editForm.name.trim() || !editForm.email.trim()) { showToast('Nom et email requis'); return; }
@@ -1138,7 +1257,13 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
     if (emailConflict) { showToast('Cet email est déjà utilisé'); return; }
     const initials = editForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     const roleInfo = ROLE_MAP[editForm.role] || ROLE_MAP.TENANT;
-    dispatch({ type: 'UPDATE_USER', payload: { ...editUser, ...editForm, email: editForm.email.trim().toLowerCase(), initials, color: roleInfo.color } });
+    const permissions = rolePermissionsApply(editForm.role)
+      ? (editForm.permissions || fullPermissions())
+      : null;
+    // keep orgId consistent with the org membership list
+    const orgIds = editForm.orgIds?.length ? editForm.orgIds : [editUser.orgId || currentUser?.orgId || 'default'];
+    const orgId = orgIds.includes(editUser.orgId) ? editUser.orgId : orgIds[0];
+    dispatch({ type: 'UPDATE_USER', payload: { ...editUser, ...editForm, orgIds, orgId, permissions, email: editForm.email.trim().toLowerCase(), initials, color: roleInfo.color } });
     showToast(`Compte de ${editForm.name} mis à jour`);
     setEditUser(null); setEditForm(null);
   };
@@ -1220,11 +1345,11 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
       {/* Edit modal */}
       {editUser && editForm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md p-6">
+          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
             <h3 className="font-bold text-on-surface mb-4 flex items-center gap-2">
               <Icon name="edit" size={18} className="text-primary" />Modifier le compte
             </h3>
-            <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Nom complet</label>
                 <input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} className={inputCls} placeholder="Prénom Nom" />
@@ -1243,6 +1368,56 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
                 <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Téléphone</label>
                 <input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} className={inputCls} placeholder="+225 07 00 00 00 00" />
               </div>
+
+              {rolePermissionsApply(editForm.role) && (
+                <PermissionsEditor
+                  value={editForm.permissions || fullPermissions()}
+                  onChange={perms => setEditForm(f => ({ ...f, permissions: perms }))}
+                />
+              )}
+              {FULL_ACCESS_ROLES.includes(editForm.role) && (
+                <div className="md:col-span-2 p-3 bg-primary/5 border border-primary/20 rounded-xl flex items-start gap-2">
+                  <Icon name="admin_panel_settings" size={16} className="text-primary flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-on-surface">Un <strong>Admin Organisation</strong> a accès complet à toutes les fonctions — aucune restriction possible.</p>
+                </div>
+              )}
+
+              {/* Multi-organisation — assign the agent to several organizations */}
+              {['ORGANIZATION_ADMIN', 'ADMIN'].includes(currentUser?.role) && (state.organizations || []).length > 1 && (
+                <div className="md:col-span-2">
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                    <Icon name="corporate_fare" size={14} className="text-primary" />
+                    Organisations gérées · {editForm.orgIds?.length || 1}
+                  </label>
+                  <div className="border border-outline-variant/30 rounded-xl divide-y divide-outline-variant/20 max-h-40 overflow-y-auto">
+                    {(state.organizations || []).map(org => {
+                      const checked = (editForm.orgIds || []).includes(org.id);
+                      const isPrimary = org.id === editUser.orgId;
+                      return (
+                        <label key={org.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-surface-container-low cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={isPrimary}
+                            onChange={() => setEditForm(f => {
+                              const set = new Set(f.orgIds || []);
+                              if (set.has(org.id)) set.delete(org.id); else set.add(org.id);
+                              set.add(editUser.orgId); // always keep the primary org
+                              return { ...f, orgIds: [...set] };
+                            })}
+                            className="w-4 h-4 rounded accent-primary cursor-pointer"
+                          />
+                          <span className="text-sm text-on-surface flex-1">{org.name || org.id}</span>
+                          {isPrimary && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">Principale</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-on-surface-variant mt-1.5">
+                    L'agent pourra basculer entre ces organisations depuis le sélecteur en haut de la barre latérale.
+                  </p>
+                </div>
+              )}
             </div>
             <div className="flex gap-3 justify-end mt-5">
               <button onClick={() => { setEditUser(null); setEditForm(null); }} className="px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-high rounded-xl transition-colors">Annuler</button>
@@ -1418,6 +1593,18 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
                     <option key={o.id} value={o.id}>{o.name} — {o.email}</option>
                   ))}
                 </select>
+              </div>
+            )}
+            {rolePermissionsApply(newUser.role) && (
+              <PermissionsEditor
+                value={newUser.permissions || fullPermissions()}
+                onChange={perms => setNewUser(u => ({ ...u, permissions: perms }))}
+              />
+            )}
+            {FULL_ACCESS_ROLES.includes(newUser.role) && (
+              <div className="md:col-span-2 p-3 bg-primary/5 border border-primary/20 rounded-xl flex items-start gap-2">
+                <Icon name="admin_panel_settings" size={16} className="text-primary flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-on-surface">Un <strong>Admin Organisation</strong> a accès complet à toutes les fonctions — aucune restriction possible.</p>
               </div>
             )}
           </div>
