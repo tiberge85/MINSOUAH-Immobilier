@@ -34,6 +34,8 @@ import Insurance     from './pages/Insurance';
 import PublicTenantPortal from './pages/PublicTenantPortal';
 import Referrers     from './pages/Referrers';
 import Prestataires  from './pages/Prestataires';
+import Bordereaux    from './pages/Bordereaux';
+import PublicBordereau from './pages/PublicBordereau';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -265,6 +267,7 @@ function AppRoutes() {
       />
 
       <Route path="/locataire/:token" element={<PublicTenantPortal />} />
+      <Route path="/bordereau/:id" element={<PublicBordereau />} />
 
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER']} module="dashboard"><Dashboard /></ProtectedRoute>} />
@@ -272,6 +275,7 @@ function AppRoutes() {
         <Route path="rental"       element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE']} module="rental"><Rental /></ProtectedRoute>} />
         <Route path="finance"      element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'ACCOUNTANT']} module="finance"><Finance /></ProtectedRoute>} />
         <Route path="payments"     element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'ACCOUNTANT']} module="payments"><Payments /></ProtectedRoute>} />
+        <Route path="bordereaux"   element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'ACCOUNTANT']} module="bordereaux"><Bordereaux /></ProtectedRoute>} />
         <Route path="maintenance"  element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'TECHNICIAN', 'CONCIERGE']} module="maintenance"><Maintenance /></ProtectedRoute>} />
         <Route path="inspections"  element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE']} module="inspections"><Inspections /></ProtectedRoute>} />
         <Route path="inbox"        element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE', 'TECHNICIAN', 'ACCOUNTANT']} module="inbox"><Inbox /></ProtectedRoute>} />

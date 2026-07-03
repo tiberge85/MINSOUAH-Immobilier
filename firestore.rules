@@ -206,6 +206,20 @@ service cloud.firestore {
     // ── Budgets (monthly targets) ─────────────────────────────────────────────
     match /workspaces/{wsId}/budgets/{id} { allow read, write: if allowOrgDoc(wsId); }
 
+    // ── Bordereaux de versement (org-scoped) ──────────────────────────────────
+    match /workspaces/{wsId}/bordereaux/{id} { allow read, write: if allowOrgDoc(wsId); }
+
+    // ── Voucher number counters (org staff only) ──────────────────────────────
+    match /workspaces/{wsId}/counters/{id} {
+      allow read, write: if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
+    }
+
+    // ── Bordereau public verification (QR code — readable by anyone) ───────────
+    match /workspaces/{wsId}/bordereauVerify/{id} {
+      allow read:  if true;
+      allow write: if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
+    }
+
     // ── Tenant portals (public QR code portal — any authenticated or anon user can read) ──
     match /workspaces/{wsId}/tenantPortals/{id} {
       allow read:  if true;

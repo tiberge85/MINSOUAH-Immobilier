@@ -16,10 +16,11 @@ export const FULL_ACCESS_ROLES = ['SUPER_ADMIN', 'ORGANIZATION_ADMIN', 'ADMIN'];
 
 // The four actions, in display order.
 export const ACTIONS = [
-  { key: 'view',   label: 'Consulter' },
-  { key: 'create', label: 'Créer' },
-  { key: 'edit',   label: 'Modifier' },
-  { key: 'delete', label: 'Supprimer' },
+  { key: 'view',     label: 'Consulter' },
+  { key: 'create',   label: 'Créer' },
+  { key: 'edit',     label: 'Modifier' },
+  { key: 'delete',   label: 'Supprimer' },
+  { key: 'validate', label: 'Valider' },
 ];
 
 // Feature modules an agent can be granted access to.
@@ -31,6 +32,7 @@ export const MODULES = [
   { key: 'rental',       label: 'Gestion Locative', icon: 'contract',                path: '/rental',       actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'finance',      label: 'Finances',        icon: 'account_balance_wallet',   path: '/finance',      actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'payments',     label: 'Paiements',       icon: 'payments',                 path: '/payments',     actions: ['view', 'create', 'edit', 'delete'] },
+  { key: 'bordereaux',   label: 'Bordereaux de versement', icon: 'receipt_long',     path: '/bordereaux',   actions: ['view', 'create', 'edit', 'delete', 'validate'] },
   { key: 'maintenance',  label: 'Maintenance',     icon: 'engineering',              path: '/maintenance',  actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'inspections',  label: 'États des lieux', icon: 'home_work',                path: '/inspections',  actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'calendar',     label: 'Calendrier',      icon: 'calendar_month',           path: '/calendar',     actions: ['view', 'create', 'edit', 'delete'] },

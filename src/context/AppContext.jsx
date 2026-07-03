@@ -1,13 +1,14 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc,
-  writeBatch, getDocs, query, where, getDocFromServer, increment,
+  writeBatch, getDocs, query, where, getDocFromServer, increment, runTransaction,
 } from 'firebase/firestore';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { hashPwd, verifyPwd } from '../lib/auth';
 import { checkLimit } from '../lib/planLimits';
 import { createLicensePayload } from '../lib/licenses';
+import { sendEmail } from '../lib/email';
 
 // Mock data — only used by RESET_DEMO action
 import {
@@ -27,6 +28,82 @@ const SESSION_KEY = 'minsouah_user_v2';
 
 const wsCol = (name) => collection(db, 'workspaces', WS, name);
 const wsDoc = (col, id) => doc(db, 'workspaces', WS, col, String(id));
+
+// Atomic, never-duplicated voucher number: BC-2026-000001 / BP-2026-000001.
+// Uses a per-type-per-year counter doc updated inside a Firestore transaction.
+async function nextBordereauNumber(type, year) {
+  const prefix = type === 'PROPRIETAIRE' ? 'BP' : 'BC';
+  const ref = wsDoc('counters', `bordereau_${prefix}_${year}`);
+  const seq = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const current = snap.exists() ? (snap.data().value || 0) : 0;
+    const next = current + 1;
+    tx.set(ref, { value: next, prefix, year, updatedAt: new Date().toISOString() }, { merge: true });
+    return next;
+  });
+  return `${prefix}-${year}-${String(seq).padStart(6, '0')}`;
+}
+
+// On validation: lock every payment listed on the voucher so it can't be put on
+// another voucher of the same kind, publish a minimal public verification doc,
+// and notify by email (best-effort). Payment.status is left untouched — the
+// remittance state lives in dedicated fields so existing logic keeps working.
+async function applyBordereauValidation(bord, orgId, st, actor) {
+  const lines = bord.lines || [];
+  const isProprio = bord.type === 'PROPRIETAIRE';
+  for (const line of lines) {
+    if (!line?.paymentId) continue;
+    const patch = isProprio
+      ? { versementProprioId: bord.id, versementProprioNumber: bord.number, versementProprioAt: actor.at }
+      : { versementComptaId: bord.id, versementComptaNumber: bord.number, versementComptaAt: actor.at };
+    await updateDoc(wsDoc('payments', line.paymentId), patch).catch(() => {});
+  }
+  // Public verification document (readable without auth via the QR link)
+  await setDoc(wsDoc('bordereauVerify', bord.id), {
+    id: bord.id,
+    number: bord.number,
+    type: bord.type,
+    status: 'Validé',
+    date: bord.date || null,
+    total: isProprio ? (bord.totalNet || 0) : (bord.totalAmount || 0),
+    count: lines.length,
+    orgId,
+    companyName: st.orgSettings?.companyName || 'Minsouah Immobilier',
+    ownerName: isProprio ? (bord.ownerName || '') : '',
+    validatedAt: actor.at,
+    validatedBy: actor.userName || '',
+  }, { merge: true }).catch(() => {});
+  // Notifications (best-effort — depend on the Trigger Email extension)
+  try {
+    if (isProprio && bord.ownerEmail) {
+      await sendEmail({
+        to: bord.ownerEmail,
+        subject: `Reversement ${bord.number} — ${st.orgSettings?.companyName || 'Minsouah'}`,
+        html: `<p>Bonjour ${bord.ownerName || ''},</p><p>Un reversement de <strong>${(bord.totalNet || 0).toLocaleString('fr-FR')} XOF</strong> a été effectué en votre faveur (bordereau <strong>${bord.number}</strong>).</p><p>Mode : ${bord.paymentMode || '—'}${bord.transferRef ? ` · Réf : ${bord.transferRef}` : ''}</p><p>— ${st.orgSettings?.companyName || 'Minsouah Immobilier'}</p>`,
+      });
+    } else if (!isProprio && st.orgSettings?.email) {
+      await sendEmail({
+        to: st.orgSettings.email,
+        subject: `Versement comptabilité ${bord.number}`,
+        html: `<p>Un bordereau de versement à la comptabilité (<strong>${bord.number}</strong>) d'un montant de <strong>${(bord.totalAmount || 0).toLocaleString('fr-FR')} XOF</strong> a été validé.</p>`,
+      });
+    }
+  } catch { /* email is best-effort */ }
+}
+
+// On cancellation/deletion: unlock the voucher's payments so they can be re-used.
+async function releaseBordereauPayments(bord) {
+  const lines = bord.lines || [];
+  const isProprio = bord.type === 'PROPRIETAIRE';
+  for (const line of lines) {
+    if (!line?.paymentId) continue;
+    const patch = isProprio
+      ? { versementProprioId: null, versementProprioNumber: null, versementProprioAt: null }
+      : { versementComptaId: null, versementComptaNumber: null, versementComptaAt: null };
+    await updateDoc(wsDoc('payments', line.paymentId), patch).catch(() => {});
+  }
+  await deleteDoc(wsDoc('bordereauVerify', bord.id)).catch(() => {});
+}
 
 // ── Default accounts ───────────────────────────────────────────────────────────
 export const DEFAULT_ADMIN = {
@@ -200,6 +277,7 @@ export function AppProvider({ children }) {
     tenantPortals: [],
     referrers: [],
     prestataires: [],
+    bordereaux: [],
     currentUser: null,
     orgSettings: DEFAULT_ORG,
     systemSettings: DEFAULT_SYSTEM,
@@ -302,7 +380,7 @@ export function AppProvider({ children }) {
         // entity collections: filtered by orgId for non-admin users
         ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
           'tickets', 'inspections', 'conversations', 'monthClosures',
-          'insurances', 'budgets', 'referrers', 'prestataires'].forEach(c => sub(c, true));
+          'insurances', 'budgets', 'referrers', 'prestataires', 'bordereaux'].forEach(c => sub(c, true));
 
         sub('tenantPortals'); // publicly readable portal tokens
 
@@ -737,6 +815,64 @@ export function AppProvider({ children }) {
               status: p.status === 'Impayé' ? 'En retard' : p.status,
             });
           }
+          break;
+        }
+
+        // ── BORDEREAUX DE VERSEMENT ───────────────────────────────────────────
+        case 'ADD_BORDEREAU': {
+          const type = payload.type === 'PROPRIETAIRE' ? 'PROPRIETAIRE' : 'COMPTA';
+          const year = new Date().getFullYear();
+          const number = await nextBordereauNumber(type, year);
+          const id = `bord_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+          const nowIso = new Date().toISOString();
+          const actor = { userId: st.currentUser?.id || null, userName: st.currentUser?.name || '', at: nowIso };
+          const status = payload.status === 'Validé' ? 'Validé' : (payload.status || 'Brouillon');
+          const bord = {
+            ...payload,
+            id, number, type, orgId,
+            status,
+            createdAt: nowIso,
+            createdBy: actor,
+            validation: payload.validation || { created: actor },
+          };
+          await setDoc(wsDoc('bordereaux', id), bord);
+          // If created directly as "Validé", lock the linked payments + side-effects
+          if (status === 'Validé') {
+            await applyBordereauValidation(bord, orgId, st, actor);
+          }
+          await logActivity(`Bordereau ${number} créé (${type === 'PROPRIETAIRE' ? 'propriétaire' : 'comptabilité'}) — ${status}`, 'BORDEREAU_CREATE');
+          break;
+        }
+        case 'UPDATE_BORDEREAU': {
+          // Draft edits only (page prevents editing validated vouchers)
+          await setDoc(wsDoc('bordereaux', payload.id), payload, { merge: true });
+          await logActivity(`Bordereau ${payload.number || payload.id} modifié`, 'BORDEREAU_UPDATE');
+          break;
+        }
+        case 'SET_BORDEREAU_STATUS': {
+          const { id, status, step } = payload;
+          const bord = st.bordereaux.find((b) => b.id === id);
+          if (!bord) break;
+          const nowIso = new Date().toISOString();
+          const actor = { userId: st.currentUser?.id || null, userName: st.currentUser?.name || '', at: nowIso };
+          const validation = { ...(bord.validation || {}) };
+          if (step) validation[step] = actor; // 'controlled' | 'validated'
+          const patch = { status, validation };
+          await setDoc(wsDoc('bordereaux', id), patch, { merge: true });
+          if (status === 'Validé') {
+            await applyBordereauValidation({ ...bord, ...patch }, orgId, st, actor);
+          } else if (status === 'Annulé') {
+            await releaseBordereauPayments(bord);
+          }
+          await logActivity(`Bordereau ${bord.number} → ${status}`, 'BORDEREAU_STATUS');
+          break;
+        }
+        case 'DELETE_BORDEREAU': {
+          const bord = st.bordereaux.find((b) => b.id === payload);
+          // Safety: release any locked payments before deleting
+          if (bord) await releaseBordereauPayments(bord);
+          await deleteDoc(wsDoc('bordereaux', payload));
+          await logActivity(`Bordereau ${bord?.number || payload} supprimé`, 'BORDEREAU_DELETE');
           break;
         }
 

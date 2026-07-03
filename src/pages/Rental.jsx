@@ -1206,6 +1206,16 @@ ${sectionsHtml}
                 <label className="form-label">RIB / IBAN</label>
                 <input value={oForm.iban || ''} onChange={e => setOForm(f => ({ ...f, iban: e.target.value }))} className="form-input" />
               </div>
+              <div>
+                <label className="form-label">Commission Minsouah (%)</label>
+                <input
+                  type="number" min="0" max="100" step="0.5"
+                  value={oForm.commissionRate ?? ''}
+                  onChange={e => setOForm(f => ({ ...f, commissionRate: e.target.value === '' ? '' : Number(e.target.value) }))}
+                  className="form-input" placeholder="Ex: 10"
+                />
+                <p className="text-xs text-on-surface-variant mt-1">Taux prélevé sur les loyers reversés à ce propriétaire.</p>
+              </div>
             </div>
             <div>
               <label className="form-label">Statut</label>
