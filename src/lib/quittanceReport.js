@@ -43,6 +43,10 @@ export function buildReceiptHTML(payment, orgSettings, signatures = {}, nextPaym
   .sig-line { border-bottom: 1px solid #817662; height: 52px; margin-bottom: 6px; display:flex; align-items:flex-end; justify-content:center; }
   .sig-line img { max-height:48px; max-width:100%; object-fit:contain; }
   .sig-label { font-size: 9px; color: #817662; text-transform: uppercase; letter-spacing: 1px; }
+  .nb { margin-top: 14px; background: #fff8f2; border: 1px solid #e3d9cc; border-left: 3px solid #785a00; border-radius: 8px; padding: 10px 14px; }
+  .nb-title { font-size: 10px; font-weight: 800; color: #785a00; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .nb ol { margin: 0; padding-left: 18px; }
+  .nb li { font-size: 9.5px; color: #5a5040; line-height: 1.55; margin-bottom: 3px; }
   .footer { margin-top: 10px; padding-top: 8px; border-top: 1px solid #e3d9cc; font-size: 9px; color: #b0a090; text-align: center; line-height: 1.5; }
   .paid-stamp { position: absolute; top: 130px; right: 40px; border: 3px solid #166534; color: #166534; border-radius: 6px; padding: 6px 12px; font-size: 16px; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; transform: rotate(-15deg); opacity: 0.4; pointer-events: none; }
   .org-logo { max-height: 52px; max-width: 130px; object-fit: contain; }
@@ -132,6 +136,15 @@ export function buildReceiptHTML(payment, orgSettings, signatures = {}, nextPaym
       </div>
       <div class="sig-label">Signature du Locataire</div>
     </div>
+  </div>
+
+  <div class="nb">
+    <div class="nb-title">NB — Un locataire ne peut déménager sans :</div>
+    <ol>
+      <li>qu'il n'ait justifié au propriétaire par une quittance qu'il a acquitté toutes ses contributions personnelles et mobilières de l'année en cours ;</li>
+      <li>qu'il n'ait donné ou reçu un congé par écrit dans les délais prescrits ;</li>
+      <li>qu'il n'ait fait faire les réparations locatives à sa charge suivant l'usage ou d'après l'état des lieux.</li>
+    </ol>
   </div>
 
   <div class="footer">
