@@ -1013,6 +1013,7 @@ export default function Payments() {
   const [arrearsAddForm, setArrearsAddForm] = useState({ tenantId: '', months: [], amountPerMonth: '', status: 'Impayé', propertyName: '' });
   const [arrearsSelected, setArrearsSelected] = useState(new Set());
   const [arrearsExpanded, setArrearsExpanded] = useState(new Set());
+  const [arrearsSearch, setArrearsSearch] = useState('');
 
   /* ── Compute next payment date for quittance ── */
   const computeNextPaymentDate = useCallback((payment) => {
@@ -2313,15 +2314,40 @@ export default function Payments() {
             </div>
           </div>
 
-          {arrearsByTenant.length === 0 ? (
+          {arrearsByTenant.length > 0 && (
+            <div className="relative">
+              <Icon name="search" size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+              <input
+                type="text"
+                placeholder="Rechercher un locataire, une propriété ou un mois…"
+                value={arrearsSearch}
+                onChange={e => setArrearsSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface text-sm"
+              />
+            </div>
+          )}
+
+          {(() => {
+            const q = arrearsSearch.toLowerCase().trim();
+            const shownGroups = !q ? arrearsByTenant : arrearsByTenant.filter(g =>
+              (g.tenantName || '').toLowerCase().includes(q) ||
+              (g.tenantPhone || '').toLowerCase().includes(q) ||
+              (g.payments || []).some(p => (p.propertyName || '').toLowerCase().includes(q) || (p.month || '').toLowerCase().includes(q))
+            );
+            return arrearsByTenant.length === 0 ? (
             <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
               <Icon name="check_circle" size={40} className="text-green-600 mb-3" />
               <p className="font-semibold text-green-800">Aucun arriéré enregistré</p>
               <p className="text-sm text-green-600 mt-1">Tous les loyers des mois précédents ont été réglés.</p>
             </div>
+          ) : shownGroups.length === 0 ? (
+            <div className="bg-surface-container rounded-xl p-8 text-center text-on-surface-variant">
+              <Icon name="search_off" size={40} className="opacity-40 mb-3" />
+              <p className="font-semibold">Aucun résultat pour « {arrearsSearch} »</p>
+            </div>
           ) : (
             <div className="flex flex-col gap-md">
-              {arrearsByTenant.map(group => {
+              {shownGroups.map(group => {
                 const allGroupIds = group.payments.map(p => p.id);
                 const allGroupSelected = allGroupIds.length > 0 && allGroupIds.every(id => arrearsSelected.has(id));
                 const isExpanded = arrearsExpanded.has(group.tenantName);
@@ -2425,7 +2451,8 @@ export default function Payments() {
                 );
               })}
             </div>
-          )}
+          );
+          })()}
         </div>
       )}
 

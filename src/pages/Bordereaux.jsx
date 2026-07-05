@@ -22,6 +22,13 @@ const STATUS_STYLE = {
 const fmt = (n) => `${(Number(n) || 0).toLocaleString('fr-FR')} XOF`;
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const nowHM = () => new Date().toTimeString().slice(0, 5);
+const MONTHS_FR = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+// Sortable key for a "Mois AAAA" label (e.g. "Juillet 2026" → 202606)
+const monthKey = (label) => {
+  const [mn, yr] = (label || '').split(' ');
+  const idx = MONTHS_FR.indexOf(mn);
+  return idx >= 0 ? Number(yr) * 100 + idx : 0;
+};
 
 /* Small button matching the app style */
 function Btn({ children, icon, variant = 'primary', small, onClick, disabled }) {
@@ -374,9 +381,14 @@ function ListTab({ list, search, setSearch, fType, setFType, fStatus, setFStatus
 /* ════════════════════════════ CREATE — COMPTA ════════════════════════════ */
 function CreateCompta({ eligible, currentUser, canValidate, onDone, dispatch, toast }) {
   const [sel, setSel] = useState(() => new Set());
+  const [monthFilter, setMonthFilter] = useState('Tous');
   const [form, setForm] = useState({ date: todayISO(), time: nowHM(), agence: '', caissier: '', paymentMode: 'Espèces', bank: '', beneficiaryAccount: '', bankRef: '', observation: '' });
   const [attachments, setAttachments] = useState([]);
   const sigRef = useRef(null);
+
+  const months = useMemo(() => [...new Set(eligible.map(p => p.month).filter(Boolean))]
+    .sort((a, b) => monthKey(b) - monthKey(a)), [eligible]);
+  const shownEligible = monthFilter === 'Tous' ? eligible : eligible.filter(p => p.month === monthFilter);
 
   const toggle = (id) => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const selected = eligible.filter(p => sel.has(p.id));
@@ -467,14 +479,22 @@ function CreateCompta({ eligible, currentUser, canValidate, onDone, dispatch, to
 
         {/* Payment selection */}
         <div className="bg-surface rounded-2xl border border-outline-variant/20 p-4 flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-on-surface">Loyers à verser ({selected.length}/{eligible.length})</h3>
-            <button onClick={() => setSel(sel.size === eligible.length ? new Set() : new Set(eligible.map(p => p.id)))}
-              className="text-xs font-semibold text-primary">{sel.size === eligible.length ? 'Tout désélectionner' : 'Tout sélectionner'}</button>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h3 className="font-bold text-on-surface">Loyers à verser ({selected.length}/{shownEligible.length})</h3>
+            <button onClick={() => {
+              const ids = shownEligible.map(p => p.id);
+              const allShownSelected = ids.length > 0 && ids.every(id => sel.has(id));
+              setSel(prev => { const n = new Set(prev); ids.forEach(id => allShownSelected ? n.delete(id) : n.add(id)); return n; });
+            }} className="text-xs font-semibold text-primary">Tout {shownEligible.every(p => sel.has(p.id)) && shownEligible.length ? 'désélectionner' : 'sélectionner'}</button>
           </div>
-          <div className="max-h-[420px] overflow-y-auto flex flex-col gap-1">
-            {eligible.length === 0 && <p className="text-sm text-on-surface-variant text-center py-8">Aucun loyer encaissé en attente de versement.</p>}
-            {eligible.map(p => (
+          <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)}
+            className="w-full px-3 py-2 rounded-xl border border-outline-variant/40 bg-surface-container text-sm">
+            <option value="Tous">Tous les mois ({eligible.length})</option>
+            {months.map(m => <option key={m} value={m}>{m} ({eligible.filter(p => p.month === m).length})</option>)}
+          </select>
+          <div className="max-h-[380px] overflow-y-auto flex flex-col gap-1">
+            {shownEligible.length === 0 && <p className="text-sm text-on-surface-variant text-center py-8">Aucun loyer encaissé en attente de versement{monthFilter !== 'Tous' ? ` pour ${monthFilter}` : ''}.</p>}
+            {shownEligible.map(p => (
               <label key={p.id} className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-colors ${sel.has(p.id) ? 'border-primary/40 bg-primary/5' : 'border-outline-variant/20 hover:bg-surface-container-low'}`}>
                 <input type="checkbox" checked={sel.has(p.id)} onChange={() => toggle(p.id)} className="w-4 h-4 accent-primary" />
                 <div className="flex-1 min-w-0">
@@ -503,7 +523,8 @@ function CreateCompta({ eligible, currentUser, canValidate, onDone, dispatch, to
 /* ════════════════════════════ CREATE — PROPRIETAIRE ════════════════════════════ */
 function CreateProprio({ owners, paidPayments, ownerIdOfPayment, currentUser, canValidate, onDone, dispatch, toast }) {
   const [ownerId, setOwnerId] = useState('');
-  const [fraisMap, setFraisMap] = useState({});      // paymentId → frais
+  const [monthFilter, setMonthFilter] = useState('Tous');
+  const [frais, setFrais] = useState('');            // global fees for the whole remittance
   const [form, setForm] = useState({ date: todayISO(), time: nowHM(), paymentMode: 'Virement', transferRef: '', observation: '' });
   const sigResp = useRef(null);
   const sigOwner = useRef(null);
@@ -511,39 +532,56 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, currentUser, ca
   const owner = owners.find(o => String(o.id) === String(ownerId));
   const rate = owner ? (Number(owner.commissionRate) || 0) : 0;
 
-  const eligible = useMemo(() => {
+  // All the owner's collected rents not yet reversed
+  const ownerPayments = useMemo(() => {
     if (!owner) return [];
     return paidPayments.filter(p => !p.versementProprioId && ownerIdOfPayment(p) === Number(owner.id));
   }, [owner, paidPayments, ownerIdOfPayment]);
 
-  const lines = useMemo(() => eligible.map(p => {
+  const months = useMemo(() => [...new Set(ownerPayments.map(p => p.month).filter(Boolean))]
+    .sort((a, b) => monthKey(b) - monthKey(a)), [ownerPayments]);
+  const scope = monthFilter === 'Tous' ? ownerPayments : ownerPayments.filter(p => p.month === monthFilter);
+
+  // Lines are computed automatically (no per-tenant selection) — commission per line
+  const lines = useMemo(() => scope.map(p => {
     const amount = p.amount || 0;
     const commission = Math.round(amount * rate / 100);
-    const frais = Number(fraisMap[p.id]) || 0;
     return {
       paymentId: p.id, tenantName: p.tenantName || '', propertyName: p.propertyName || '', unit: p.unit || '',
       period: p.month || '', paidDate: p.paidDate || '', method: p.method || '', paymentRef: p.reference || String(p.id),
-      amount, commission, frais, net: amount - commission - frais,
+      amount, commission, frais: 0, net: amount - commission,
     };
-  }), [eligible, rate, fraisMap]);
+  }), [scope, rate]);
 
-  const totals = lines.reduce((t, l) => ({
-    amount: t.amount + l.amount, commission: t.commission + l.commission, frais: t.frais + l.frais, net: t.net + l.net,
-  }), { amount: 0, commission: 0, frais: 0, net: 0 });
+  const totalAmount = lines.reduce((s, l) => s + l.amount, 0);
+  const totalCommission = lines.reduce((s, l) => s + l.commission, 0);
+  const totalFrais = Number(frais) || 0;
+  const totalNet = totalAmount - totalCommission - totalFrais;
+  // Group the bilan by month for a clean recap (not per-tenant selection)
+  const byMonth = useMemo(() => {
+    const g = {};
+    lines.forEach(l => {
+      const k = l.period || '—';
+      if (!g[k]) g[k] = { period: k, count: 0, amount: 0, commission: 0 };
+      g[k].count++; g[k].amount += l.amount; g[k].commission += l.commission;
+    });
+    return Object.values(g).sort((a, b) => monthKey(b.period) - monthKey(a.period));
+  }, [lines]);
 
   const build = (status) => {
     if (!owner) { toast('Sélectionnez un propriétaire', 'error'); return; }
-    if (lines.length === 0) { toast('Aucun loyer à reverser', 'error'); return; }
+    if (lines.length === 0) { toast('Aucun encaissement à reverser', 'error'); return; }
     dispatch({
       type: 'ADD_BORDEREAU',
       payload: {
         type: 'PROPRIETAIRE', status,
         date: form.date, time: form.time, paymentMode: form.paymentMode, transferRef: form.transferRef, observation: form.observation,
+        periodLabel: monthFilter === 'Tous' ? 'Tous les mois' : monthFilter,
         ownerId: owner.id, ownerName: owner.name, ownerPhone: owner.phone || '', ownerEmail: owner.email || '',
         ownerBank: owner.bank || '', ownerAccount: owner.iban || '', commissionRate: rate,
         signatures: { directeur: sigResp.current?.getDataURL() || null, proprietaire: sigOwner.current?.getDataURL() || null },
         lines,
-        totalAmount: totals.amount, totalCommission: totals.commission, totalFrais: totals.frais, totalNet: totals.net,
+        totalAmount, totalCommission, totalFrais, totalNet,
       },
     });
     toast(status === 'Validé' ? 'Reversement créé et validé' : 'Reversement enregistré en brouillon');
@@ -556,21 +594,27 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, currentUser, ca
         <Icon name="real_estate_agent" size={22} className="text-green-700 flex-shrink-0" />
         <div>
           <p className="font-bold text-green-800">Bordereau de reversement au propriétaire</p>
-          <p className="text-xs text-green-700 mt-0.5">Sélectionnez un propriétaire : ses loyers encaissés non encore reversés s'affichent avec le calcul automatique de la commission.</p>
+          <p className="text-xs text-green-700 mt-0.5">Le bilan des encaissements du propriétaire (net de commission et de frais) lui est reversé. Choisissez éventuellement un mois précis.</p>
         </div>
       </div>
 
       <div className="bg-surface rounded-2xl border border-outline-variant/20 p-4 flex flex-col gap-3">
-        <div className="grid sm:grid-cols-2 gap-3">
+        <div className="grid sm:grid-cols-3 gap-3">
           <Field label="Propriétaire">
-            <SearchSelect value={ownerId} onChange={setOwnerId}
+            <SearchSelect value={ownerId} onChange={v => { setOwnerId(v); setMonthFilter('Tous'); }}
               options={owners.map(o => ({ value: String(o.id), label: `${o.name}${o.commissionRate ? ` — ${o.commissionRate}%` : ''}` }))}
               placeholder="— Choisir un propriétaire —" />
           </Field>
+          <Field label="Mois concerné">
+            <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className={inp} disabled={!owner}>
+              <option value="Tous">Tous les mois</option>
+              {months.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </Field>
           {owner && (
             <div className="text-sm text-on-surface-variant flex flex-col justify-center">
-              <p><Icon name="percent" size={13} className="inline" /> Commission : <strong className="text-on-surface">{rate}%</strong>{!owner.commissionRate && <span className="text-amber-600"> (non définie — 0%)</span>}</p>
-              <p><Icon name="account_balance" size={13} className="inline" /> {owner.bank || '—'} · {owner.iban || 'RIB non renseigné'}</p>
+              <p><Icon name="percent" size={13} className="inline" /> Commission : <strong className="text-on-surface">{rate}%</strong>{!owner.commissionRate && <span className="text-amber-600"> (0%)</span>}</p>
+              <p className="truncate"><Icon name="account_balance" size={13} className="inline" /> {owner.bank || '—'} · {owner.iban || 'RIB —'}</p>
             </div>
           )}
         </div>
@@ -578,41 +622,59 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, currentUser, ca
 
       {owner && (
         <>
+          {/* ── BILAN des encaissements ── */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              { label: 'Total encaissé', value: totalAmount, color: 'text-primary bg-primary/10', icon: 'payments' },
+              { label: `Commission (${rate}%)`, value: totalCommission, color: 'text-amber-700 bg-amber-100', icon: 'percent', neg: true },
+              { label: 'Frais déduits', value: totalFrais, color: 'text-amber-700 bg-amber-100', icon: 'receipt_long', neg: true },
+              { label: 'Net à reverser', value: totalNet, color: 'text-green-700 bg-green-100', icon: 'account_balance_wallet' },
+            ].map(c => (
+              <div key={c.label} className="bg-surface rounded-2xl border border-outline-variant/20 p-4">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-2 ${c.color}`}><Icon name={c.icon} size={18} /></div>
+                <p className="text-xs text-on-surface-variant">{c.label}</p>
+                <p className={`text-lg font-black mt-0.5 ${c.neg ? 'text-amber-700' : 'text-on-surface'}`}>{c.neg && c.value ? '−' : ''}{fmt(c.value)}</p>
+              </div>
+            ))}
+          </div>
+
           <div className="bg-surface rounded-2xl border border-outline-variant/20 p-4">
-            <h3 className="font-bold text-on-surface mb-3">Loyers encaissés à reverser ({lines.length})</h3>
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <h3 className="font-bold text-on-surface">Bilan des encaissements ({lines.length} loyer{lines.length > 1 ? 's' : ''})</h3>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-semibold text-on-surface-variant">Frais à déduire</label>
+                <input type="number" min="0" value={frais} placeholder="0" onChange={e => setFrais(e.target.value)}
+                  className="w-32 px-3 py-1.5 rounded-lg border border-outline-variant/40 bg-surface-container text-sm" />
+              </div>
+            </div>
             {lines.length === 0 ? (
-              <p className="text-sm text-on-surface-variant text-center py-8">Aucun loyer encaissé en attente de reversement pour ce propriétaire.</p>
+              <p className="text-sm text-on-surface-variant text-center py-8">Aucun encaissement en attente de reversement{monthFilter !== 'Tous' ? ` pour ${monthFilter}` : ''}.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-surface-container-high text-on-surface-variant">
-                    <tr>{['Locataire', 'Bien', 'Période', 'Montant', 'Commission', 'Frais', 'Net'].map(h => <th key={h} className="px-3 py-2 text-xs font-bold uppercase">{h}</th>)}</tr>
+                    <tr>{['Période', 'Nb loyers', 'Encaissé', 'Commission', 'Net'].map(h => <th key={h} className="px-3 py-2 text-xs font-bold uppercase">{h}</th>)}</tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant/20">
-                    {lines.map(l => (
-                      <tr key={l.paymentId}>
-                        <td className="px-3 py-2 font-semibold">{l.tenantName}</td>
-                        <td className="px-3 py-2 text-on-surface-variant">{l.propertyName}</td>
-                        <td className="px-3 py-2 text-on-surface-variant">{l.period}</td>
-                        <td className="px-3 py-2">{fmt(l.amount)}</td>
-                        <td className="px-3 py-2 text-amber-700">−{fmt(l.commission)}</td>
-                        <td className="px-3 py-2">
-                          <input type="number" min="0" value={fraisMap[l.paymentId] ?? ''} placeholder="0"
-                            onChange={e => setFraisMap(m => ({ ...m, [l.paymentId]: e.target.value }))}
-                            className="w-24 px-2 py-1 rounded-lg border border-outline-variant/40 bg-surface-container text-sm" />
-                        </td>
-                        <td className="px-3 py-2 font-bold text-green-700">{fmt(l.net)}</td>
+                    {byMonth.map(g => (
+                      <tr key={g.period}>
+                        <td className="px-3 py-2 font-semibold">{g.period}</td>
+                        <td className="px-3 py-2 text-on-surface-variant">{g.count}</td>
+                        <td className="px-3 py-2">{fmt(g.amount)}</td>
+                        <td className="px-3 py-2 text-amber-700">−{fmt(g.commission)}</td>
+                        <td className="px-3 py-2 font-bold text-green-700">{fmt(g.amount - g.commission)}</td>
                       </tr>
                     ))}
                     <tr className="bg-surface-container-high font-bold">
-                      <td className="px-3 py-2" colSpan={3}>TOTAUX</td>
-                      <td className="px-3 py-2">{fmt(totals.amount)}</td>
-                      <td className="px-3 py-2 text-amber-700">−{fmt(totals.commission)}</td>
-                      <td className="px-3 py-2 text-amber-700">−{fmt(totals.frais)}</td>
-                      <td className="px-3 py-2 text-green-700">{fmt(totals.net)}</td>
+                      <td className="px-3 py-2">TOTAL</td>
+                      <td className="px-3 py-2">{lines.length}</td>
+                      <td className="px-3 py-2">{fmt(totalAmount)}</td>
+                      <td className="px-3 py-2 text-amber-700">−{fmt(totalCommission)}</td>
+                      <td className="px-3 py-2 text-green-700">{fmt(totalAmount - totalCommission)}</td>
                     </tr>
                   </tbody>
                 </table>
+                <p className="text-xs text-on-surface-variant mt-2">Frais déduits : −{fmt(totalFrais)} → <strong className="text-green-700">Net à reverser : {fmt(totalNet)}</strong></p>
               </div>
             )}
           </div>

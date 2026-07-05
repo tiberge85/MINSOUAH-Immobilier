@@ -205,7 +205,8 @@ function DayCell({ day, isCurrentMonth, isToday, isSelected, events, onClick }) 
 
 // ─── Main Calendar Component ──────────────────────────────────────────────────
 export default function Calendar() {
-  const { contracts = [], payments = [], inspections = [], tickets = [], insurances = [] } = useApp();
+  const { state } = useApp();
+  const { contracts = [], payments = [], inspections = [], tickets = [], insurances = [] } = state;
 
   const today = useMemo(() => {
     const d = new Date();

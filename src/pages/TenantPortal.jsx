@@ -294,6 +294,7 @@ export default function TenantPortal() {
   const navigate = useNavigate();
   const toast = useToast();
   const [selectedId, setSelectedId] = useState(null);
+  const [portalSearch, setPortalSearch] = useState('');
   const [activeTab, setActiveTab] = useState('home');
   const [showPayModal, setShowPayModal] = useState(false);
   const [showTicketModal, setShowTicketModal] = useState(false);
@@ -434,14 +435,41 @@ export default function TenantPortal() {
           </div>
         </div>
 
+        {tenants.length > 0 && (
+          <div className="relative mb-md">
+            <Icon name="search" size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+            <input
+              type="text"
+              value={portalSearch}
+              onChange={e => setPortalSearch(e.target.value)}
+              placeholder="Rechercher un locataire, une propriété, un email…"
+              className="w-full pl-11 pr-4 py-3 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface text-sm"
+            />
+          </div>
+        )}
+
         {tenants.length === 0 ? (
           <div className="text-center py-20 text-on-surface-variant">
             <Icon name="person_off" size={48} className="opacity-30 mb-sm" />
             <p className="font-bold">Aucun locataire enregistré</p>
           </div>
-        ) : (
+        ) : (() => {
+          const q = portalSearch.toLowerCase().trim();
+          const shownTenants = !q ? tenants : tenants.filter(t => {
+            const tName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
+            return tName.toLowerCase().includes(q) ||
+              (t.property || '').toLowerCase().includes(q) ||
+              (t.email || '').toLowerCase().includes(q) ||
+              (t.phone || '').toLowerCase().includes(q);
+          });
+          return shownTenants.length === 0 ? (
+            <div className="text-center py-16 text-on-surface-variant">
+              <Icon name="search_off" size={44} className="opacity-30 mb-sm" />
+              <p className="font-bold">Aucun locataire pour « {portalSearch} »</p>
+            </div>
+          ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md">
-            {tenants.map(t => {
+            {shownTenants.map(t => {
               const tName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
               const c = contracts.find(ct => ct.tenant === tName && ct.status === 'Actif');
               const unpaid = c ? payments.filter(p => p.contractId === c.id && p.status !== 'Payé').length : 0;
@@ -477,7 +505,8 @@ export default function TenantPortal() {
               );
             })}
           </div>
-        )}
+          );
+        })()}
       </div>
     );
   }

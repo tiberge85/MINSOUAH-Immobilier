@@ -164,7 +164,7 @@ export default function Login() {
 
     try {
       const emailLow = email.trim().toLowerCase();
-      const user = users.find((u) => u.email.toLowerCase() === emailLow);
+      const user = users.find((u) => (u.email || '').toLowerCase() === emailLow);
 
       if (!user) { setError('Aucun compte trouvé avec cet email.'); return; }
       if (user.suspended) { setError("Ce compte a été suspendu. Contactez l'administrateur."); return; }
