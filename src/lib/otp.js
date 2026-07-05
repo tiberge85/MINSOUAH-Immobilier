@@ -47,7 +47,7 @@ export async function sendOTP({ userId, email, name }) {
  * Verify a code entered by the user.
  * @returns {{ ok: boolean, reason?: 'expired'|'invalid'|'locked', remaining?: number }}
  */
-export async function verifyOTP({ userId, code }) {
+export async function verifyOTP({ userId, code, keep = false }) {
   const ref  = doc(db, 'workspaces', WS, 'otps', String(userId));
   const snap = await getDoc(ref);
 
@@ -71,8 +71,14 @@ export async function verifyOTP({ userId, code }) {
     return { ok: false, reason: 'invalid', remaining: MAX_ATTEMPTS - attempts };
   }
 
-  // Correct code — consume it immediately (single use)
-  await deleteDoc(ref).catch(() => {});
+  // Correct code. For 2FA we consume it immediately (single use). For password
+  // reset we KEEP it and mark it verified so Firestore rules can authorize the
+  // (otherwise-blocked) password write; the reducer deletes it right after.
+  if (keep) {
+    await setDoc(ref, { verified: true, verifiedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+  } else {
+    await deleteDoc(ref).catch(() => {});
+  }
   return { ok: true };
 }
 

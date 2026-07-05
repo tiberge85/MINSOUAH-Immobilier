@@ -1240,6 +1240,8 @@ export function AppProvider({ children }) {
             await updateDoc(wsDoc('users', targetUser.id), {
               password: newPassword, firstLogin: false, failedAttempts: 0, lockedUntil: null,
             });
+            // Consume any verified reset-OTP used to authorize this write (no-op otherwise)
+            await deleteDoc(wsDoc('otps', targetUser.id)).catch(() => {});
             if (st.currentUser?.email === email) {
               const updated = { ...st.currentUser, firstLogin: false };
               try { localStorage.setItem(SESSION_KEY, JSON.stringify(updated)); } catch { /* quota */ }

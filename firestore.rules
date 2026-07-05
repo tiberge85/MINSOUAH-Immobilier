@@ -90,6 +90,14 @@ service cloud.firestore {
                                 || (isOrgAdmin(wsId)
                                     && resource.data.orgId == callerOrgId(wsId))
                                 || resource.data.id == callerMeta(wsId).userId);
+      // Self-service password reset: allow updating ONLY password-related fields
+      // when a verified OTP (email-proven) exists for this user. Cannot touch
+      // role/org/email — no privilege escalation possible.
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['password', 'firstLogin', 'failedAttempts', 'lockedUntil'])
+        && exists(/databases/$(database)/documents/workspaces/$(wsId)/otps/$(string(resource.data.id)))
+        && get(/databases/$(database)/documents/workspaces/$(wsId)/otps/$(string(resource.data.id))).data.verified == true;
     }
 
     // ── System settings ───────────────────────────────────────────────────────
