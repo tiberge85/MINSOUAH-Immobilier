@@ -1303,6 +1303,15 @@ export default function Payments() {
   };
   const selectedDate = monthLabelToDate(selectedMonth);
 
+  // A payment is "anticipé" (advance) when it was settled BEFORE the month it covers
+  // (e.g. a tenant paying several months upfront → one 'Payé' record per month).
+  const isAdvancePayment = (p) => {
+    if (p.status !== 'Payé' || !p.paidDate) return false;
+    const paid = parseTxDate(p.paidDate) || new Date(p.paidDate);
+    const monthStart = monthLabelToDate(p.month);
+    return !!(paid && !isNaN(paid) && monthStart && paid < monthStart);
+  };
+
   // Unpaid = explicit records (status != Payé) + active-contract tenants with no payment record
   //          BUT exclude those still in their advance period (paymentStartDate not yet reached)
   // Advance = active-contract tenants whose paymentStartDate is after the selected month
@@ -1509,6 +1518,13 @@ export default function Payments() {
   };
 
   const handleMarkPaid = (id) => dispatch({ type: 'MARK_PAYMENT_PAID', payload: id });
+
+  // Toggle "already reversed to the owner" on an advance payment so it no longer
+  // shows up in the owner-remittance bilan / financial point at each month-end.
+  const markAdvanceReversed = (p) => {
+    const next = !p.avanceVerseeProprio;
+    dispatch({ type: 'UPDATE_PAYMENT', payload: { ...p, avanceVerseeProprio: next, avanceVerseeAt: next ? new Date().toISOString() : null } });
+  };
 
   // Mark an unpaid tenant paid — creates a record if none exists yet (synthetic
   // entries from the Rappels tab have no payment doc to update).
@@ -2019,10 +2035,21 @@ export default function Payments() {
                       <td className="px-4 py-3.5 text-sm text-on-surface">{p.dueDate || '—'}</td>
                       <td className="px-4 py-3.5 text-sm text-on-surface">{p.paidDate || <span className="text-on-surface-variant">—</span>}</td>
                       <td className="px-4 py-3.5">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor[p.status] || ''}`}>
-                          <Icon name={statusIcon[p.status] || 'info'} size={12} />
-                          {p.status}
-                        </span>
+                        <div className="flex flex-col items-start gap-1">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor[p.status] || ''}`}>
+                            <Icon name={statusIcon[p.status] || 'info'} size={12} />
+                            {p.status}
+                          </span>
+                          {p.avanceVerseeProprio ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700" title="Paiement anticipé déjà reversé au propriétaire">
+                              <Icon name="verified" size={11} /> Anticipé · versé propriétaire
+                            </span>
+                          ) : isAdvancePayment(p) ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700" title="Réglé en avance">
+                              <Icon name="schedule" size={11} /> Anticipé
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-4 py-3.5 text-xs text-on-surface-variant">
                         {p.reminderCount > 0
@@ -2041,6 +2068,11 @@ export default function Payments() {
                             </>
                           )}
                           {canEdit && <Btn small icon="edit" variant="secondary" onClick={() => openEdit(p)}>Modifier</Btn>}
+                          {p.status === 'Payé' && canEdit && (
+                            <Btn small icon={p.avanceVerseeProprio ? 'undo' : 'real_estate_agent'} variant="secondary" onClick={() => markAdvanceReversed(p)}>
+                              {p.avanceVerseeProprio ? 'Annuler versé' : 'Versé propriétaire'}
+                            </Btn>
+                          )}
                           {p.status === 'Payé' && canEdit && (
                             <Btn small icon="block" variant="amber" onClick={() => handleCancel(p)}>Annuler</Btn>
                           )}

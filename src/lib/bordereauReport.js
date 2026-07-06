@@ -44,8 +44,9 @@ export function buildBordereauHTML(bord, orgSettings = {}, opts = {}) {
     </div>` : `
     <div class="meta">
       <div><span>Agence</span><b>${esc(bord.agence) || '—'}</b></div>
-      <div><span>Caissier</span><b>${esc(bord.caissier) || '—'}</b></div>
-      <div><span>Versé par</span><b>${esc(bord.createdBy?.userName) || '—'}</b></div>
+      <div><span>Versé par (déposant)</span><b>${esc(bord.depositedBy || bord.caissier) || '—'}</b></div>
+      <div><span>Reçu par (comptable)</span><b>${esc(bord.receivedBy) || '—'}</b></div>
+      <div><span>Organisation bénéficiaire</span><b>${esc(bord.beneficiaryOrgName) || '—'}</b></div>
       <div><span>Mode de versement</span><b>${esc(bord.paymentMode) || '—'}</b></div>
       <div><span>Banque</span><b>${esc(bord.bank) || '—'}</b></div>
       <div><span>Compte bénéficiaire</span><b>${esc(bord.beneficiaryAccount) || '—'}</b></div>

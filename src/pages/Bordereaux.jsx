@@ -95,7 +95,7 @@ export default function Bordereaux() {
     const validProprio = bordereaux.filter(b => b.type === 'PROPRIETAIRE' && b.status === 'Validé');
     const verseCompta = validCompta.reduce((s, b) => s + (b.totalAmount || 0), 0);
     const reverseProprio = validProprio.reduce((s, b) => s + (b.totalNet || 0), 0);
-    const enAttenteReversement = paidPayments.filter(p => !p.versementProprioId).reduce((s, p) => s + (p.amount || 0), 0);
+    const enAttenteReversement = paidPayments.filter(p => !p.versementProprioId && !p.avanceVerseeProprio).reduce((s, p) => s + (p.amount || 0), 0);
     return {
       totalEncaisse, verseCompta, reverseProprio, enAttenteReversement,
       nbCrees: bordereaux.length,
@@ -229,6 +229,7 @@ export default function Bordereaux() {
       {tab === 'create-compta' && canCreate && (
         <CreateCompta
           eligible={eligibleCompta} currentUser={currentUser} canValidate={canValidate}
+          organizations={state.organizations || []}
           onDone={() => setTab('list')} dispatch={dispatch} toast={toast}
         />
       )}
@@ -379,10 +380,10 @@ function ListTab({ list, search, setSearch, fType, setFType, fStatus, setFStatus
 }
 
 /* ════════════════════════════ CREATE — COMPTA ════════════════════════════ */
-function CreateCompta({ eligible, currentUser, canValidate, onDone, dispatch, toast }) {
+function CreateCompta({ eligible, currentUser, canValidate, organizations = [], onDone, dispatch, toast }) {
   const [sel, setSel] = useState(() => new Set());
   const [monthFilter, setMonthFilter] = useState('Tous');
-  const [form, setForm] = useState({ date: todayISO(), time: nowHM(), agence: '', caissier: '', paymentMode: 'Espèces', bank: '', beneficiaryAccount: '', bankRef: '', observation: '' });
+  const [form, setForm] = useState({ date: todayISO(), time: nowHM(), agence: '', depositedBy: currentUser?.name || '', receivedBy: '', paymentMode: 'Espèces', bank: '', beneficiaryOrgId: '', beneficiaryAccount: '', bankRef: '', observation: '' });
   const [attachments, setAttachments] = useState([]);
   const sigRef = useRef(null);
 
@@ -417,8 +418,14 @@ function CreateCompta({ eligible, currentUser, canValidate, onDone, dispatch, to
       payload: {
         type: 'COMPTA', status,
         date: form.date, time: form.time,
-        agence: form.agence, caissier: form.caissier, paymentMode: form.paymentMode,
-        bank: form.bank, beneficiaryAccount: form.beneficiaryAccount, bankRef: form.bankRef,
+        agence: form.agence,
+        depositedBy: form.depositedBy, receivedBy: form.receivedBy,
+        caissier: form.depositedBy, // legacy field kept in sync
+        paymentMode: form.paymentMode,
+        bank: form.bank,
+        beneficiaryOrgId: form.beneficiaryOrgId,
+        beneficiaryOrgName: (organizations.find(o => o.id === form.beneficiaryOrgId)?.name) || '',
+        beneficiaryAccount: form.beneficiaryAccount, bankRef: form.bankRef,
         observation: form.observation, attachments,
         signatures: { caissier: sigRef.current?.getDataURL() || null },
         lines, totalAmount: total,
@@ -446,12 +453,21 @@ function CreateCompta({ eligible, currentUser, canValidate, onDone, dispatch, to
             <Field label="Date"><input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className={inp} /></Field>
             <Field label="Heure"><input type="time" value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))} className={inp} /></Field>
             <Field label="Agence"><input value={form.agence} onChange={e => setForm(f => ({ ...f, agence: e.target.value }))} className={inp} /></Field>
-            <Field label="Caissier"><input value={form.caissier} onChange={e => setForm(f => ({ ...f, caissier: e.target.value }))} className={inp} /></Field>
             <Field label="Mode de versement">
               <select value={form.paymentMode} onChange={e => setForm(f => ({ ...f, paymentMode: e.target.value }))} className={inp}>
                 {PAYMENT_MODES.map(m => <option key={m}>{m}</option>)}
               </select>
             </Field>
+            <Field label="Versé par (déposant)"><input value={form.depositedBy} onChange={e => setForm(f => ({ ...f, depositedBy: e.target.value }))} className={inp} placeholder="Nom du déposant" /></Field>
+            <Field label="Reçu par (comptable)"><input value={form.receivedBy} onChange={e => setForm(f => ({ ...f, receivedBy: e.target.value }))} className={inp} placeholder="Nom de la comptable" /></Field>
+            <div className="col-span-2">
+              <Field label="Organisation bénéficiaire">
+                <select value={form.beneficiaryOrgId} onChange={e => setForm(f => ({ ...f, beneficiaryOrgId: e.target.value }))} className={inp}>
+                  <option value="">— Choisir une organisation —</option>
+                  {organizations.map(o => <option key={o.id} value={o.id}>{o.name || o.id}</option>)}
+                </select>
+              </Field>
+            </div>
             <Field label="Banque"><input value={form.bank} onChange={e => setForm(f => ({ ...f, bank: e.target.value }))} className={inp} /></Field>
             <Field label="Compte bénéficiaire"><input value={form.beneficiaryAccount} onChange={e => setForm(f => ({ ...f, beneficiaryAccount: e.target.value }))} className={inp} /></Field>
             <Field label="Référence bancaire"><input value={form.bankRef} onChange={e => setForm(f => ({ ...f, bankRef: e.target.value }))} className={inp} /></Field>
@@ -474,7 +490,7 @@ function CreateCompta({ eligible, currentUser, canValidate, onDone, dispatch, to
               </div>
             )}
           </div>
-          <SignaturePad ref={sigRef} label="Signature du caissier" />
+          <SignaturePad ref={sigRef} label="Signature du déposant" />
         </div>
 
         {/* Payment selection */}
@@ -535,7 +551,9 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, currentUser, ca
   // All the owner's collected rents not yet reversed
   const ownerPayments = useMemo(() => {
     if (!owner) return [];
-    return paidPayments.filter(p => !p.versementProprioId && ownerIdOfPayment(p) === Number(owner.id));
+    // Exclude rents already reversed via a voucher OR manually flagged as
+    // "déjà versé au propriétaire" (advance payments) so they don't reappear.
+    return paidPayments.filter(p => !p.versementProprioId && !p.avanceVerseeProprio && ownerIdOfPayment(p) === Number(owner.id));
   }, [owner, paidPayments, ownerIdOfPayment]);
 
   const months = useMemo(() => [...new Set(ownerPayments.map(p => p.month).filter(Boolean))]
@@ -731,7 +749,9 @@ function DetailModal({ b, onClose, canEdit, canDelete, canValidate, onPrint, onS
               <Info label="Banque" value={`${b.ownerBank || '—'} ${b.ownerAccount || ''}`} />
             </> : <>
               <Info label="Agence" value={b.agence || '—'} />
-              <Info label="Caissier" value={b.caissier || '—'} />
+              <Info label="Versé par" value={b.depositedBy || b.caissier || '—'} />
+              <Info label="Reçu par (comptable)" value={b.receivedBy || '—'} />
+              <Info label="Organisation bénéf." value={b.beneficiaryOrgName || '—'} />
             </>}
             <Info label="Mode" value={b.paymentMode || '—'} />
             <Info label="Créé par" value={b.createdBy?.userName || '—'} />
