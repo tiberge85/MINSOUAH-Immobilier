@@ -11,6 +11,11 @@ import { can } from '../lib/permissions';
 
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
+// First day of a date's month. The advance-period check must compare MONTHS,
+// not exact days: a tenant whose paymentStartDate is e.g. the 5th of a month
+// still owes rent for THAT whole month, so they must appear from the 1st.
+const monthFirst = (d) => (d && !isNaN(d.getTime())) ? new Date(d.getFullYear(), d.getMonth(), 1) : null;
+
 // Parse dates stored as dd/mm/yyyy OR ISO yyyy-mm-dd
 function parseTxDate(str) {
   if (!str) return null;
@@ -1202,8 +1207,8 @@ export default function Payments() {
           (c.tenantId && String(t.id) === String(c.tenantId))
         );
         const psDate = tenant?.paymentStartDate ? new Date(tenant.paymentStartDate) : null;
-        // Skip tenants still in their advance period for the current month
-        if (psDate && currentDate < psDate) return;
+        // Skip tenants whose payment starts in a LATER month (still in advance).
+        if (psDate && currentDate < monthFirst(psDate)) return;
         synthesized.push({
           id: `synth-${c.id}`,
           isSynthetic: true,
@@ -1241,7 +1246,7 @@ export default function Payments() {
           (c.tenantId && String(t.id) === String(c.tenantId))
         );
         const psDate = tenant?.paymentStartDate ? new Date(tenant.paymentStartDate) : null;
-        return !psDate || currentDate >= psDate;
+        return !psDate || currentDate >= monthFirst(psDate);
       })
       .map(c => {
         const tenant = (tenants || []).find(t =>
@@ -1330,7 +1335,7 @@ export default function Payments() {
           (c.tenantId && String(t.id) === String(c.tenantId))
         );
         const psDate = tenant?.paymentStartDate ? new Date(tenant.paymentStartDate) : null;
-        const inAdvancePeriod = psDate && selectedDate && selectedDate < psDate;
+        const inAdvancePeriod = psDate && selectedDate && selectedDate < monthFirst(psDate);
 
         if (inAdvancePeriod) {
           advance.push({

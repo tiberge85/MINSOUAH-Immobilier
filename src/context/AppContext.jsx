@@ -930,7 +930,9 @@ export function AppProvider({ children }) {
               (c.tenantId && String(t.id) === String(c.tenantId))
             );
             const psDate = tenant?.paymentStartDate ? new Date(tenant.paymentStartDate) : null;
-            if (psDate && closureMonthDate && closureMonthDate < psDate) continue; // still in advance period
+            // Compare by MONTH: a tenant whose payment starts on the 5th still owes that whole month.
+            const psMonthStart = psDate && !isNaN(psDate.getTime()) ? new Date(psDate.getFullYear(), psDate.getMonth(), 1) : null;
+            if (psMonthStart && closureMonthDate && closureMonthDate < psMonthStart) continue; // still in advance period
             const genId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
             await setDoc(wsDoc('payments', genId), {
               id: genId, orgId, month,
