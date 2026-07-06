@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
-import { verifyPwd, hashPwd } from '../lib/auth';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { verifyPwd } from '../lib/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, setDoc, getDocFromServer } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { sendOTP, verifyOTP } from '../lib/otp';
@@ -21,15 +21,8 @@ export default function Login() {
 
   // ── Forgot-password state ────────────────────────────────────────────
   const [forgotMode, setForgotMode]   = useState(false);
-  const [resetStep, setResetStep]     = useState('email');   // 'email' | 'code'
   const [resetEmail, setResetEmail]   = useState('');
-  const [resetOtp, setResetOtp]       = useState('');
-  const [newPass, setNewPass]         = useState('');
-  const [confirmPass, setConfirmPass] = useState('');
-  const [showNewPass, setShowNewPass] = useState(false);
-  const [resetUser, setResetUser]     = useState(null);
   const [resetError, setResetError]   = useState('');
-  const [resetInfo, setResetInfo]     = useState('');
   const [resetLoading, setResetLoading] = useState(false);
 
   // ── 2FA OTP state ────────────────────────────────────────────────────
@@ -172,73 +165,37 @@ export default function Login() {
 
   // ── Forgot password: request a code ────────────────────────────────────
   const openForgot = () => {
-    setForgotMode(true); setResetStep('email');
-    setResetEmail(email.trim()); setResetOtp(''); setNewPass(''); setConfirmPass('');
-    setResetError(''); setResetInfo('');
+    setForgotMode(true);
+    setResetEmail(email.trim());
+    setResetError('');
   };
-  const closeForgot = () => { setForgotMode(false); setResetError(''); setResetInfo(''); };
+  const closeForgot = () => { setForgotMode(false); setResetError(''); };
 
   const handleResetRequest = async (e) => {
     e.preventDefault();
     setResetError(''); setResetInfo('');
     const emailLow = resetEmail.trim().toLowerCase();
-    const user = users.find((u) => (u.email || '').toLowerCase() === emailLow);
-    if (!user) { setResetError('Aucun compte trouvé avec cet email.'); return; }
-    if (!user.email) { setResetError("Ce compte n'a pas d'adresse email pour recevoir le code."); return; }
+    if (!emailLow) { setResetError('Entrez votre adresse email.'); return; }
     setResetLoading(true);
     try {
-      const res = await sendOTP({ userId: user.id, email: user.email, name: user.name });
-      if (res?.ok) {
-        setResetUser(user);
-        setResetStep('code');
-        setResetInfo('Un code à 6 chiffres vient de vous être envoyé par email.');
-      } else {
-        setResetError("Échec de l'envoi du code. Vérifiez votre connexion et réessayez.");
-      }
-    } finally {
-      setResetLoading(false);
-    }
-  };
-
-  // ── Forgot password: verify code + set the new password ────────────────
-  const handleResetConfirm = async (e) => {
-    e.preventDefault();
-    setResetError('');
-    if (!resetOtp.trim() || resetOtp.length < 6) { setResetError('Entrez le code à 6 chiffres.'); return; }
-    if (newPass.length < 6) { setResetError('Le mot de passe doit contenir au moins 6 caractères.'); return; }
-    if (newPass !== confirmPass) { setResetError('Les deux mots de passe ne correspondent pas.'); return; }
-    setResetLoading(true);
-    try {
-      const result = await verifyOTP({ userId: resetUser.id, code: resetOtp, keep: true });
-      if (!result.ok) {
-        setResetError(
-          result.reason === 'expired' ? 'Code expiré. Renvoyez un nouveau code.'
-          : result.reason === 'locked' ? 'Trop de tentatives. Renvoyez un nouveau code.'
-          : `Code incorrect. ${result.remaining} tentative(s) restante(s).`
-        );
-        return;
-      }
-      const hashed = await hashPwd(newPass);
-      dispatch({ type: 'CHANGE_PASSWORD', payload: { email: resetUser.email, newPassword: hashed } });
-      // Return to login with a success banner + prefilled email
+      // Firebase-native reset: sends a secure link so the user sets a new
+      // password directly in Firebase Auth → normal sign-in then works.
+      await sendPasswordResetEmail(auth, emailLow);
       setForgotMode(false);
-      setResetStep('email');
-      setEmail(resetUser.email);
+      setEmail(resetEmail.trim());
       setPassword('');
       setError('');
-      setSuccessMsg('Mot de passe modifié. Connectez-vous avec votre nouveau mot de passe.');
-    } finally {
-      setResetLoading(false);
-    }
-  };
-
-  const handleResetResend = async () => {
-    if (!resetUser) return;
-    setResetError(''); setResetInfo('');
-    setResetLoading(true);
-    try {
-      await sendOTP({ userId: resetUser.id, email: resetUser.email, name: resetUser.name });
-      setResetInfo('Nouveau code envoyé.');
+      setSuccessMsg("Email de réinitialisation envoyé. Ouvrez le lien reçu pour choisir un nouveau mot de passe, puis reconnectez-vous. (Pensez à vérifier vos spams.)");
+    } catch (err) {
+      if (err?.code === 'auth/user-not-found') {
+        setResetError("Aucun compte d'authentification pour cet email. Contactez votre administrateur pour réinitialiser votre mot de passe.");
+      } else if (err?.code === 'auth/invalid-email') {
+        setResetError('Adresse email invalide.');
+      } else if (err?.code === 'auth/too-many-requests') {
+        setResetError('Trop de tentatives. Réessayez dans quelques minutes.');
+      } else {
+        setResetError("Échec de l'envoi de l'email. Vérifiez votre connexion et réessayez.");
+      }
     } finally {
       setResetLoading(false);
     }
@@ -465,72 +422,27 @@ export default function Login() {
           </div>
 
           <div className="bg-surface rounded-3xl shadow-xl overflow-hidden border border-outline-variant/20 p-6">
-            {resetStep === 'email' ? (
-              <form onSubmit={handleResetRequest} className="flex flex-col gap-4">
-                <div>
-                  <h2 className="font-bold text-xl text-on-surface mb-1">Mot de passe oublié</h2>
-                  <p className="text-sm text-on-surface-variant">Entrez votre email. Un code de vérification vous sera envoyé pour définir un nouveau mot de passe.</p>
+            <form onSubmit={handleResetRequest} className="flex flex-col gap-4">
+              <div>
+                <h2 className="font-bold text-xl text-on-surface mb-1">Mot de passe oublié</h2>
+                <p className="text-sm text-on-surface-variant">Entrez votre email. Nous vous enverrons un lien sécurisé pour définir un nouveau mot de passe.</p>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-semibold text-on-surface">Adresse email</label>
+                <div className="relative">
+                  <input type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)}
+                    placeholder="votre@email.com" required autoFocus
+                    className="w-full px-4 py-3 pl-11 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface" />
+                  <Icon name="mail" size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant" />
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm font-semibold text-on-surface">Adresse email</label>
-                  <div className="relative">
-                    <input type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)}
-                      placeholder="votre@email.com" required autoFocus
-                      className="w-full px-4 py-3 pl-11 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface" />
-                    <Icon name="mail" size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant" />
-                  </div>
-                </div>
-                {resetError && <div className="flex items-start gap-2 bg-error/10 border border-error/20 rounded-xl px-3 py-2.5"><Icon name="error" size={16} className="text-error flex-shrink-0 mt-0.5" /><p className="text-error text-sm">{resetError}</p></div>}
-                <button type="submit" disabled={resetLoading}
-                  className="w-full py-3.5 bg-primary text-on-primary font-bold rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
-                  {resetLoading ? <><Icon name="progress_activity" size={20} className="animate-spin" /> Envoi…</> : <><Icon name="send" size={20} /> Envoyer le code</>}
-                </button>
-                <button type="button" onClick={closeForgot} className="text-sm text-on-surface-variant hover:text-on-surface underline transition-colors">← Retour à la connexion</button>
-              </form>
-            ) : (
-              <form onSubmit={handleResetConfirm} className="flex flex-col gap-4">
-                <div>
-                  <h2 className="font-bold text-xl text-on-surface mb-1">Nouveau mot de passe</h2>
-                  <p className="text-sm text-on-surface-variant">Entrez le code reçu par email et choisissez un nouveau mot de passe.</p>
-                </div>
-                {resetInfo && <div className="flex items-start gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2.5"><Icon name="mark_email_read" size={16} className="text-green-700 flex-shrink-0 mt-0.5" /><p className="text-green-700 text-sm">{resetInfo}</p></div>}
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm font-semibold text-on-surface">Code de vérification</label>
-                  <input type="text" inputMode="numeric" maxLength={6} value={resetOtp}
-                    onChange={(e) => setResetOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="— — — — — —" required
-                    className="w-full px-4 py-3 rounded-xl border-2 border-outline-variant/40 bg-surface-container focus:outline-none focus:border-primary text-on-surface text-center text-xl font-black tracking-[0.5em]" />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm font-semibold text-on-surface">Nouveau mot de passe</label>
-                  <div className="relative">
-                    <input type={showNewPass ? 'text' : 'password'} value={newPass} onChange={(e) => setNewPass(e.target.value)}
-                      placeholder="Au moins 6 caractères" required
-                      className="w-full px-4 py-3 pl-11 pr-12 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface" />
-                    <Icon name="lock" size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant" />
-                    <button type="button" onClick={() => setShowNewPass(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface"><Icon name={showNewPass ? 'visibility_off' : 'visibility'} size={20} /></button>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm font-semibold text-on-surface">Confirmer le mot de passe</label>
-                  <div className="relative">
-                    <input type={showNewPass ? 'text' : 'password'} value={confirmPass} onChange={(e) => setConfirmPass(e.target.value)}
-                      placeholder="Ressaisissez le mot de passe" required
-                      className="w-full px-4 py-3 pl-11 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface" />
-                    <Icon name="lock" size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant" />
-                  </div>
-                </div>
-                {resetError && <div className="flex items-start gap-2 bg-error/10 border border-error/20 rounded-xl px-3 py-2.5"><Icon name="error" size={16} className="text-error flex-shrink-0 mt-0.5" /><p className="text-error text-sm">{resetError}</p></div>}
-                <button type="submit" disabled={resetLoading}
-                  className="w-full py-3.5 bg-primary text-on-primary font-bold rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
-                  {resetLoading ? <><Icon name="progress_activity" size={20} className="animate-spin" /> Modification…</> : <><Icon name="check_circle" size={20} /> Modifier le mot de passe</>}
-                </button>
-                <div className="flex items-center justify-between">
-                  <button type="button" onClick={handleResetResend} disabled={resetLoading} className="text-sm font-semibold text-primary disabled:opacity-50 flex items-center gap-1.5"><Icon name="refresh" size={16} /> Renvoyer le code</button>
-                  <button type="button" onClick={closeForgot} className="text-sm text-on-surface-variant hover:text-on-surface underline">Annuler</button>
-                </div>
-              </form>
-            )}
+              </div>
+              {resetError && <div className="flex items-start gap-2 bg-error/10 border border-error/20 rounded-xl px-3 py-2.5"><Icon name="error" size={16} className="text-error flex-shrink-0 mt-0.5" /><p className="text-error text-sm">{resetError}</p></div>}
+              <button type="submit" disabled={resetLoading}
+                className="w-full py-3.5 bg-primary text-on-primary font-bold rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
+                {resetLoading ? <><Icon name="progress_activity" size={20} className="animate-spin" /> Envoi…</> : <><Icon name="send" size={20} /> Envoyer le lien</>}
+              </button>
+              <button type="button" onClick={closeForgot} className="text-sm text-on-surface-variant hover:text-on-surface underline transition-colors">← Retour à la connexion</button>
+            </form>
           </div>
           <p className="text-center text-xs text-on-surface-variant mt-6">© {new Date().getFullYear()} Minsouah — Gestion immobilière Côte d'Ivoire</p>
         </div>
