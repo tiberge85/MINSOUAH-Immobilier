@@ -1273,16 +1273,67 @@ export default function Payments() {
   const arrearsList = useMemo(() => {
     const cy = now.getFullYear();
     const cm = now.getMonth();
-    return (payments || []).filter(p => {
+    const curIdx = cy * 12 + cm;        // absolute index of the current month
+    const FLOOR = 12;                   // synthesize at most 12 months of history
+
+    // 1) Explicit unpaid records from months strictly before the current month
+    const explicit = (payments || []).filter(p => {
       if (p.status === 'Payé' || p.status === 'Annulé') return false;
       if (!p.month) return false;
       const [mn, yr] = p.month.split(' ');
       const idx = MONTH_NAMES.indexOf(mn);
       if (idx === -1) return false;
-      const y = parseInt(yr);
-      return y < cy || (y === cy && idx < cm);
+      return (parseInt(yr) * 12 + idx) < curIdx;
     });
-  }, [payments, now]);
+
+    // Tenant+month combos already having ANY record (paid or not) → don't duplicate
+    const covered = new Set(
+      (payments || []).filter(p => p.month)
+        .map(p => `${(p.tenantName || '').toLowerCase().trim()}|${p.month}`)
+    );
+
+    // 2) Synthesize arrears from active contracts for past unpaid months with no
+    //    record — so a July rent still shows as an arrear in August even if no
+    //    payment record was ever created / the month wasn't closed.
+    const synth = [];
+    (contracts || [])
+      .filter(c => c.status === 'Actif' || c.status === 'Expirant')
+      .forEach(c => {
+        const name = (c.tenant || '').toLowerCase().trim();
+        if (!name) return;
+        const tenant = (tenants || []).find(t =>
+          (t.name || '').toLowerCase().trim() === name ||
+          (c.tenantId && String(t.id) === String(c.tenantId))
+        );
+        const psDate = tenant?.paymentStartDate ? new Date(tenant.paymentStartDate) : null;
+        const psIdx = (psDate && !isNaN(psDate.getTime()))
+          ? psDate.getFullYear() * 12 + psDate.getMonth()
+          : curIdx - FLOOR;
+        const startIdx = Math.max(psIdx, curIdx - FLOOR);
+        for (let mi = startIdx; mi < curIdx; mi++) {
+          const y = Math.floor(mi / 12);
+          const m = ((mi % 12) + 12) % 12;
+          const label = `${MONTH_NAMES[m]} ${y}`;
+          if (covered.has(`${name}|${label}`)) continue;
+          synth.push({
+            id: `arr-${c.id}-${y}-${m}`,
+            isSynthetic: true,
+            tenantName: c.tenant || '',
+            tenantId: c.tenantId || tenant?.id || null,
+            tenantPhone: tenant?.phone || '',
+            tenantEmail: tenant?.email || '',
+            ownerId: c.ownerId != null ? c.ownerId : (tenant?.ownerId ?? null),
+            propertyName: c.propertyName || '',
+            amount: c.rent || 0,
+            month: label,
+            status: 'Impayé',
+            dueDate: '',
+          });
+        }
+      });
+
+    return [...explicit, ...synth];
+  }, [payments, contracts, tenants, now]);
   const arrearsTotal = arrearsList.reduce((s, p) => s + (p.amount || 0), 0);
 
   /* ── Arrears grouped by tenant ── */
@@ -2454,7 +2505,7 @@ export default function Payments() {
                                 </td>
                                 <td className="px-4 py-3">
                                   <div className="flex gap-2 flex-wrap">
-                                    <Btn small icon="check_circle" variant="green" onClick={() => handleMarkPaid(p.id)}>Encaisser</Btn>
+                                    <Btn small icon="check_circle" variant="green" onClick={() => markUnpaidPaid(p)}>Encaisser</Btn>
                                     {group.tenantPhone && (() => {
                                       const phone = phoneForWA(group.tenantPhone);
                                       const msg = encodeURIComponent(
@@ -2467,14 +2518,16 @@ export default function Payments() {
                                         </button>
                                       ) : null;
                                     })()}
-                                    <button onClick={() => {
-                                      if (window.confirm(`Supprimer l'arriéré de ${p.month} pour ${group.tenantName} ?`)) {
-                                        dispatch({ type: 'DELETE_PAYMENT', payload: p.id });
-                                        setArrearsSelected(prev => { const next = new Set(prev); next.delete(p.id); return next; });
-                                      }
-                                    }} className="flex items-center gap-1 px-2 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100">
-                                      <Icon name="delete" size={12} />
-                                    </button>
+                                    {!p.isSynthetic && (
+                                      <button onClick={() => {
+                                        if (window.confirm(`Supprimer l'arriéré de ${p.month} pour ${group.tenantName} ?`)) {
+                                          dispatch({ type: 'DELETE_PAYMENT', payload: p.id });
+                                          setArrearsSelected(prev => { const next = new Set(prev); next.delete(p.id); return next; });
+                                        }
+                                      }} className="flex items-center gap-1 px-2 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100">
+                                        <Icon name="delete" size={12} />
+                                      </button>
+                                    )}
                                   </div>
                                 </td>
                               </tr>
