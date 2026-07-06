@@ -234,9 +234,20 @@ export default function Login() {
         const cred = await signInWithEmailAndPassword(auth, emailLow, password);
         firebaseUid = cred.user.uid;
       } catch (fbErr) {
-        const isUnknown = ['auth/user-not-found', 'auth/invalid-credential', 'auth/wrong-password',
-          'auth/invalid-email', 'auth/user-disabled'].includes(fbErr.code);
-        if (!isUnknown) {
+        // Firebase sign-in failed for ANY reason (wrong Firebase password, no
+        // Firebase account, unknown/other error code…). The app's stored
+        // password hash is the source of truth for admin/self resets (which do
+        // NOT touch Firebase Auth), so ALWAYS fall back to verifying it. Accept
+        // login when EITHER the Firebase password OR the local hash matches.
+        let ok = false;
+        try {
+          ok = await verifyPwd(password, user.password);
+        } catch (hashErr) {
+          console.warn('[Login] hash verify failed', hashErr);
+          setError("Vérification impossible dans ce contexte. Ouvrez l'application en HTTPS (https://…) puis réessayez.");
+          return;
+        }
+        if (!ok) {
           dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: emailLow, success: false } });
           const attempts = (user.failedAttempts || 0) + 1;
           await logSec({ action: SEC.LOGIN_FAIL, userId: user.id, userEmail: emailLow, role: user.role, details: `Attempt ${attempts}` });
@@ -245,32 +256,22 @@ export default function Login() {
             : `Mot de passe incorrect. ${5 - attempts} tentative(s) restante(s).`);
           return;
         }
-        const ok = await verifyPwd(password, user.password);
-        if (!ok) {
-          dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: emailLow, success: false } });
-          const attempts = (user.failedAttempts || 0) + 1;
-          setError(attempts >= 5
-            ? 'Compte bloqué pour 15 minutes après 5 tentatives échouées.'
-            : `Mot de passe incorrect. ${5 - attempts} tentative(s) restante(s).`);
-          return;
-        }
+        // Hash verified — ensure a Firebase Auth account exists for this password
         try {
           const newCred = await createUserWithEmailAndPassword(auth, emailLow, password);
           firebaseUid = newCred.user.uid;
         } catch (createErr) {
           if (createErr.code === 'auth/email-already-in-use') {
-            // Firebase Auth account exists but with a different password than the app's stored hash.
-            // The user proved their identity via the in-app password check above.
-            // Re-try sign-in with the same password — in case the SDK cached a stale error earlier.
+            // A Firebase account exists but with a different password. The user
+            // proved identity via the local hash — retry sign-in just in case.
             try {
               const retryCred = await signInWithEmailAndPassword(auth, emailLow, password);
               firebaseUid = retryCred.user.uid;
             } catch {
-              // Still fails — passwords genuinely differ. Log but don't block the user.
-              console.warn('[Login] Firebase Auth password out of sync for', emailLow, '— usersByUid will not be written at login. SUPER_ADMIN should log out and log in again to trigger resync.');
+              console.warn('[Login] Firebase Auth password out of sync for', emailLow, '— logging in via local hash.');
             }
           }
-          // Other create errors are ignored — user still gets in-app access
+          // Other create errors ignored — user still gets in-app access via the hash
         }
       }
 
