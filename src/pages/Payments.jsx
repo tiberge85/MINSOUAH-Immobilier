@@ -1228,6 +1228,31 @@ export default function Payments() {
     return [...explicit, ...synthesized];
   }, [payments, currentMonthLabel, contracts, tenants, now]);
 
+  /* ── Active tenants in their ADVANCE period this month (paid caution/avance,
+        payment starts a later month) → not due this month, shown for clarity ── */
+  const currentMonthAdvance = useMemo(() => {
+    const currentDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    const alreadyInMonth = new Set(
+      (payments || []).filter(p => p.month === currentMonthLabel)
+        .map(p => (p.tenantName || '').toLowerCase().trim()).filter(Boolean)
+    );
+    const out = [];
+    (contracts || [])
+      .filter(c => c.status === 'Actif' || c.status === 'Expirant')
+      .filter(c => !alreadyInMonth.has((c.tenant || '').toLowerCase().trim()))
+      .forEach(c => {
+        const tenant = (tenants || []).find(t =>
+          (t.name || '').toLowerCase().trim() === (c.tenant || '').toLowerCase().trim() ||
+          (c.tenantId && String(t.id) === String(c.tenantId))
+        );
+        const psDate = tenant?.paymentStartDate ? new Date(tenant.paymentStartDate) : null;
+        if (psDate && currentDate < monthFirst(psDate)) {
+          out.push({ tenantName: c.tenant || '', propertyName: c.propertyName || '', amount: c.rent || 0, paymentStartDate: tenant.paymentStartDate });
+        }
+      });
+    return out;
+  }, [payments, currentMonthLabel, contracts, tenants, now]);
+
   /* ── Penalty list: active tenants who haven't paid for current month ── */
   const penaltyList = useMemo(() => {
     const currentDate = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -1270,70 +1295,22 @@ export default function Payments() {
   }, [contracts, payments, currentMonthLabel, tenants, now]);
 
   /* ── Arrears: unpaid payments from months BEFORE the current month ── */
+  // Arrears = explicit unpaid records from months BEFORE the current month.
+  // These are created when a month is closed (CLOSE_MONTH turns unpaid active
+  // tenants into "Impayé" records) or entered manually — NOT auto-synthesized.
   const arrearsList = useMemo(() => {
     const cy = now.getFullYear();
     const cm = now.getMonth();
-    const curIdx = cy * 12 + cm;        // absolute index of the current month
-    const FLOOR = 12;                   // synthesize at most 12 months of history
-
-    // 1) Explicit unpaid records from months strictly before the current month
-    const explicit = (payments || []).filter(p => {
+    return (payments || []).filter(p => {
       if (p.status === 'Payé' || p.status === 'Annulé') return false;
       if (!p.month) return false;
       const [mn, yr] = p.month.split(' ');
       const idx = MONTH_NAMES.indexOf(mn);
       if (idx === -1) return false;
-      return (parseInt(yr) * 12 + idx) < curIdx;
+      const y = parseInt(yr);
+      return y < cy || (y === cy && idx < cm);
     });
-
-    // Tenant+month combos already having ANY record (paid or not) → don't duplicate
-    const covered = new Set(
-      (payments || []).filter(p => p.month)
-        .map(p => `${(p.tenantName || '').toLowerCase().trim()}|${p.month}`)
-    );
-
-    // 2) Synthesize arrears from active contracts for past unpaid months with no
-    //    record — so a July rent still shows as an arrear in August even if no
-    //    payment record was ever created / the month wasn't closed.
-    const synth = [];
-    (contracts || [])
-      .filter(c => c.status === 'Actif' || c.status === 'Expirant')
-      .forEach(c => {
-        const name = (c.tenant || '').toLowerCase().trim();
-        if (!name) return;
-        const tenant = (tenants || []).find(t =>
-          (t.name || '').toLowerCase().trim() === name ||
-          (c.tenantId && String(t.id) === String(c.tenantId))
-        );
-        const psDate = tenant?.paymentStartDate ? new Date(tenant.paymentStartDate) : null;
-        const psIdx = (psDate && !isNaN(psDate.getTime()))
-          ? psDate.getFullYear() * 12 + psDate.getMonth()
-          : curIdx - FLOOR;
-        const startIdx = Math.max(psIdx, curIdx - FLOOR);
-        for (let mi = startIdx; mi < curIdx; mi++) {
-          const y = Math.floor(mi / 12);
-          const m = ((mi % 12) + 12) % 12;
-          const label = `${MONTH_NAMES[m]} ${y}`;
-          if (covered.has(`${name}|${label}`)) continue;
-          synth.push({
-            id: `arr-${c.id}-${y}-${m}`,
-            isSynthetic: true,
-            tenantName: c.tenant || '',
-            tenantId: c.tenantId || tenant?.id || null,
-            tenantPhone: tenant?.phone || '',
-            tenantEmail: tenant?.email || '',
-            ownerId: c.ownerId != null ? c.ownerId : (tenant?.ownerId ?? null),
-            propertyName: c.propertyName || '',
-            amount: c.rent || 0,
-            month: label,
-            status: 'Impayé',
-            dueDate: '',
-          });
-        }
-      });
-
-    return [...explicit, ...synth];
-  }, [payments, contracts, tenants, now]);
+  }, [payments, now]);
   const arrearsTotal = arrearsList.reduce((s, p) => s + (p.amount || 0), 0);
 
   /* ── Arrears grouped by tenant ── */
@@ -2176,7 +2153,8 @@ export default function Payments() {
             <div>
               <h3 className="font-bold text-on-surface text-base">Rappels — {currentMonthLabel}</h3>
               <p className="text-sm text-on-surface-variant mt-0.5">
-                {currentMonthUnpaid.length} locataire(s) n'ont pas encore payé ce mois-ci
+                <span className="font-semibold text-red-700">{currentMonthUnpaid.length}</span> à relancer
+                {currentMonthAdvance.length > 0 && <> · <span className="font-semibold text-blue-700">{currentMonthAdvance.length}</span> en avance</>}
               </p>
             </div>
             <div className="flex gap-sm flex-wrap">
@@ -2197,8 +2175,12 @@ export default function Payments() {
           {currentMonthUnpaid.length === 0 ? (
             <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
               <Icon name="check_circle" size={40} className="text-green-600 mb-3" />
-              <p className="font-semibold text-green-800">Tous les loyers ont été réglés ce mois-ci !</p>
-              <p className="text-sm text-green-600 mt-1">Aucun rappel à envoyer pour {currentMonthLabel}.</p>
+              <p className="font-semibold text-green-800">Aucun loyer en attente ce mois-ci</p>
+              <p className="text-sm text-green-600 mt-1">
+                {currentMonthAdvance.length > 0
+                  ? `Les loyers dus pour ${currentMonthLabel} sont réglés. ${currentMonthAdvance.length} locataire(s) sont en période d'avance (voir ci-dessous).`
+                  : `Aucun rappel à envoyer pour ${currentMonthLabel}.`}
+              </p>
             </div>
           ) : (
             <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 overflow-hidden shadow-card">
@@ -2261,6 +2243,36 @@ export default function Payments() {
                               <Icon name="check_circle" size={12} /> Marquer payé
                             </button>
                           </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ── Locataires en période d'avance (non dus ce mois) ── */}
+          {currentMonthAdvance.length > 0 && (
+            <div className="bg-blue-50/50 rounded-xl border border-blue-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-blue-200 flex items-center gap-2">
+                <Icon name="schedule" size={18} className="text-blue-700" />
+                <p className="font-bold text-blue-800 text-sm">En période d'avance — {currentMonthAdvance.length} locataire(s)</p>
+                <span className="text-xs text-blue-600">(caution/avance versée — paiement mensuel à venir, non dû ce mois)</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-blue-100/60 text-blue-800">
+                    <tr>{['Locataire','Propriété','Loyer','Paiement à partir de'].map(h => <th key={h} className="px-4 py-2 text-xs font-bold uppercase tracking-wide">{h}</th>)}</tr>
+                  </thead>
+                  <tbody className="divide-y divide-blue-100">
+                    {currentMonthAdvance.map((a, i) => (
+                      <tr key={i}>
+                        <td className="px-4 py-2.5 font-semibold text-on-surface">{a.tenantName}</td>
+                        <td className="px-4 py-2.5 text-on-surface-variant">{a.propertyName}</td>
+                        <td className="px-4 py-2.5 text-on-surface">{fmt(a.amount)}</td>
+                        <td className="px-4 py-2.5 text-blue-700 font-medium">
+                          {a.paymentStartDate ? new Date(a.paymentStartDate).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : '—'}
                         </td>
                       </tr>
                     ))}
