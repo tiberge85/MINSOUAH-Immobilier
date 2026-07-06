@@ -326,26 +326,38 @@ export function AppProvider({ children }) {
   const unsubFirestoreRef = useRef([]);
 
   useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         // Auth is ready — open all Firestore listeners
         const unsubs = [];
 
         // Derive orgId from session for non-admin filtering
         let sessionOrgId = null;
+        let sessionUser = null;
         try {
           const saved = localStorage.getItem(SESSION_KEY);
           if (saved) {
-            const u = JSON.parse(saved);
+            sessionUser = JSON.parse(saved);
             // SUPER_ADMIN sees all orgs; everyone else is scoped to their orgId
-            if (u?.role !== 'SUPER_ADMIN') sessionOrgId = u?.orgId || null;
-            // Refresh usersByUid so Firestore rules recognize this session/UID
-            setDoc(wsDoc('usersByUid', user.uid), {
-              userId: String(u.id), orgId: u.orgId || 'default', role: u.role,
-              updatedAt: new Date().toISOString(),
-            }, { merge: true }).catch(() => {});
+            if (sessionUser?.role !== 'SUPER_ADMIN') sessionOrgId = sessionUser?.orgId || null;
           }
         } catch { /* ignore */ }
+
+        // Refresh usersByUid so Firestore rules recognize this session's CURRENT
+        // org, and WAIT for the write to land on the server BEFORE opening the
+        // org-filtered subscriptions. Without this, switching organization
+        // returned no data until a manual refresh (rules evaluated the reads
+        // against the previous org → PERMISSION_DENIED).
+        if (sessionUser) {
+          try {
+            const ubRef = wsDoc('usersByUid', user.uid);
+            await setDoc(ubRef, {
+              userId: String(sessionUser.id), orgId: sessionUser.orgId || 'default', role: sessionUser.role,
+              updatedAt: new Date().toISOString(),
+            }, { merge: true });
+            await getDocFromServer(ubRef);
+          } catch (e) { console.warn('[usersByUid sync]', e?.code || e?.message); }
+        }
 
         const sub = (colName, orgFiltered = false) => {
           const q = (orgFiltered && sessionOrgId)
