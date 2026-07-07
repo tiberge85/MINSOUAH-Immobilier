@@ -51,7 +51,14 @@ export default function PublicBordereau() {
             <div className="w-14 h-14 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-3">
               <Icon name="verified" size={28} className="text-green-700" />
             </div>
-            <p className="text-center font-bold text-green-700 mb-4">Document authentique ✓</p>
+            <p className="text-center font-bold text-green-700 mb-3">Enregistrement trouvé ✓</p>
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+              <Icon name="info" size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 leading-relaxed">
+                <strong>Comparez ces informations avec le document papier</strong> — surtout le <strong>montant</strong>, le <strong>bénéficiaire</strong> et la <strong>date</strong>.
+                En cas de différence, le document est <strong>falsifié</strong>.
+              </p>
+            </div>
             <div className="flex flex-col gap-2 text-sm bg-surface-container-low rounded-xl p-4">
               <Row label="N° Bordereau" value={data.number} />
               <Row label="Type" value={data.type === 'PROPRIETAIRE' ? 'Reversement propriétaire' : 'Versement comptabilité'} />
