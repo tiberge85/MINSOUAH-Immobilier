@@ -879,6 +879,26 @@ export function AppProvider({ children }) {
           await logActivity(`Bordereau ${bord.number} → ${status}`, 'BORDEREAU_STATUS');
           break;
         }
+        // ── QUITTANCE VERIFICATION (public QR authenticity doc) ───────────────
+        case 'SAVE_QUITTANCE_VERIFY': {
+          const p = payload;
+          if (!p?.id) break;
+          await setDoc(wsDoc('quittanceVerify', String(p.id)), {
+            id: String(p.id),
+            receiptNum: p.receiptNum || `QUI-${p.id}`,
+            tenantName: p.tenantName || '',
+            propertyName: p.propertyName || '',
+            month: p.month || '',
+            amount: p.amount || 0,
+            paidDate: p.paidDate || '',
+            method: p.method || '',
+            status: 'Payé',
+            orgId,
+            companyName: st.orgSettings?.companyName || 'Minsouah Immobilier',
+            issuedAt: new Date().toISOString(),
+          }, { merge: true }).catch(() => {});
+          break;
+        }
         case 'DELETE_BORDEREAU': {
           const bord = st.bordereaux.find((b) => b.id === payload);
           // Safety: release any locked payments before deleting

@@ -837,6 +837,29 @@ export default function Settings() {
                 </button>
               </form>
 
+              {/* Auto-logout on inactivity — admin only */}
+              {['ORGANIZATION_ADMIN', 'ADMIN', 'SUPER_ADMIN'].includes(currentUser?.role) && (
+                <div className="border-t border-outline-variant/20 pt-6 max-w-sm">
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                    <Icon name="timer" size={14} className="text-primary" /> Déconnexion automatique
+                  </label>
+                  <select
+                    value={state.systemSettings?.sessionTimeout || 30}
+                    onChange={e => { dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: { sessionTimeout: Number(e.target.value) } }); showToast('Délai de déconnexion mis à jour'); }}
+                    className={inputCls}
+                  >
+                    <option value={5}>Après 5 minutes d'inactivité</option>
+                    <option value={10}>Après 10 minutes d'inactivité</option>
+                    <option value={15}>Après 15 minutes d'inactivité</option>
+                    <option value={30}>Après 30 minutes d'inactivité</option>
+                    <option value={60}>Après 1 heure d'inactivité</option>
+                  </select>
+                  <p className="text-xs text-on-surface-variant mt-1.5">
+                    Pour la sécurité, les comptes sont déconnectés après cette durée sans activité (un avertissement s'affiche 2 minutes avant). S'applique à toute l'organisation.
+                  </p>
+                </div>
+              )}
+
               {/* Reset section — admin only */}
               {['ORGANIZATION_ADMIN', 'ADMIN'].includes(currentUser?.role) && (
                 <div className="border-t border-outline-variant/20 pt-6 flex flex-col gap-4">

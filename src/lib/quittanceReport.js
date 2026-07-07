@@ -1,10 +1,12 @@
 import { SCI_NORA_LOGO, SCI_NORA_STAMP } from './sciNoraAssets.js';
 
-export function buildReceiptHTML(payment, orgSettings, signatures = {}, nextPaymentDate = null) {
+export function buildReceiptHTML(payment, orgSettings, signatures = {}, nextPaymentDate = null, opts = {}) {
   const org = orgSettings || {};
   const orgLogo  = org.logo  || '';
   const orgStamp = org.stamp || '';
-  const receiptNum = `QUI-${payment.id}-${Date.now().toString().slice(-5)}`;
+  // Stable receipt number (based on the payment id) so the QR / verification match
+  const receiptNum = payment.receiptNum || `QUI-${payment.id}`;
+  const qr = opts.qrDataUrl || '';
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -13,45 +15,50 @@ export function buildReceiptHTML(payment, orgSettings, signatures = {}, nextPaym
 <title>Quittance de Loyer — ${payment.month}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  @page { size: A4 portrait; margin: 10mm 12mm; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1c1b19; background: #fff; font-size: 12px; }
-  .page { width: 100%; padding: 14px 18px; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #785a00; padding-bottom: 10px; margin-bottom: 14px; }
-  .brand { font-size: 20px; font-weight: 900; color: #785a00; letter-spacing: -0.5px; }
+  @page { size: A4 portrait; margin: 8mm 12mm; }
+  html, body { height: 100%; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1c1b19; background: #fff; font-size: 11.5px; }
+  .page { width: 100%; padding: 6px 10px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #785a00; padding-bottom: 8px; margin-bottom: 10px; }
+  .brand { font-size: 19px; font-weight: 900; color: #785a00; letter-spacing: -0.5px; }
   .brand-sub { font-size: 9px; color: #817662; text-transform: uppercase; letter-spacing: 2px; margin-top: 2px; }
   .doc-info { text-align: right; }
   .doc-info h2 { font-size: 14px; font-weight: 700; color: #1c1b19; }
   .doc-info p { font-size: 10px; color: #817662; margin-top: 2px; }
   .receipt-num { display: inline-block; background: #fff8f2; border: 1px solid #e3d9cc; border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 700; color: #785a00; margin-top: 4px; }
-  .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
-  .party { background: #fff8f2; border: 1px solid #e3d9cc; border-radius: 8px; padding: 10px 12px; }
-  .party-title { font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px; color: #817662; font-weight: 700; margin-bottom: 5px; }
-  .party-name { font-size: 13px; font-weight: 700; color: #1c1b19; margin-bottom: 2px; }
-  .party-detail { font-size: 10px; color: #5a5040; line-height: 1.5; }
-  .amount-box { background: #785a00; color: white; border-radius: 10px; padding: 14px 20px; text-align: center; margin-bottom: 14px; }
-  .amount-label { font-size: 9px; text-transform: uppercase; letter-spacing: 2px; opacity: 0.8; margin-bottom: 4px; }
-  .amount-value { font-size: 28px; font-weight: 900; letter-spacing: -1px; }
-  .amount-period { font-size: 12px; opacity: 0.85; margin-top: 3px; }
-  .details { border: 1px solid #e3d9cc; border-radius: 8px; overflow: hidden; margin-bottom: 14px; }
-  .details-row { display: flex; justify-content: space-between; padding: 6px 12px; font-size: 11px; border-bottom: 1px solid #f0e8de; }
+  .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .party { background: #fff8f2; border: 1px solid #e3d9cc; border-radius: 8px; padding: 8px 10px; }
+  .party-title { font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px; color: #817662; font-weight: 700; margin-bottom: 4px; }
+  .party-name { font-size: 12.5px; font-weight: 700; color: #1c1b19; margin-bottom: 2px; }
+  .party-detail { font-size: 10px; color: #5a5040; line-height: 1.4; }
+  .amount-box { background: #785a00; color: white; border-radius: 10px; padding: 10px 18px; text-align: center; margin-bottom: 10px; }
+  .amount-label { font-size: 9px; text-transform: uppercase; letter-spacing: 2px; opacity: 0.8; margin-bottom: 3px; }
+  .amount-value { font-size: 25px; font-weight: 900; letter-spacing: -1px; }
+  .amount-period { font-size: 12px; opacity: 0.85; margin-top: 2px; }
+  .details { border: 1px solid #e3d9cc; border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
+  .details-row { display: flex; justify-content: space-between; padding: 4px 12px; font-size: 10.5px; border-bottom: 1px solid #f0e8de; }
   .details-row:last-child { border-bottom: none; }
   .details-row span:first-child { color: #817662; }
   .details-row span:last-child { font-weight: 600; color: #1c1b19; }
-  .next-payment { background:#fff8f2; border:1px solid #e3d9cc; border-radius:8px; padding:8px 14px; margin-bottom:14px; display:flex; align-items:center; gap:10px; }
-  .signatures { display: flex; justify-content: space-around; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e3d9cc; }
+  .next-payment { background:#fff8f2; border:1px solid #e3d9cc; border-radius:8px; padding:6px 12px; margin-bottom:10px; display:flex; align-items:center; gap:10px; }
+  .signatures { display: flex; justify-content: space-around; gap: 12px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #e3d9cc; }
   .sig-box { flex: 1; text-align: center; }
-  .sig-line { border-bottom: 1px solid #817662; height: 52px; margin-bottom: 6px; display:flex; align-items:flex-end; justify-content:center; }
-  .sig-line img { max-height:48px; max-width:100%; object-fit:contain; }
+  .sig-line { border-bottom: 1px solid #817662; height: 40px; margin-bottom: 5px; display:flex; align-items:flex-end; justify-content:center; }
+  .sig-line img { max-height:38px; max-width:100%; object-fit:contain; }
   .sig-label { font-size: 9px; color: #817662; text-transform: uppercase; letter-spacing: 1px; }
-  .nb { margin-top: 14px; background: #fff8f2; border: 1px solid #e3d9cc; border-left: 3px solid #785a00; border-radius: 8px; padding: 10px 14px; }
-  .nb-title { font-size: 10px; font-weight: 800; color: #785a00; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-  .nb ol { margin: 0; padding-left: 18px; }
-  .nb li { font-size: 9.5px; color: #5a5040; line-height: 1.55; margin-bottom: 3px; }
-  .footer { margin-top: 10px; padding-top: 8px; border-top: 1px solid #e3d9cc; font-size: 9px; color: #b0a090; text-align: center; line-height: 1.5; }
-  .paid-stamp { position: absolute; top: 130px; right: 40px; border: 3px solid #166534; color: #166534; border-radius: 6px; padding: 6px 12px; font-size: 16px; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; transform: rotate(-15deg); opacity: 0.4; pointer-events: none; }
-  .org-logo { max-height: 52px; max-width: 130px; object-fit: contain; }
-  .org-stamp { max-height: 80px; max-width: 80px; object-fit: contain; opacity: 0.85; }
-  @media print { .no-print { display: none; } html, body { height: 100%; } }
+  .nb { margin-top: 10px; background: #fff8f2; border: 1px solid #e3d9cc; border-left: 3px solid #785a00; border-radius: 8px; padding: 7px 12px; }
+  .nb-title { font-size: 9.5px; font-weight: 800; color: #785a00; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  .nb ol { margin: 0; padding-left: 16px; }
+  .nb li { font-size: 9px; color: #5a5040; line-height: 1.4; margin-bottom: 2px; }
+  .verify { margin-top: 10px; display: flex; align-items: center; gap: 12px; border: 1px solid #e3d9cc; border-radius: 8px; padding: 8px 12px; background:#fbfbfb; }
+  .verify img { width: 78px; height: 78px; }
+  .verify-txt { font-size: 9px; color: #6b7280; line-height: 1.45; }
+  .verify-txt b { color: #1c1b19; }
+  .footer { margin-top: 8px; padding-top: 6px; border-top: 1px solid #e3d9cc; font-size: 8.5px; color: #b0a090; text-align: center; line-height: 1.4; }
+  .paid-stamp { position: absolute; top: 120px; right: 30px; border: 3px solid #166534; color: #166534; border-radius: 6px; padding: 5px 10px; font-size: 15px; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; transform: rotate(-15deg); opacity: 0.4; pointer-events: none; }
+  .org-logo { max-height: 48px; max-width: 130px; object-fit: contain; }
+  .org-stamp { max-height: 66px; max-width: 66px; object-fit: contain; opacity: 0.85; }
+  @media print { .no-print { display: none; } .page { padding: 0; } }
 </style>
 </head>
 <body>
@@ -146,6 +153,16 @@ export function buildReceiptHTML(payment, orgSettings, signatures = {}, nextPaym
       <li>qu'il n'ait fait faire les réparations locatives à sa charge suivant l'usage ou d'après l'état des lieux.</li>
     </ol>
   </div>
+
+  ${qr ? `
+  <div class="verify">
+    <img src="${qr}" alt="QR de vérification" />
+    <div class="verify-txt">
+      <b>Vérification d'authenticité</b><br>
+      Scannez ce QR code pour vérifier l'authenticité de cette quittance en ligne.<br>
+      Référence : <b>${receiptNum}</b>
+    </div>
+  </div>` : ''}
 
   <div class="footer">
     Ce document tient lieu de quittance de loyer et atteste du règlement intégral de la somme indiquée.<br>

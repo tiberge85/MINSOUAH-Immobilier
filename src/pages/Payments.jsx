@@ -8,6 +8,7 @@ import { buildReceiptHTML as buildReceiptHTMLShared } from '../lib/quittanceRepo
 import { sendEmail, buildReminderHtml } from '../lib/email';
 import { SCI_NORA_LOGO, SCI_NORA_STAMP } from '../lib/sciNoraAssets';
 import { can } from '../lib/permissions';
+import { QRCodeCanvas } from 'qrcode.react';
 
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
@@ -995,6 +996,8 @@ export default function Payments() {
   const [payModal, setPayModal] = useState(false);
   const [payForm, setPayForm] = useState({ propertyKey: '', tenantId: '', amount: '', month: currentMonthLabel, dueDate: '', method: 'Espèces', withPenalty: false });
   const [quittancePayment, setQuittancePayment] = useState(null);
+  const qrReceiptRef = useRef(null);
+  const quittanceVerifyUrl = (p) => `${window.location.origin}/#/quittance/${p?.id || ''}`;
 
   /* ── Edit / delete / cancel modals ── */
   const [editModal, setEditModal]     = useState(null); // payment object
@@ -1632,8 +1635,11 @@ export default function Payments() {
     if (signatures.bailleur || signatures.locataire) {
       dispatch({ type: 'UPDATE_PAYMENT', payload: { ...quittancePayment, signatures } });
     }
+    let qrDataUrl = '';
+    try { qrDataUrl = qrReceiptRef.current?.toDataURL('image/png') || ''; } catch { /* ignore */ }
+    dispatch({ type: 'SAVE_QUITTANCE_VERIFY', payload: quittancePayment });
     const nextDate = computeNextPaymentDate(quittancePayment);
-    const html = buildReceiptHTMLShared(quittancePayment, orgSettings, signatures, nextDate);
+    const html = buildReceiptHTMLShared(quittancePayment, orgSettings, signatures, nextDate, { qrDataUrl });
     const win = window.open('', '_blank', 'width=820,height=700');
     if (win) { win.document.write(html); win.document.close(); }
   }, [quittancePayment, orgSettings, signatures, dispatch, computeNextPaymentDate]);
@@ -1651,8 +1657,11 @@ export default function Payments() {
     const phone = phoneForWA(quittancePayment?.tenantPhone);
     if (!phone) { alert('Numéro de téléphone manquant pour ce locataire.'); return; }
     // Open the receipt for printing/saving as PDF
+    let qrDataUrl = '';
+    try { qrDataUrl = qrReceiptRef.current?.toDataURL('image/png') || ''; } catch { /* ignore */ }
+    dispatch({ type: 'SAVE_QUITTANCE_VERIFY', payload: quittancePayment });
     const nextDate = computeNextPaymentDate(quittancePayment);
-    const html = buildReceiptHTMLShared(quittancePayment, orgSettings, signatures, nextDate);
+    const html = buildReceiptHTMLShared(quittancePayment, orgSettings, signatures, nextDate, { qrDataUrl });
     const win = window.open('', '_blank', 'width=820,height=700');
     if (win) {
       win.document.write(html);
@@ -2895,6 +2904,13 @@ export default function Payments() {
           )}
         </div>
       </ModalWrap>
+
+      {/* Hidden QR canvas → embedded in the printed receipt for authenticity check */}
+      {quittancePayment && (
+        <div style={{ position: 'fixed', left: -9999, top: -9999 }} aria-hidden>
+          <QRCodeCanvas ref={qrReceiptRef} value={quittanceVerifyUrl(quittancePayment)} size={200} level="M" includeMargin />
+        </div>
+      )}
 
       {/* ══════════════ MODAL: Quittance ══════════════ */}
       <ModalWrap

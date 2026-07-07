@@ -220,6 +220,12 @@ service cloud.firestore {
       allow write: if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
     }
 
+    // ── Quittance public verification (QR code — readable by anyone) ───────────
+    match /workspaces/{wsId}/quittanceVerify/{id} {
+      allow read:  if true;
+      allow write: if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
+    }
+
     // ── Tenant portals (public QR code portal — any authenticated or anon user can read) ──
     match /workspaces/{wsId}/tenantPortals/{id} {
       allow read:  if true;
