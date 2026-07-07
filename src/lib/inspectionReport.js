@@ -165,6 +165,11 @@ export function generateAllSummariesHtml(inspections = [], orgSettings = {}) {
         <tr><th>Coût dommages</th><td>${fmt(dmgCost)}</td><th>Photos</th><td>${photos}</td></tr>
       </table>
       ${insp.notes ? `<div class="obs"><b>Observations :</b> ${esc(insp.notes)}</div>` : ''}
+      ${(insp.photos || []).length > 0 ? `
+      <div class="ph">
+        <b>Photos du constat (${(insp.photos || []).length}) :</b>
+        <div class="ph-grid">${(insp.photos || []).map(p => `<img src="${p.data}" alt="photo" />`).join('')}</div>
+      </div>` : ''}
     </div>`;
   }).join('');
 
@@ -187,6 +192,9 @@ export function generateAllSummariesHtml(inspections = [], orgSettings = {}) {
     table.info th, table.info td { border:1px solid #eee; padding:4px 8px; text-align:left; font-size:11px; }
     table.info th { background:#faf7f2; color:#6b7280; font-weight:600; width:16%; }
     .obs { margin-top:8px; font-size:11px; background:#fafafa; border:1px solid #eee; border-radius:6px; padding:8px 10px; }
+    .ph { margin-top:8px; font-size:11px; }
+    .ph-grid { display:flex; flex-wrap:wrap; gap:6px; margin-top:5px; }
+    .ph-grid img { width:120px; height:90px; object-fit:cover; border-radius:6px; border:1px solid #ddd; }
     .footer { margin-top: 16px; font-size: 9px; color: #b0a090; text-align:center; }
   </style></head><body>
     <div class="doc-head">
