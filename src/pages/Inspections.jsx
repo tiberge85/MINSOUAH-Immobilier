@@ -6,6 +6,9 @@ import Icon from '../components/Icon';
 import SearchSelect from '../components/SearchSelect';
 import { openEDLReport, openSynthesisReport } from '../lib/inspectionReport';
 import { can } from '../lib/permissions';
+import * as XLSX from 'xlsx';
+
+const STATUS_FR = { DRAFT: 'Brouillon', IN_PROGRESS: 'En cours', PENDING_SIGNATURE: 'Att. signature', COMPLETED: 'Complété' };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const CATEGORIES = [
@@ -282,6 +285,30 @@ export default function Inspections() {
     });
   }, [inspections, statusFilter, typeFilter, search]);
 
+  // Export a summary of all (filtered) inspections to Excel
+  const exportSummaries = () => {
+    const rows = filtered.map(i => ({
+      'Référence': i.ref || '',
+      'Type': i.type === 'ENTRY' ? 'Entrée' : 'Sortie',
+      'Statut': STATUS_FR[i.status] || i.status || '',
+      'Bien': `${i.propertyName || ''}${i.unitRef ? ` • ${i.unitRef}` : ''}`,
+      'Locataire': i.tenantName || '',
+      'Date prévue': i.scheduledDate ? new Date(i.scheduledDate).toLocaleDateString('fr-FR') : '',
+      'Date complétion': i.completedDate ? new Date(i.completedDate).toLocaleDateString('fr-FR') : '',
+      'Nb éléments': (i.items || []).length,
+      'Nb dommages': (i.damages || []).length,
+      'Coût dommages (FCFA)': (i.damages || []).reduce((s, d) => s + (d.cost || 0), 0),
+      'Nb photos': (i.photos || []).length + (i.items || []).reduce((s, it) => s + (it.photos || []).length, 0),
+      'Gestionnaire': i.managerName || '',
+      'Signé (2 parties)': (i.managerSignature && i.tenantSignature) ? 'Oui' : 'Non',
+    }));
+    if (rows.length === 0) return;
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'États des lieux');
+    XLSX.writeFile(wb, `etats_des_lieux_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   // ── Handlers
   const update = (updated) => {
     dispatch({ type: 'UPDATE_INSPECTION', payload: updated });
@@ -290,6 +317,7 @@ export default function Inspections() {
 
   // Open the modal in EDIT mode, pre-filled with an existing inspection's header
   const openEdit = (insp) => {
+    setDetail(null); // close the detail modal so the edit modal isn't stacked on top
     setEditingId(insp.id);
     setForm({
       type: insp.type || 'ENTRY',
@@ -324,7 +352,11 @@ export default function Inspections() {
           updatedAt: new Date().toISOString(),
         };
         dispatch({ type: 'UPDATE_INSPECTION', payload: updated });
-        if (detail && detail.id === editingId) setDetail(updated);
+        setCreateModal(false);
+        setForm(blankForm);
+        setEditingId(null);
+        setDetail(updated); // reopen the detail with the updated data
+        return;
       }
       setCreateModal(false);
       setForm(blankForm);
@@ -583,11 +615,16 @@ export default function Inspections() {
             </button>
           ))}
         </div>
-        {isAdmin && canCreate && (
-          <Button icon="add_circle" onClick={() => setCreateModal(true)} className="ml-auto flex-shrink-0">
-            Nouvel état des lieux
+        <div className="ml-auto flex gap-2 flex-shrink-0">
+          <Button variant="secondary" icon="table_view" onClick={exportSummaries} disabled={filtered.length === 0}>
+            Exporter les résumés
           </Button>
-        )}
+          {isAdmin && canCreate && (
+            <Button icon="add_circle" onClick={() => setCreateModal(true)}>
+              Nouvel état des lieux
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Empty state */}

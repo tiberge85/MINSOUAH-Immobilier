@@ -109,6 +109,12 @@ export function generateEDLHtml(insp) {
 
     ${damagesHTML}
 
+    ${(insp.photos || []).length > 0 ? `
+    <h2>Photos du constat</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${(insp.photos || []).map(p => `<img src="${p.data}" style="width:160px;height:120px;object-fit:cover;border-radius:6px;border:1px solid #ddd">`).join('')}
+    </div>` : ''}
+
     <h2>Signatures</h2>
     <div class="sig-row">
       ${sigHTML(insp.managerSignature, 'Signature du gestionnaire', insp.managerName)}
