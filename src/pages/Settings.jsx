@@ -1064,6 +1064,7 @@ function SystemTab({ state, dispatch, showToast }) {
 const ALL_ROLES = [
   { value: 'ORGANIZATION_ADMIN', label: 'Admin Organisation', color: 'bg-primary-container text-on-primary-container',     icon: 'admin_panel_settings' },
   { value: 'AGENT',              label: 'Agent',              color: 'bg-secondary-container text-on-secondary-container', icon: 'manage_history' },
+  { value: 'CONCIERGE',          label: 'Concierge',          color: 'bg-tertiary-container text-on-tertiary-container',   icon: 'supervised_user_circle' },
   { value: 'OWNER',              label: 'Propriétaire',       color: 'bg-tertiary-container text-on-tertiary-container',   icon: 'manage_accounts' },
   { value: 'TENANT',             label: 'Locataire',          color: 'bg-secondary-container text-on-secondary-container', icon: 'person' },
 ];

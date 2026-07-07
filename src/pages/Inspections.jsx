@@ -4,11 +4,8 @@ import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import Icon from '../components/Icon';
 import SearchSelect from '../components/SearchSelect';
-import { openEDLReport, openSynthesisReport } from '../lib/inspectionReport';
+import { openEDLReport, openSynthesisReport, openAllSummariesReport } from '../lib/inspectionReport';
 import { can } from '../lib/permissions';
-import * as XLSX from 'xlsx';
-
-const STATUS_FR = { DRAFT: 'Brouillon', IN_PROGRESS: 'En cours', PENDING_SIGNATURE: 'Att. signature', COMPLETED: 'Complété' };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const CATEGORIES = [
@@ -286,28 +283,10 @@ export default function Inspections() {
     });
   }, [inspections, statusFilter, typeFilter, search]);
 
-  // Export a summary of all (filtered) inspections to Excel
+  // Export a PDF combining the summary of all (filtered) inspections
   const exportSummaries = () => {
-    const rows = filtered.map(i => ({
-      'Référence': i.ref || '',
-      'Type': i.type === 'ENTRY' ? 'Entrée' : 'Sortie',
-      'Statut': STATUS_FR[i.status] || i.status || '',
-      'Bien': `${i.propertyName || ''}${i.unitRef ? ` • ${i.unitRef}` : ''}`,
-      'Locataire': i.tenantName || '',
-      'Date prévue': i.scheduledDate ? new Date(i.scheduledDate).toLocaleDateString('fr-FR') : '',
-      'Date complétion': i.completedDate ? new Date(i.completedDate).toLocaleDateString('fr-FR') : '',
-      'Nb éléments': (i.items || []).length,
-      'Nb dommages': (i.damages || []).length,
-      'Coût dommages (FCFA)': (i.damages || []).reduce((s, d) => s + (d.cost || 0), 0),
-      'Nb photos': (i.photos || []).length + (i.items || []).reduce((s, it) => s + (it.photos || []).length, 0),
-      'Gestionnaire': i.managerName || '',
-      'Signé (2 parties)': (i.managerSignature && i.tenantSignature) ? 'Oui' : 'Non',
-    }));
-    if (rows.length === 0) return;
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'États des lieux');
-    XLSX.writeFile(wb, `etats_des_lieux_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    if (filtered.length === 0) return;
+    openAllSummariesReport(filtered, state.orgSettings);
   };
 
   // ── Handlers
@@ -625,8 +604,8 @@ export default function Inspections() {
           ))}
         </div>
         <div className="ml-auto flex gap-2 flex-shrink-0">
-          <Button variant="secondary" icon="table_view" onClick={exportSummaries} disabled={filtered.length === 0}>
-            Exporter les résumés
+          <Button variant="secondary" icon="picture_as_pdf" onClick={exportSummaries} disabled={filtered.length === 0}>
+            Exporter les résumés (PDF)
           </Button>
           {isAdmin && canCreate && (
             <Button icon="add_circle" onClick={() => setCreateModal(true)}>
