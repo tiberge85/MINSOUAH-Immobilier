@@ -154,6 +154,7 @@ export default function Inspections() {
 
   // ── Modals / views
   const [createModal, setCreateModal] = useState(false);
+  const [editingId, setEditingId] = useState(null); // inspection id being edited (header)
   const [detail, setDetail] = useState(null);
   const [detailTab, setDetailTab] = useState('inventaire');
   const [itemModal, setItemModal] = useState(false);
@@ -171,19 +172,48 @@ export default function Inspections() {
     photoInputRef.current?.click();
   };
 
-  const handlePhotoFile = (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !photoTargetItem.current || !detail) return;
+  // Downscale + compress an image so several photos fit under Firestore's 1 MB doc limit
+  const compressImage = (file, maxDim = 1280, quality = 0.7) => new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const photo = { id: Date.now(), data: ev.target.result, name: file.name, takenAt: new Date().toISOString() };
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxDim) { height = Math.round(height * maxDim / width); width = maxDim; }
+        else if (height >= width && height > maxDim) { width = Math.round(width * maxDim / height); height = maxDim; }
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = width; canvas.height = height;
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        } catch { resolve(ev.target.result); }
+      };
+      img.onerror = () => resolve(ev.target.result);
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  const handlePhotoFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !photoTargetItem.current || !detail) return;
+    e.target.value = '';
+    const data = await compressImage(file);
+    const photo = { id: Date.now(), data, name: file.name, takenAt: new Date().toISOString() };
+    if (photoTargetItem.current === '__constat__') {
+      // General "constat" photos, attached to the inspection itself
+      update({ ...detail, photos: [...(detail.photos || []), photo] });
+    } else {
       const items = detail.items.map(i =>
         i.id === photoTargetItem.current ? { ...i, photos: [...(i.photos || []), photo] } : i
       );
       update({ ...detail, items });
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
+    }
+  };
+
+  const triggerConstatPhoto = () => { photoTargetItem.current = '__constat__'; photoInputRef.current?.click(); };
+  const handleDeleteConstatPhoto = (photoId) => {
+    update({ ...detail, photos: (detail.photos || []).filter(p => p.id !== photoId) });
   };
 
   const handleDeletePhoto = (itemId, photoId) => {
@@ -258,9 +288,49 @@ export default function Inspections() {
     setDetail(updated);
   };
 
+  // Open the modal in EDIT mode, pre-filled with an existing inspection's header
+  const openEdit = (insp) => {
+    setEditingId(insp.id);
+    setForm({
+      type: insp.type || 'ENTRY',
+      propertyKey: insp.propertyId ? `${insp.propertyId}::${insp.unitId || ''}` : '',
+      propertyId: insp.propertyId || '',
+      propertyName: insp.propertyName || '',
+      unitRef: insp.unitRef || '',
+      tenantId: insp.tenantId ? String(insp.tenantId) : '',
+      scheduledDate: insp.scheduledDate || '',
+      notes: insp.notes || '',
+    });
+    setCreateModal(true);
+  };
+
   const handleCreate = () => {
     if (!form.propertyId || !form.tenantId || !form.scheduledDate) return;
     const tenant = tenants.find(t => String(t.id) === String(form.tenantId));
+    if (editingId) {
+      // Edit mode — update header fields, preserve items/damages/signatures/status
+      const existing = inspections.find(i => i.id === editingId);
+      if (existing) {
+        const updated = {
+          ...existing,
+          type: form.type,
+          propertyId: form.propertyId,
+          propertyName: form.propertyName,
+          unitRef: form.unitRef,
+          tenantId: tenant?.id,
+          tenantName: tenant?.name,
+          scheduledDate: form.scheduledDate,
+          notes: form.notes,
+          updatedAt: new Date().toISOString(),
+        };
+        dispatch({ type: 'UPDATE_INSPECTION', payload: updated });
+        if (detail && detail.id === editingId) setDetail(updated);
+      }
+      setCreateModal(false);
+      setForm(blankForm);
+      setEditingId(null);
+      return;
+    }
     const payload = {
       id: Date.now(),
       ref: `EDL-${String(inspections.length + 1).padStart(3, '0')}`,
@@ -567,17 +637,17 @@ export default function Inspections() {
         </div>
       )}
 
-      {/* ── CREATE MODAL ── */}
+      {/* ── CREATE / EDIT MODAL ── */}
       <Modal
         open={createModal}
-        onClose={() => { setCreateModal(false); setForm(blankForm); }}
-        title="Nouvel état des lieux"
+        onClose={() => { setCreateModal(false); setForm(blankForm); setEditingId(null); }}
+        title={editingId ? "Modifier l'état des lieux" : "Nouvel état des lieux"}
         size="md"
         footer={
           <>
-            <Button variant="secondary" onClick={() => { setCreateModal(false); setForm(blankForm); }}>Annuler</Button>
-            <Button icon="add" onClick={handleCreate} disabled={!form.propertyId || !form.tenantId || !form.scheduledDate}>
-              Créer
+            <Button variant="secondary" onClick={() => { setCreateModal(false); setForm(blankForm); setEditingId(null); }}>Annuler</Button>
+            <Button icon={editingId ? 'save' : 'add'} onClick={handleCreate} disabled={!form.propertyId || !form.tenantId || !form.scheduledDate}>
+              {editingId ? 'Enregistrer' : 'Créer'}
             </Button>
           </>
         }
@@ -765,6 +835,11 @@ export default function Inspections() {
                 </p>
               </div>
               <div className="flex gap-2 flex-wrap">
+                {canEdit && detail.status !== 'COMPLETED' && (
+                  <Button size="sm" variant="secondary" icon="edit" onClick={() => openEdit(detail)}>
+                    Modifier
+                  </Button>
+                )}
                 <Button size="sm" variant="secondary" icon="picture_as_pdf" onClick={() => generatePDF(detail)}>
                   PDF
                 </Button>
@@ -792,6 +867,7 @@ export default function Inspections() {
             <div className="flex gap-1 mt-4 bg-surface-container/60 rounded-xl p-1 w-fit">
               {[
                 { id: 'inventaire', label: 'Inventaire', icon: 'checklist' },
+                { id: 'photos', label: 'Photos', icon: 'photo_camera' },
                 { id: 'dommages', label: 'Dommages', icon: 'warning' },
                 { id: 'signatures', label: 'Signatures', icon: 'draw' },
                 { id: 'resume', label: 'Résumé', icon: 'summarize' },
@@ -909,6 +985,48 @@ export default function Inspections() {
                       </div>
                     );
                   })
+                )}
+              </div>
+            )}
+
+            {/* ── PHOTOS DU CONSTAT TAB ── */}
+            {detailTab === 'photos' && (
+              <div className="flex flex-col gap-md">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <h3 className="font-bold text-on-surface">Photos du constat</h3>
+                    <p className="text-body-sm text-on-surface-variant">Ajoutez des photos pour constater l'état général du logement.</p>
+                  </div>
+                  {canEdit && detail.status !== 'COMPLETED' && (
+                    <Button size="sm" icon="add_a_photo" onClick={triggerConstatPhoto}>Ajouter une photo</Button>
+                  )}
+                </div>
+                {(detail.photos || []).length === 0 ? (
+                  <div className="text-center py-12 text-on-surface-variant border-2 border-dashed border-outline-variant/40 rounded-2xl">
+                    <Icon name="photo_camera" size={40} className="opacity-30 mb-2" />
+                    <p className="font-medium">Aucune photo</p>
+                    {canEdit && detail.status !== 'COMPLETED' && <p className="text-body-sm mt-1">Cliquez sur « Ajouter une photo » pour constater l'état.</p>}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {(detail.photos || []).map(ph => (
+                      <div key={ph.id} className="relative group rounded-xl overflow-hidden border border-outline-variant/30 aspect-square bg-surface-container">
+                        <img src={ph.data} alt={ph.name || 'photo'} className="w-full h-full object-cover cursor-pointer"
+                          onClick={() => setViewPhoto(ph)} />
+                        {canEdit && detail.status !== 'COMPLETED' && (
+                          <button onClick={() => handleDeleteConstatPhoto(ph.id)}
+                            className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-error">
+                            <Icon name="delete" size={15} />
+                          </button>
+                        )}
+                        {ph.takenAt && (
+                          <span className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[10px] px-1.5 py-0.5 truncate">
+                            {new Date(ph.takenAt).toLocaleDateString('fr-FR')}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
