@@ -265,17 +265,18 @@ export default function Inspections() {
 
   // ── Stats
   const stats = useMemo(() => [
-    { label: 'Total', value: inspections.length, icon: 'home_work', color: 'bg-primary/10 text-primary' },
-    { label: 'En cours', value: inspections.filter(i => ['DRAFT','IN_PROGRESS'].includes(i.status)).length, icon: 'pending_actions', color: 'bg-blue-100 text-blue-700' },
-    { label: 'Att. signature', value: inspections.filter(i => i.status === 'PENDING_SIGNATURE').length, icon: 'draw', color: 'bg-amber-100 text-amber-700' },
-    { label: 'Complétés', value: inspections.filter(i => i.status === 'COMPLETED').length, icon: 'task_alt', color: 'bg-green-100 text-green-700' },
+    { label: 'Total', value: inspections.length, icon: 'home_work', color: 'bg-primary/10 text-primary', filter: 'Tous' },
+    { label: 'En cours', value: inspections.filter(i => ['DRAFT','IN_PROGRESS'].includes(i.status)).length, icon: 'pending_actions', color: 'bg-blue-100 text-blue-700', filter: 'ENCOURS' },
+    { label: 'Att. signature', value: inspections.filter(i => i.status === 'PENDING_SIGNATURE').length, icon: 'draw', color: 'bg-amber-100 text-amber-700', filter: 'PENDING_SIGNATURE' },
+    { label: 'Complétés', value: inspections.filter(i => i.status === 'COMPLETED').length, icon: 'task_alt', color: 'bg-green-100 text-green-700', filter: 'COMPLETED' },
   ], [inspections]);
 
   // ── Filtered list
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return inspections.filter(insp => {
-      const mStatus = statusFilter === 'Tous' || insp.status === statusFilter;
+      const mStatus = statusFilter === 'Tous'
+        || (statusFilter === 'ENCOURS' ? ['DRAFT', 'IN_PROGRESS'].includes(insp.status) : insp.status === statusFilter);
       const mType = typeFilter === 'Tous' || insp.type === typeFilter;
       const mSearch = !q
         || (insp.propertyName || '').toLowerCase().includes(q)
@@ -559,17 +560,25 @@ export default function Inspections() {
 
       {/* Stats */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-gutter">
-        {stats.map(s => (
-          <div key={s.label} className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-center gap-md">
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${s.color}`}>
-              <Icon name={s.icon} size={22} />
-            </div>
-            <div>
-              <p className="text-on-surface-variant text-label-sm font-label-sm uppercase tracking-wider">{s.label}</p>
-              <p className="font-h2 text-h2 text-on-surface font-bold">{s.value}</p>
-            </div>
-          </div>
-        ))}
+        {stats.map(s => {
+          const active = statusFilter === s.filter;
+          return (
+            <button
+              key={s.label}
+              onClick={() => setStatusFilter(active && s.filter !== 'Tous' ? 'Tous' : s.filter)}
+              title={`Filtrer : ${s.label}`}
+              className={`text-left bg-surface-container-lowest rounded-xl p-md shadow-card border flex items-center gap-md transition-all hover:shadow-lg ${active ? 'border-primary ring-2 ring-primary/30' : 'border-outline-variant/20 hover:border-primary/30'}`}
+            >
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${s.color}`}>
+                <Icon name={s.icon} size={22} />
+              </div>
+              <div>
+                <p className="text-on-surface-variant text-label-sm font-label-sm uppercase tracking-wider">{s.label}</p>
+                <p className="font-h2 text-h2 text-on-surface font-bold">{s.value}</p>
+              </div>
+            </button>
+          );
+        })}
       </section>
 
       {/* Toolbar */}
