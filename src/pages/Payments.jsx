@@ -252,7 +252,10 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
   // Expected this month = active contracts not in advance period
   const expectedContracts = activeContracts.filter(c => !advanceNames.has((c.tenant || '').toLowerCase().trim()));
   const totalExpected = expectedContracts.reduce((s, c) => s + (c.rent || 0), 0);
-  const totalCollected = curMonthPmts.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+  const paidMonth = curMonthPmts.filter(p => p.status === 'Payé');
+  const totalCollected = paidMonth.reduce((s, p) => s + (p.amount || 0), 0);
+  const totalCommission = paidMonth.reduce((s, p) => s + (p.commissionAmount != null ? p.commissionAmount : 0), 0);
+  const totalNetOwner = totalCollected - totalCommission;
   const totalArrieres = arrearsByTenant.reduce((s, g) => s + g.total, 0);
 
   // Build contract rows for current month
@@ -358,9 +361,14 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
       <div class="kpi-s">${expectedContracts.length} contrat(s) actif(s)</div>
     </div>
     <div class="kpi">
-      <div class="kpi-l">Encaissé</div>
+      <div class="kpi-l">Encaissé (brut)</div>
       <div class="kpi-v" style="color:#15803d">${fCFA(totalCollected)}</div>
       <div class="kpi-s">${paidCount} payé(s) · ${recoveryRate}%</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">Commission Minsouah</div>
+      <div class="kpi-v" style="color:#b45309">${fCFA(totalCommission)}</div>
+      <div class="kpi-s">Net proprio : ${fCFA(totalNetOwner)}</div>
     </div>
     <div class="kpi">
       <div class="kpi-l">Impayés (mois)</div>
@@ -603,6 +611,8 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
   /* ── Global KPIs ── */
   const totalCollected = paid.reduce((s, p) => s + (p.amount || 0), 0);
   const totalUnpaid = unpaid.reduce((s, p) => s + (p.amount || 0), 0);
+  const totalCommission = paid.reduce((s, p) => s + (p.commissionAmount != null ? p.commissionAmount : 0), 0);
+  const totalNetOwner = totalCollected - totalCommission;
   const totalExpenses = expenses.reduce((s, t) => s + (t.amount || 0), 0);
   const netResult = totalCollected - totalExpenses;
   const total = totalCollected + totalUnpaid;
@@ -792,7 +802,9 @@ ${advanceSection}
   <div class="synth-body">
 
     <div class="synth-kpis">
-      <div class="synth-kpi"><div class="synth-kpi-l">Total encaissé</div><div class="synth-kpi-v" style="color:#15803d">${Number(totalCollected).toLocaleString('fr-FR')}</div><div class="synth-kpi-s">FCFA</div></div>
+      <div class="synth-kpi"><div class="synth-kpi-l">Loyers bruts encaissés</div><div class="synth-kpi-v" style="color:#15803d">${Number(totalCollected).toLocaleString('fr-FR')}</div><div class="synth-kpi-s">FCFA</div></div>
+      <div class="synth-kpi"><div class="synth-kpi-l">Commission Minsouah</div><div class="synth-kpi-v" style="color:#b45309">${Number(totalCommission).toLocaleString('fr-FR')}</div><div class="synth-kpi-s">FCFA</div></div>
+      <div class="synth-kpi" style="background:#f0fdf4"><div class="synth-kpi-l">Net propriétaires</div><div class="synth-kpi-v" style="color:#15803d">${Number(totalNetOwner).toLocaleString('fr-FR')}</div><div class="synth-kpi-s">FCFA</div></div>
       <div class="synth-kpi"><div class="synth-kpi-l">Total dépenses</div><div class="synth-kpi-v" style="color:#b91c1c">${Number(totalExpenses).toLocaleString('fr-FR')}</div><div class="synth-kpi-s">FCFA</div></div>
       <div class="synth-kpi" style="background:${netResult >= 0 ? '#f0fdf4' : '#fef2f2'}"><div class="synth-kpi-l">Résultat net</div><div class="synth-kpi-v" style="color:${netColor}">${netResult >= 0 ? '+' : ''}${Number(netResult).toLocaleString('fr-FR')}</div><div class="synth-kpi-s">FCFA</div></div>
     </div>
