@@ -195,17 +195,23 @@ export default function Inspections() {
   });
 
   const handlePhotoFile = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !photoTargetItem.current || !detail) return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length || !photoTargetItem.current || !detail) return;
     e.target.value = '';
-    const data = await compressImage(file);
-    const photo = { id: Date.now(), data, name: file.name, takenAt: new Date().toISOString() };
-    if (photoTargetItem.current === '__constat__') {
+    const target = photoTargetItem.current;
+    const newPhotos = [];
+    for (const file of files) {
+      if (!file.type?.startsWith('image/')) continue;
+      const data = await compressImage(file);
+      newPhotos.push({ id: Date.now() + Math.floor(Math.random() * 1e6), data, name: file.name, takenAt: new Date().toISOString() });
+    }
+    if (!newPhotos.length) return;
+    if (target === '__constat__') {
       // General "constat" photos, attached to the inspection itself
-      update({ ...detail, photos: [...(detail.photos || []), photo] });
+      update({ ...detail, photos: [...(detail.photos || []), ...newPhotos] });
     } else {
       const items = detail.items.map(i =>
-        i.id === photoTargetItem.current ? { ...i, photos: [...(i.photos || []), photo] } : i
+        i.id === target ? { ...i, photos: [...(i.photos || []), ...newPhotos] } : i
       );
       update({ ...detail, items });
     }
@@ -1401,12 +1407,12 @@ export default function Inspections() {
         </div>
       )}
 
-      {/* Hidden file input for photo capture */}
+      {/* Hidden file input — camera OR gallery, multiple photos allowed */}
       <input
         ref={photoInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
+        multiple
         className="hidden"
         onChange={handlePhotoFile}
       />
