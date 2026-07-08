@@ -1184,13 +1184,13 @@ export default function Payments() {
         const tenantOk = String(c.tenantId) === String(t.id) || c.tenant === tName;
         if (!tenantOk) return false;
         if (selected.isUnit) {
+          // Only the contract that targets THIS specific unit (never the whole building)
           // Tier 1: name-based match (exact / floor-stripped / normalized)
           if (propMatch(c.propertyName, selected.propertyName)) return true;
           // Tier 2: building ID + unit number appears in contract property name
           if (String(c.propertyId) === String(selected.buildingId) && selected.unitNumber &&
               normProp(c.propertyName).includes(normProp(selected.unitNumber))) return true;
-          // Tier 3 (last resort): building ID alone — for contracts that only store building name
-          return String(c.propertyId) === String(selected.buildingId);
+          return false;
         }
         return propMatch(c.propertyName, selected.propertyName) ||
                propMatch(c.propertyName, selected.buildingName) ||
@@ -1496,10 +1496,11 @@ export default function Payments() {
         const tenantOk = String(c.tenantId) === String(t.id) || c.tenant === tName;
         if (!tenantOk) return false;
         if (opt.isUnit) {
+          // Only the contract that targets THIS specific unit (never the whole building)
           if (propMatch(c.propertyName, opt.propertyName)) return true;
           if (String(c.propertyId) === String(opt.buildingId) && opt.unitNumber &&
               normProp(c.propertyName).includes(normProp(opt.unitNumber))) return true;
-          return String(c.propertyId) === String(opt.buildingId);
+          return false;
         }
         return propMatch(c.propertyName, opt.propertyName) ||
                propMatch(c.propertyName, opt.buildingName) ||
