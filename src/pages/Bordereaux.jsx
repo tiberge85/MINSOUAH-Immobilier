@@ -248,6 +248,7 @@ export default function Bordereaux() {
           b={detail} onClose={() => setDetail(null)}
           canEdit={canEdit} canDelete={canDelete} canValidate={canValidate}
           organizations={state.organizations || []}
+          eligiblePayments={eligibleCompta}
           onPrint={() => setPrintTarget(detail)}
           onSubmit={() => submitForValidation(detail)}
           onValidate={() => validate(detail)}
@@ -728,14 +729,18 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, currentUser, ca
 }
 
 /* ════════════════════════════ DETAIL MODAL ════════════════════════════ */
-function DetailModal({ b, onClose, canEdit, canDelete, canValidate, organizations = [], onPrint, onSubmit, onValidate, onCancel, onDelete, onSaveEdit }) {
+function DetailModal({ b, onClose, canEdit, canDelete, canValidate, organizations = [], eligiblePayments = [], onPrint, onSubmit, onValidate, onCancel, onDelete, onSaveEdit }) {
   const isProprio = b.type === 'PROPRIETAIRE';
   const v = b.validation || {};
   const editable = (b.status === 'Brouillon' || b.status === 'En attente de validation') && canEdit;
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(null);
+  const [addSel, setAddSel] = useState(() => new Set());
+  // Eligible payments that can still be added to THIS compta voucher
+  const addable = isProprio ? [] : (eligiblePayments || []).filter(p => !(b.lines || []).some(l => String(l.paymentId) === String(p.id)));
 
   const startEdit = () => {
+    setAddSel(new Set());
     setForm({
       date: b.date || '', time: b.time || '', paymentMode: b.paymentMode || 'Espèces', observation: b.observation || '',
       agence: b.agence || '', depositedBy: b.depositedBy || b.caissier || '', receivedBy: b.receivedBy || '',
@@ -748,6 +753,17 @@ function DetailModal({ b, onClose, canEdit, canDelete, canValidate, organization
     const patch = isProprio
       ? { date: form.date, time: form.time, paymentMode: form.paymentMode, transferRef: form.transferRef, observation: form.observation }
       : { date: form.date, time: form.time, paymentMode: form.paymentMode, agence: form.agence, depositedBy: form.depositedBy, caissier: form.depositedBy, receivedBy: form.receivedBy, bank: form.bank, beneficiaryOrgId: form.beneficiaryOrgId, beneficiaryOrgName: (organizations.find(o => o.id === form.beneficiaryOrgId)?.name) || '', beneficiaryAccount: form.beneficiaryAccount, bankRef: form.bankRef, observation: form.observation };
+    // Append any newly selected rents to the voucher lines (compta only)
+    if (!isProprio && addSel.size) {
+      const added = addable.filter(p => addSel.has(p.id)).map(p => ({
+        paymentId: p.id, tenantName: p.tenantName || '', propertyName: p.propertyName || '', unit: p.unit || '',
+        period: p.month || '', paidDate: p.paidDate || '', method: p.method || '', paymentRef: p.reference || String(p.id),
+        amount: p.amount || 0,
+      }));
+      const lines = [...(b.lines || []), ...added];
+      patch.lines = lines;
+      patch.totalAmount = lines.reduce((s, l) => s + (l.amount || 0), 0);
+    }
     onSaveEdit?.({ ...b, ...patch });
     setEditing(false);
   };
@@ -790,6 +806,29 @@ function DetailModal({ b, onClose, canEdit, canDelete, canValidate, organization
                 <Field label="Référence bancaire"><input value={form.bankRef} onChange={e => setForm(f => ({ ...f, bankRef: e.target.value }))} className={inp} /></Field>
               </>}
               <div className="sm:col-span-2"><Field label="Observation"><textarea rows={2} value={form.observation} onChange={e => setForm(f => ({ ...f, observation: e.target.value }))} className={inp} /></Field></div>
+
+              {!isProprio && (
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 flex items-center justify-between">
+                    <span>Ajouter des loyers encaissés</span>
+                    {addSel.size > 0 && <span className="text-primary normal-case">{addSel.size} sélectionné(s)</span>}
+                  </label>
+                  {addable.length === 0 ? (
+                    <p className="text-sm text-on-surface-variant py-2">Aucun loyer supplémentaire disponible à ajouter.</p>
+                  ) : (
+                    <div className="max-h-52 overflow-y-auto flex flex-col gap-1 border border-outline-variant/30 rounded-xl p-2">
+                      {addable.map(p => (
+                        <label key={p.id} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer text-sm ${addSel.has(p.id) ? 'bg-primary/5' : 'hover:bg-surface-container-low'}`}>
+                          <input type="checkbox" checked={addSel.has(p.id)} onChange={() => setAddSel(s => { const n = new Set(s); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n; })} className="w-4 h-4 accent-primary" />
+                          <span className="flex-1 min-w-0"><span className="font-semibold">{p.tenantName}</span> <span className="text-on-surface-variant">· {p.propertyName} · {p.month}</span></span>
+                          <span className="font-bold">{fmt(p.amount)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="sm:col-span-2 flex justify-end gap-2">
                 <Btn small variant="secondary" onClick={() => setEditing(false)}>Annuler</Btn>
                 <Btn small variant="green" icon="save" onClick={saveEdit}>Enregistrer</Btn>

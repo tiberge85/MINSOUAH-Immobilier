@@ -416,7 +416,7 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
 }
 
 /* ── Monthly Report HTML ──────────────────────────────────────────────────── */
-function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], advance = [], contracts = [], expenses = []) {
+function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], advance = [], contracts = [], expenses = [], properties = []) {
   const org = orgSettings || {};
   const orgLogo  = org.logo  || '';
   const orgStamp = org.stamp || '';
@@ -443,39 +443,57 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
     return String(entry.amount || 0);
   }
 
-  /* ── Building metadata ── */
-  const CAT_META = {
-    '130000': {
-      label: 'Studios — Petit Bâtiment',
-      sublabel: 'Studio · 130 000 FCFA / mois',
-      totalUnits: 24,
-    },
-    '150000': {
-      label: 'Studios — Grand Bâtiment A',
-      sublabel: 'Studio · 150 000 FCFA / mois',
-      totalUnits: 16,
-    },
-    '200000': {
-      label: '2 Pièces — Grand Bâtiment A',
-      sublabel: '2 Pièces · 200 000 FCFA / mois',
-      totalUnits: 4,
-    },
-    '300000': {
-      label: '3 Pièces — Grand Bâtiment B',
-      sublabel: '3 Pièces · 300 000 FCFA / mois',
-      totalUnits: 8,
-    },
-    'Magasins': {
-      label: 'Magasins / Locaux Commerciaux',
-      sublabel: '2 × 100 000 FCFA · 1 × 150 000 FCFA · 1 × 200 000 FCFA',
-      totalUnits: 9,
-      note: '4 loués · 5 disponibles',
-    },
+  /* ── Building metadata DERIVED from the org's actual properties (no hardcoding,
+        so each org's report only reflects ITS OWN patrimoine) ── */
+  const unitRent = (buildingName, unit) => {
+    let rent = Number(unit.rent) || 0;
+    if (!rent) {
+      const num = String(unit.number || '').toLowerCase();
+      const c = (contracts || []).find(c => {
+        const pn = (c.propertyName || '').toLowerCase();
+        return num && pn.includes(num) && (!buildingName || pn.includes(buildingName.toLowerCase()));
+      });
+      rent = Number(c?.rent) || 0;
+    }
+    return rent;
   };
+  const unitCatKey = (buildingName, unit) => {
+    const type = (unit.type || '').toLowerCase();
+    const nm = `${buildingName} ${unit.number || ''}`.toLowerCase();
+    if (type.includes('commercial') || type.includes('magasin') || type.includes('local') || /\bmag\b|\bmagasin/.test(nm)) return 'Magasins';
+    return String(unitRent(buildingName, unit));
+  };
+  const CAT_META = {};
+  (properties || []).forEach(prop => {
+    const bName = prop.name || '';
+    const units = prop.isBuilding ? (prop.units || []) : [{ number: '', type: prop.type, rent: prop.rent }];
+    units.forEach(u => {
+      const key = unitCatKey(bName, u);
+      if (!CAT_META[key]) CAT_META[key] = { totalUnits: 0, _b: new Set(), _t: new Set(), _rent: 0 };
+      CAT_META[key].totalUnits++;
+      if (bName) CAT_META[key]._b.add(bName);
+      if (u.type) CAT_META[key]._t.add(u.type);
+      const r = unitRent(bName, u);
+      if (r && !CAT_META[key]._rent) CAT_META[key]._rent = r;
+    });
+  });
+  Object.keys(CAT_META).forEach(k => {
+    const m = CAT_META[k];
+    const buildings = [...m._b].join(', ');
+    if (k === 'Magasins') { m.label = 'Magasins / Locaux Commerciaux'; m.sublabel = buildings; }
+    else {
+      const rent = m._rent || Number(k) || 0;
+      const types = [...m._t].filter(Boolean).join(', ');
+      m.label = buildings || types || 'Logements';
+      m.sublabel = `${types ? types + ' · ' : ''}${rent.toLocaleString('fr-FR')} FCFA / mois`;
+    }
+  });
 
-  /* ── Group by category ── */
-  const CATEGORY_ORDER = ['130000', '150000', '200000', '300000', 'Magasins'];
-  // Pre-populate all known categories so they always appear in the report
+  /* ── Group by category — only the org's real categories appear ── */
+  const CATEGORY_ORDER = Object.keys(CAT_META).sort((a, b) => {
+    if (a === 'Magasins') return 1; if (b === 'Magasins') return -1;
+    return Number(a) - Number(b);
+  });
   const catMap = {};
   CATEGORY_ORDER.forEach(k => { catMap[k] = { paid: [], unpaid: [] }; });
   paid.forEach(p => {
@@ -1805,7 +1823,7 @@ export default function Payments() {
   };
 
   const handlePrintReport = () => {
-    const html = buildReportHTML(selectedMonth, reportPaid, reportUnpaid, orgSettings, payments, reportAdvance, contracts, monthExpenses);
+    const html = buildReportHTML(selectedMonth, reportPaid, reportUnpaid, orgSettings, payments, reportAdvance, contracts, monthExpenses, properties);
     const win = window.open('', '_blank', 'width=900,height=700');
     if (win) { win.document.write(html); win.document.close(); }
   };
