@@ -5,18 +5,48 @@ import Icon from './Icon';
  * Canvas-based signature pad supporting mouse and touch input.
  * Exposes getDataURL() and clear() via ref.
  */
-const SignaturePad = forwardRef(function SignaturePad({ label, subtitle, required, onChange }, ref) {
+const SignaturePad = forwardRef(function SignaturePad({ label, subtitle, required, onChange, storageKey }, ref) {
   const canvasRef    = useRef(null);
   const drawing      = useRef(false);
   const lastPos      = useRef(null);
   const strokes      = useRef([]);   // for undo
   const [signed, setSigned] = useState(false);
+  // A previously "remembered" signature (per user/device) that can be reused
+  const [saved, setSaved] = useState(() => {
+    try { return storageKey ? localStorage.getItem(storageKey) : null; } catch { return null; }
+  });
+
+  // Draw an existing signature (data URL) onto the pad
+  const drawDataUrl = useCallback((dataUrl) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !dataUrl) return;
+    const img = new Image();
+    img.onload = () => {
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      strokes.current = [];
+      setSigned(true);
+      onChange?.(true);
+    };
+    img.src = dataUrl;
+  }, [onChange]);
 
   useImperativeHandle(ref, () => ({
     getDataURL: () => (signed ? canvasRef.current?.toDataURL('image/png') : null),
     clear:      () => clearPad(),
     isSigned:   () => signed,
+    load:       (dataUrl) => drawDataUrl(dataUrl),
   }));
+
+  const reuseSaved = useCallback(() => { if (saved) drawDataUrl(saved); }, [saved, drawDataUrl]);
+  const rememberSignature = useCallback(() => {
+    try {
+      const d = canvasRef.current?.toDataURL('image/png');
+      if (d && storageKey) { localStorage.setItem(storageKey, d); setSaved(d); }
+    } catch { /* ignore quota */ }
+  }, [storageKey]);
 
   /* ── Canvas setup ── */
   useEffect(() => {
@@ -145,11 +175,31 @@ const SignaturePad = forwardRef(function SignaturePad({ label, subtitle, require
         )}
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-1">
         <p className={`text-xs ${signed ? 'text-green-600 font-semibold' : 'text-on-surface-variant'}`}>
           {signed ? '✓ Signature enregistrée' : 'Aucune signature'}
         </p>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap items-center">
+          {storageKey && saved && (
+            <button
+              type="button"
+              onClick={reuseSaved}
+              className="text-xs text-primary font-semibold hover:text-primary/70 transition-colors flex items-center gap-0.5"
+              title="Réutiliser votre signature enregistrée"
+            >
+              <Icon name="history" size={13} /> Réutiliser ma signature
+            </button>
+          )}
+          {storageKey && signed && (
+            <button
+              type="button"
+              onClick={rememberSignature}
+              className="text-xs text-on-surface-variant hover:text-primary transition-colors flex items-center gap-0.5"
+              title="Mémoriser cette signature pour la réutiliser plus tard"
+            >
+              <Icon name="bookmark_add" size={13} /> Mémoriser
+            </button>
+          )}
           <button
             type="button"
             onClick={undo}

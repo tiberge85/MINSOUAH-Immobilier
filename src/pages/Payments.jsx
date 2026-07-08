@@ -3010,6 +3010,7 @@ export default function Payments() {
                   subtitle={`${orgSettings?.companyName || 'Minsouah Immobilier'}`}
                   required
                   onChange={setSigBailleur}
+                  storageKey={`minsouah_sig_${state.currentUser?.id || 'me'}`}
                 />
 
                 <SignaturePad

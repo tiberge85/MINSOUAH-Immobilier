@@ -247,11 +247,13 @@ export default function Bordereaux() {
         <DetailModal
           b={detail} onClose={() => setDetail(null)}
           canEdit={canEdit} canDelete={canDelete} canValidate={canValidate}
+          organizations={state.organizations || []}
           onPrint={() => setPrintTarget(detail)}
           onSubmit={() => submitForValidation(detail)}
           onValidate={() => validate(detail)}
           onCancel={() => cancel(detail)}
           onDelete={() => remove(detail)}
+          onSaveEdit={(updated) => { dispatch({ type: 'UPDATE_BORDEREAU', payload: updated }); setDetail(updated); toast('Bordereau mis à jour'); }}
         />
       )}
     </div>
@@ -490,7 +492,7 @@ function CreateCompta({ eligible, currentUser, canValidate, organizations = [], 
               </div>
             )}
           </div>
-          <SignaturePad ref={sigRef} label="Signature du déposant" />
+          <SignaturePad ref={sigRef} label="Signature du déposant" storageKey={`minsouah_sig_${currentUser?.id || 'me'}`} />
         </div>
 
         {/* Payment selection */}
@@ -710,7 +712,7 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, currentUser, ca
               <div className="col-span-2"><Field label="Observation"><textarea value={form.observation} onChange={e => setForm(f => ({ ...f, observation: e.target.value }))} rows={2} className={inp} /></Field></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <SignaturePad ref={sigResp} label="Signature du responsable" />
+              <SignaturePad ref={sigResp} label="Signature du responsable" storageKey={`minsouah_sig_${currentUser?.id || 'me'}`} />
               <SignaturePad ref={sigOwner} label="Signature du propriétaire" subtitle="Si remise physique" />
             </div>
           </div>
@@ -726,9 +728,30 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, currentUser, ca
 }
 
 /* ════════════════════════════ DETAIL MODAL ════════════════════════════ */
-function DetailModal({ b, onClose, canEdit, canDelete, canValidate, onPrint, onSubmit, onValidate, onCancel, onDelete }) {
+function DetailModal({ b, onClose, canEdit, canDelete, canValidate, organizations = [], onPrint, onSubmit, onValidate, onCancel, onDelete, onSaveEdit }) {
   const isProprio = b.type === 'PROPRIETAIRE';
   const v = b.validation || {};
+  const editable = (b.status === 'Brouillon' || b.status === 'En attente de validation') && canEdit;
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState(null);
+
+  const startEdit = () => {
+    setForm({
+      date: b.date || '', time: b.time || '', paymentMode: b.paymentMode || 'Espèces', observation: b.observation || '',
+      agence: b.agence || '', depositedBy: b.depositedBy || b.caissier || '', receivedBy: b.receivedBy || '',
+      bank: b.bank || '', beneficiaryOrgId: b.beneficiaryOrgId || '', beneficiaryAccount: b.beneficiaryAccount || '', bankRef: b.bankRef || '',
+      transferRef: b.transferRef || '',
+    });
+    setEditing(true);
+  };
+  const saveEdit = () => {
+    const patch = isProprio
+      ? { date: form.date, time: form.time, paymentMode: form.paymentMode, transferRef: form.transferRef, observation: form.observation }
+      : { date: form.date, time: form.time, paymentMode: form.paymentMode, agence: form.agence, depositedBy: form.depositedBy, caissier: form.depositedBy, receivedBy: form.receivedBy, bank: form.bank, beneficiaryOrgId: form.beneficiaryOrgId, beneficiaryOrgName: (organizations.find(o => o.id === form.beneficiaryOrgId)?.name) || '', beneficiaryAccount: form.beneficiaryAccount, bankRef: form.bankRef, observation: form.observation };
+    onSaveEdit?.({ ...b, ...patch });
+    setEditing(false);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto">
@@ -741,6 +764,38 @@ function DetailModal({ b, onClose, canEdit, canDelete, canValidate, onPrint, onS
         </div>
 
         <div className="p-5 flex flex-col gap-4">
+          {editing ? (
+            <div className="bg-surface-container-low rounded-xl p-4 grid sm:grid-cols-2 gap-3">
+              <Field label="Date"><input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className={inp} /></Field>
+              <Field label="Heure"><input type="time" value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))} className={inp} /></Field>
+              <Field label="Mode de versement">
+                <select value={form.paymentMode} onChange={e => setForm(f => ({ ...f, paymentMode: e.target.value }))} className={inp}>
+                  {PAYMENT_MODES.map(m => <option key={m}>{m}</option>)}
+                </select>
+              </Field>
+              {isProprio ? (
+                <Field label="Référence transfert"><input value={form.transferRef} onChange={e => setForm(f => ({ ...f, transferRef: e.target.value }))} className={inp} /></Field>
+              ) : <>
+                <Field label="Agence"><input value={form.agence} onChange={e => setForm(f => ({ ...f, agence: e.target.value }))} className={inp} /></Field>
+                <Field label="Versé par (déposant)"><input value={form.depositedBy} onChange={e => setForm(f => ({ ...f, depositedBy: e.target.value }))} className={inp} /></Field>
+                <Field label="Reçu par (comptable)"><input value={form.receivedBy} onChange={e => setForm(f => ({ ...f, receivedBy: e.target.value }))} className={inp} /></Field>
+                <Field label="Organisation bénéficiaire">
+                  <select value={form.beneficiaryOrgId} onChange={e => setForm(f => ({ ...f, beneficiaryOrgId: e.target.value }))} className={inp}>
+                    <option value="">— Choisir —</option>
+                    {organizations.map(o => <option key={o.id} value={o.id}>{o.name || o.id}</option>)}
+                  </select>
+                </Field>
+                <Field label="Banque"><input value={form.bank} onChange={e => setForm(f => ({ ...f, bank: e.target.value }))} className={inp} /></Field>
+                <Field label="Compte bénéficiaire"><input value={form.beneficiaryAccount} onChange={e => setForm(f => ({ ...f, beneficiaryAccount: e.target.value }))} className={inp} /></Field>
+                <Field label="Référence bancaire"><input value={form.bankRef} onChange={e => setForm(f => ({ ...f, bankRef: e.target.value }))} className={inp} /></Field>
+              </>}
+              <div className="sm:col-span-2"><Field label="Observation"><textarea rows={2} value={form.observation} onChange={e => setForm(f => ({ ...f, observation: e.target.value }))} className={inp} /></Field></div>
+              <div className="sm:col-span-2 flex justify-end gap-2">
+                <Btn small variant="secondary" onClick={() => setEditing(false)}>Annuler</Btn>
+                <Btn small variant="green" icon="save" onClick={saveEdit}>Enregistrer</Btn>
+              </div>
+            </div>
+          ) : (
           <div className="grid sm:grid-cols-2 gap-2 text-sm">
             <Info label="Type" value={isProprio ? 'Reversement propriétaire' : 'Versement comptabilité'} />
             <Info label="Date" value={`${b.date || ''} ${b.time || ''}`} />
@@ -756,6 +811,7 @@ function DetailModal({ b, onClose, canEdit, canDelete, canValidate, onPrint, onS
             <Info label="Mode" value={b.paymentMode || '—'} />
             <Info label="Créé par" value={b.createdBy?.userName || '—'} />
           </div>
+          )}
 
           <div className="overflow-x-auto border border-outline-variant/20 rounded-xl">
             <table className="w-full text-left text-sm">
@@ -793,6 +849,7 @@ function DetailModal({ b, onClose, canEdit, canDelete, canValidate, onPrint, onS
 
         <div className="sticky bottom-0 bg-surface border-t border-outline-variant/20 px-5 py-3 flex flex-wrap gap-2 justify-end">
           <Btn small variant="secondary" icon="print" onClick={onPrint}>Imprimer</Btn>
+          {editable && !editing && <Btn small variant="secondary" icon="edit" onClick={startEdit}>Modifier</Btn>}
           {b.status === 'Brouillon' && canEdit && <Btn small variant="amber" icon="send" onClick={onSubmit}>Soumettre</Btn>}
           {(b.status === 'Brouillon' || b.status === 'En attente de validation') && canValidate && <Btn small variant="green" icon="verified" onClick={onValidate}>Valider</Btn>}
           {b.status === 'Validé' && canValidate && <Btn small variant="danger" icon="block" onClick={onCancel}>Annuler</Btn>}
