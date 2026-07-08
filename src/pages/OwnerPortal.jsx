@@ -444,11 +444,37 @@ export default function OwnerPortal() {
   /* ─── Owner dashboard ─────────────────────────────────────────── */
   const TABS = [
     { id: 'overview', label: 'Vue d\'ensemble', icon: 'dashboard' },
+    { id: 'revenus', label: 'Revenus', icon: 'account_balance_wallet' },
     { id: 'properties', label: 'Biens', icon: 'apartment' },
     { id: 'finance', label: 'Finances', icon: 'trending_up' },
     { id: 'maintenance', label: 'Maintenance', icon: 'engineering' },
     { id: 'edl', label: 'États des lieux', icon: 'home_work' },
   ];
+
+  /* ─── 4 soldes : brut, commissions, reversé, solde restant ─────── */
+  const fmtCFA = (n) => `${(Number(n) || 0).toLocaleString('fr-FR')} FCFA`;
+  const commOf = (p) => p.commissionAmount != null ? p.commissionAmount : Math.round((p.amount || 0) * (Number(owner?.commissionRate) || 0) / 100);
+  const netOf = (p) => p.montantNet != null ? p.montantNet : ((p.amount || 0) - commOf(p));
+  const revenus = useMemo(() => {
+    const paid = ownerPayments.filter(p => p.status === 'Payé');
+    const brut = paid.reduce((s, p) => s + (p.amount || 0), 0);
+    const commissions = paid.reduce((s, p) => s + commOf(p), 0);
+    const reversed = paid.filter(p => p.versementProprioId || p.avanceVerseeProprio);
+    const pending = paid.filter(p => !p.versementProprioId && !p.avanceVerseeProprio);
+    return {
+      brut, commissions,
+      dejaReverse: reversed.reduce((s, p) => s + netOf(p), 0),
+      soldeRestant: pending.reduce((s, p) => s + netOf(p), 0),
+      nbPaid: paid.length,
+    };
+  }, [ownerPayments, owner]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Historique des reversements (bordereaux propriétaire validés le concernant)
+  const ownerVersements = useMemo(() =>
+    (state.bordereaux || [])
+      .filter(b => b.type === 'PROPRIETAIRE' && b.status === 'Validé' && owner && String(b.ownerId) === String(owner.id))
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
+    [state.bordereaux, owner]
+  );
 
   return (
     <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl max-w-6xl mx-auto flex flex-col gap-gutter">
@@ -737,6 +763,56 @@ export default function OwnerPortal() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── REVENUS (4 soldes) ───────────────────────────────────── */}
+      {activeTab === 'revenus' && (
+        <div className="px-4 sm:px-6 md:px-8 pb-8 max-w-5xl mx-auto flex flex-col gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              { label: 'Loyers bruts encaissés', value: revenus.brut, icon: 'payments', cls: 'text-primary bg-primary/10' },
+              { label: 'Commissions Minsouah', value: revenus.commissions, icon: 'percent', cls: 'text-amber-700 bg-amber-100', neg: true },
+              { label: 'Déjà reversé', value: revenus.dejaReverse, icon: 'check_circle', cls: 'text-blue-700 bg-blue-100' },
+              { label: 'Solde restant à reverser', value: revenus.soldeRestant, icon: 'account_balance_wallet', cls: 'text-green-700 bg-green-100' },
+            ].map(c => (
+              <div key={c.label} className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-4 shadow-card">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-2 ${c.cls}`}><Icon name={c.icon} size={20} /></div>
+                <p className="text-xs text-on-surface-variant">{c.label}</p>
+                <p className={`text-lg font-black mt-0.5 ${c.neg ? 'text-amber-700' : 'text-on-surface'}`}>{c.neg && c.value ? '−' : ''}{fmtCFA(c.value)}</p>
+              </div>
+            ))}
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800 flex items-start gap-2">
+            <Icon name="info" size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
+            <span><strong>Loyers bruts</strong> = total encaissé des locataires. <strong>Commissions</strong> = honoraires de gestion Minsouah (figés à l'encaissement). <strong>Net</strong> = brut − commissions. Le <strong>solde restant</strong> vous sera reversé.</span>
+          </div>
+
+          <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-4 shadow-card">
+            <h3 className="font-bold text-on-surface mb-3 flex items-center gap-2"><Icon name="history" size={18} /> Historique des reversements</h3>
+            {ownerVersements.length === 0 ? (
+              <p className="text-sm text-on-surface-variant text-center py-6">Aucun reversement effectué pour le moment.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-surface-container-high text-on-surface-variant">
+                    <tr>{['N° Bordereau', 'Date', 'Loyers', 'Net reversé', 'Mode'].map(h => <th key={h} className="px-3 py-2 text-xs font-bold uppercase">{h}</th>)}</tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/20">
+                    {ownerVersements.map(b => (
+                      <tr key={b.id}>
+                        <td className="px-3 py-2 font-mono font-semibold">{b.number}</td>
+                        <td className="px-3 py-2 text-on-surface-variant">{b.date}</td>
+                        <td className="px-3 py-2">{fmtCFA(b.totalAmount)}</td>
+                        <td className="px-3 py-2 font-bold text-green-700">{fmtCFA(b.totalNet)}</td>
+                        <td className="px-3 py-2 text-on-surface-variant">{b.paymentMode || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

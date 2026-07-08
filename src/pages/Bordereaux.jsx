@@ -563,14 +563,17 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, currentUser, ca
     .sort((a, b) => monthKey(b) - monthKey(a)), [ownerPayments]);
   const scope = monthFilter === 'Tous' ? ownerPayments : ownerPayments.filter(p => p.month === monthFilter);
 
-  // Lines are computed automatically (no per-tenant selection) — commission per line
+  // Lines use the commission FROZEN on each payment at cash-in (never recomputed).
+  // Fallback to the owner's current rate only for legacy payments without a frozen value.
   const lines = useMemo(() => scope.map(p => {
     const amount = p.amount || 0;
-    const commission = Math.round(amount * rate / 100);
+    const commission = p.commissionAmount != null ? p.commissionAmount : Math.round(amount * rate / 100);
+    const net = p.montantNet != null ? p.montantNet : (amount - commission);
+    const usedRate = p.commissionRate != null ? p.commissionRate : rate;
     return {
       paymentId: p.id, tenantName: p.tenantName || '', propertyName: p.propertyName || '', unit: p.unit || '',
       period: p.month || '', paidDate: p.paidDate || '', method: p.method || '', paymentRef: p.reference || String(p.id),
-      amount, commission, frais: 0, net: amount - commission,
+      amount, commission, commissionRate: usedRate, frais: 0, net,
     };
   }), [scope, rate]);
 

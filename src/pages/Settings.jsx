@@ -9,6 +9,7 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { getPlan } from '../lib/planLimits';
 import { getDaysRemaining, getLicenseStatusInfo } from '../lib/licenses';
 import { MODULES, ACTIONS, FULL_ACCESS_ROLES, fullPermissions, effectivePermissions } from '../lib/permissions';
+import { DEFAULT_COMMISSION_RATE } from '../lib/commissions';
 import { SCI_NORA_LOGO, SCI_NORA_STAMP } from '../lib/sciNoraAssets';
 
 // Rôles autorisés par catégorie — SUPER_ADMIN a sa propre page /superadmin
@@ -18,6 +19,7 @@ const STAFF_ROLES  = ['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER'];
 const ALL_TABS = [
   { key: 'profile',       label: 'Mon Profil',      icon: 'account_circle',  roles: null },
   { key: 'org',           label: 'Organisation',    icon: 'business',        roles: STAFF_ROLES },
+  { key: 'commissions',   label: 'Commissions',     icon: 'percent',         roles: STAFF_ROLES },
   // 'organizations' retiré de Settings — géré exclusivement dans /superadmin
   { key: 'plan',          label: 'Plan & Licence',  icon: 'verified',        roles: ADMIN_ROLES },
   { key: 'users',         label: 'Utilisateurs',    icon: 'group',           roles: ADMIN_ROLES },
@@ -649,6 +651,11 @@ export default function Settings() {
                 <Icon name="save" size={18} /> Enregistrer les modifications
               </button>
             </div>
+          )}
+
+          {/* ══════════ COMMISSIONS ══════════ */}
+          {tab === 'commissions' && (
+            <CommissionsTab state={state} dispatch={dispatch} currentUser={currentUser} showToast={showToast} />
           )}
 
           {/* ══════════ PLAN & LICENCE ══════════ */}
@@ -1801,6 +1808,132 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
   );
 }
 
+
+/* ── CommissionsTab (Paramètres → Commissions) ─────────────────────────────── */
+function CommissionsTab({ state, dispatch, currentUser, showToast }) {
+  const isAdmin = ['ORGANIZATION_ADMIN', 'ADMIN'].includes(currentUser?.role);
+  const orgId = currentUser?.orgId || 'default';
+  const rates = (state.commissionRates || []).filter(r => !r.orgId || r.orgId === orgId);
+  const owners = (state.owners || []).filter(o => o.orgId === orgId);
+  const buildings = [...new Set((state.properties || []).filter(p => p.orgId === orgId).map(p => p.name).filter(Boolean))];
+
+  const blank = { scope: 'org', rate: DEFAULT_COMMISSION_RATE, buildingName: '', ownerId: '', effectiveDate: new Date().toISOString().slice(0, 10), active: true };
+  const [form, setForm] = useState(blank);
+  const [showForm, setShowForm] = useState(false);
+
+  const save = () => {
+    const rate = Number(form.rate);
+    if (isNaN(rate) || rate < 0 || rate > 100) { showToast('Taux invalide (0–100)'); return; }
+    const owner = owners.find(o => String(o.id) === String(form.ownerId));
+    const payload = {
+      orgId,
+      rate,
+      buildingName: form.scope === 'building' ? form.buildingName : '',
+      ownerId: form.scope === 'owner' ? (form.ownerId ? Number(form.ownerId) : null) : null,
+      ownerName: form.scope === 'owner' ? (owner?.name || '') : '',
+      effectiveDate: form.effectiveDate,
+      active: form.active,
+    };
+    if (form.scope === 'building' && !payload.buildingName) { showToast('Choisissez un immeuble'); return; }
+    if (form.scope === 'owner' && !payload.ownerId) { showToast('Choisissez un propriétaire'); return; }
+    dispatch({ type: 'ADD_COMMISSION_RATE', payload });
+    showToast('Taux de commission enregistré');
+    setForm(blank); setShowForm(false);
+  };
+
+  const scopeLabel = (r) => r.ownerId ? `Propriétaire : ${r.ownerName || r.ownerId}` : r.buildingName ? `Immeuble : ${r.buildingName}` : 'Organisation (par défaut)';
+
+  return (
+    <div className="bg-surface rounded-2xl border border-outline-variant/20 p-6 flex flex-col gap-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="font-bold text-lg text-on-surface flex items-center gap-2"><Icon name="percent" filled /> Commissions de gestion</h2>
+          <p className="text-sm text-on-surface-variant mt-0.5">Taux prélevés par Minsouah sur chaque loyer encaissé. Priorité : propriétaire &gt; immeuble &gt; organisation &gt; défaut ({DEFAULT_COMMISSION_RATE} %).</p>
+        </div>
+        {isAdmin && <button onClick={() => setShowForm(v => !v)} className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary/90"><Icon name="add" size={16} /> Ajouter un taux</button>}
+      </div>
+
+      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2 text-xs text-amber-800">
+        <Icon name="info" size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+        Le taux est <strong>figé sur chaque paiement au moment de l'encaissement</strong> — modifier un taux ici n'affecte que les encaissements <strong>futurs</strong>, jamais les paiements déjà validés.
+      </div>
+
+      {showForm && isAdmin && (
+        <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-on-surface-variant uppercase mb-1.5 block">Portée</label>
+            <select value={form.scope} onChange={e => setForm(f => ({ ...f, scope: e.target.value }))} className={inputCls}>
+              <option value="org">Organisation (taux par défaut)</option>
+              <option value="building">Immeuble spécifique</option>
+              <option value="owner">Propriétaire spécifique</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-on-surface-variant uppercase mb-1.5 block">Taux (%)</label>
+            <input type="number" min="0" max="100" step="0.5" value={form.rate} onChange={e => setForm(f => ({ ...f, rate: e.target.value }))} className={inputCls} />
+          </div>
+          {form.scope === 'building' && (
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase mb-1.5 block">Immeuble</label>
+              <select value={form.buildingName} onChange={e => setForm(f => ({ ...f, buildingName: e.target.value }))} className={inputCls}>
+                <option value="">— Choisir —</option>
+                {buildings.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+          )}
+          {form.scope === 'owner' && (
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant uppercase mb-1.5 block">Propriétaire</label>
+              <select value={form.ownerId} onChange={e => setForm(f => ({ ...f, ownerId: e.target.value }))} className={inputCls}>
+                <option value="">— Choisir —</option>
+                {owners.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="text-xs font-semibold text-on-surface-variant uppercase mb-1.5 block">Date d'entrée en vigueur</label>
+            <input type="date" value={form.effectiveDate} onChange={e => setForm(f => ({ ...f, effectiveDate: e.target.value }))} className={inputCls} />
+          </div>
+          <div className="sm:col-span-2 flex justify-end gap-2">
+            <button onClick={() => { setShowForm(false); setForm(blank); }} className="px-4 py-2 text-sm text-on-surface-variant hover:bg-surface-container-high rounded-xl">Annuler</button>
+            <button onClick={save} className="px-5 py-2 bg-primary text-on-primary text-sm font-bold rounded-xl hover:bg-primary/90">Enregistrer</button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        {rates.length === 0 && (
+          <div className="text-center py-8 text-on-surface-variant">
+            <Icon name="percent" size={36} className="opacity-30 mb-2" />
+            <p>Aucun taux spécifique — le taux par défaut de <strong>{DEFAULT_COMMISSION_RATE} %</strong> s'applique.</p>
+          </div>
+        )}
+        {rates.sort((a, b) => (b.ownerId ? 2 : b.buildingName ? 1 : 0) - (a.ownerId ? 2 : a.buildingName ? 1 : 0)).map(r => (
+          <div key={r.id} className={`flex items-center gap-3 p-3 rounded-xl border ${r.active === false ? 'border-outline-variant/20 bg-surface-container opacity-60' : 'border-outline-variant/20 bg-surface-container'}`}>
+            <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-black text-sm flex-shrink-0">{r.rate}%</div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-on-surface text-sm">{scopeLabel(r)}</p>
+              <p className="text-xs text-on-surface-variant">En vigueur dès le {r.effectiveDate ? new Date(r.effectiveDate).toLocaleDateString('fr-FR') : '—'} {r.active === false && '· Inactif'}</p>
+            </div>
+            {isAdmin && (
+              <div className="flex items-center gap-1">
+                <button onClick={() => dispatch({ type: 'UPDATE_COMMISSION_RATE', payload: { ...r, active: !(r.active !== false) } })}
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center ${r.active === false ? 'text-green-600 hover:bg-green-50' : 'text-amber-600 hover:bg-amber-50'}`}
+                  title={r.active === false ? 'Activer' : 'Désactiver'}>
+                  <Icon name={r.active === false ? 'play_circle' : 'pause_circle'} size={16} />
+                </button>
+                <button onClick={() => { if (window.confirm('Supprimer ce taux ?')) dispatch({ type: 'DELETE_COMMISSION_RATE', payload: r.id }); }}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-error/10 hover:text-error" title="Supprimer">
+                  <Icon name="delete" size={16} />
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /* ── PlanLicenceTab ─────────────────────────────────────────────────────────── */
 const PLAN_COLORS = {

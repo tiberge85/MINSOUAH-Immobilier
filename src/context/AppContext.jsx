@@ -9,6 +9,7 @@ import { hashPwd, verifyPwd } from '../lib/auth';
 import { checkLimit } from '../lib/planLimits';
 import { createLicensePayload } from '../lib/licenses';
 import { sendEmail } from '../lib/email';
+import { freezeCommissionOnPayment } from '../lib/commissions';
 
 // Mock data — only used by RESET_DEMO action
 import {
@@ -278,6 +279,7 @@ export function AppProvider({ children }) {
     referrers: [],
     prestataires: [],
     bordereaux: [],
+    commissionRates: [],
     currentUser: null,
     orgSettings: DEFAULT_ORG,
     systemSettings: DEFAULT_SYSTEM,
@@ -392,7 +394,7 @@ export function AppProvider({ children }) {
         // entity collections: filtered by orgId for non-admin users
         ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
           'tickets', 'inspections', 'conversations', 'monthClosures',
-          'insurances', 'budgets', 'referrers', 'prestataires', 'bordereaux'].forEach(c => sub(c, true));
+          'insurances', 'budgets', 'referrers', 'prestataires', 'bordereaux', 'commissionRates'].forEach(c => sub(c, true));
 
         sub('tenantPortals'); // publicly readable portal tokens
 
@@ -797,7 +799,14 @@ export function AppProvider({ children }) {
         // ── PAYMENTS ──────────────────────────────────────────────────────────
         case 'ADD_PAYMENT': {
           const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
-          await setDoc(wsDoc('payments', id), { ...payload, id, orgId, createdAt: new Date().toISOString() });
+          let doc = { ...payload, id, orgId, createdAt: new Date().toISOString() };
+          // Auto-freeze the management commission the moment the rent is cashed
+          if (doc.status === 'Payé') {
+            const actor = { userId: st.currentUser?.id || null, userName: st.currentUser?.name || '' };
+            const comm = freezeCommissionOnPayment(doc, st.commissionRates, actor);
+            if (comm) doc = { ...doc, ...comm };
+          }
+          await setDoc(wsDoc('payments', id), doc);
           break;
         }
         case 'UPDATE_PAYMENT':
@@ -811,10 +820,18 @@ export function AppProvider({ children }) {
           const isClosed = pmtToMark && (st.monthClosures || []).some(
             c => c.month === pmtToMark.month && c.orgId === orgId
           );
+          const paidDate = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+          // Freeze the commission on validation (only if not already frozen)
+          let comm = null;
+          if (pmtToMark) {
+            const actor = { userId: st.currentUser?.id || null, userName: st.currentUser?.name || '' };
+            comm = freezeCommissionOnPayment({ ...pmtToMark, status: 'Payé', paidDate }, st.commissionRates, actor);
+          }
           await updateDoc(wsDoc('payments', payload), {
             status: 'Payé',
-            paidDate: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
+            paidDate,
             ...(isClosed ? { postCloture: true } : {}),
+            ...(comm || {}),
           });
           break;
         }
@@ -879,6 +896,33 @@ export function AppProvider({ children }) {
           await logActivity(`Bordereau ${bord.number} → ${status}`, 'BORDEREAU_STATUS');
           break;
         }
+
+        // ── COMMISSION RATES (paramétrage) ────────────────────────────────────
+        case 'ADD_COMMISSION_RATE': {
+          const id = `comm_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+          const actor = { userId: st.currentUser?.id || null, userName: st.currentUser?.name || '', at: new Date().toISOString() };
+          await setDoc(wsDoc('commissionRates', id), {
+            ...payload, id, orgId: payload.orgId || orgId,
+            active: payload.active !== false,
+            createdAt: new Date().toISOString(), createdBy: actor,
+          });
+          await logActivity(`Taux commission ${payload.rate}% créé${payload.buildingName ? ' · ' + payload.buildingName : ''}${payload.ownerName ? ' · ' + payload.ownerName : ''}`, 'COMMISSION_RATE');
+          break;
+        }
+        case 'UPDATE_COMMISSION_RATE': {
+          const old = st.commissionRates.find(r => r.id === payload.id);
+          const actor = { userId: st.currentUser?.id || null, userName: st.currentUser?.name || '', at: new Date().toISOString() };
+          await setDoc(wsDoc('commissionRates', payload.id), { ...payload, updatedBy: actor }, { merge: true });
+          await logActivity(`Taux commission modifié : ${old?.rate ?? '?'}% → ${payload.rate}%`, 'COMMISSION_RATE');
+          break;
+        }
+        case 'DELETE_COMMISSION_RATE': {
+          const old = st.commissionRates.find(r => r.id === payload);
+          await deleteDoc(wsDoc('commissionRates', payload));
+          await logActivity(`Taux commission supprimé (${old?.rate ?? '?'}%)`, 'COMMISSION_RATE');
+          break;
+        }
+
         // ── QUITTANCE VERIFICATION (public QR authenticity doc) ───────────────
         case 'SAVE_QUITTANCE_VERIFY': {
           const p = payload;

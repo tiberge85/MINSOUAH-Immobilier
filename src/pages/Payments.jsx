@@ -2090,14 +2090,14 @@ export default function Payments() {
               <table className="w-full text-left">
                 <thead className="bg-secondary text-on-primary">
                   <tr>
-                    {['Propriété / Locataire','Montant','Échéance','Payé le','Statut','Rappels','Actions'].map((h,i) => (
-                      <th key={h} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider ${i === 1 ? 'text-right' : ''}`}>{h}</th>
+                    {['Propriété / Locataire','Montant brut','Commission','Net propriétaire','Échéance','Payé le','Statut','Rappels','Actions'].map((h,i) => (
+                      <th key={h} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider ${(i >= 1 && i <= 3) ? 'text-right' : ''}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/20">
                   {filtered.length === 0 && (
-                    <tr><td colSpan={7} className="text-center py-12 text-on-surface-variant">
+                    <tr><td colSpan={9} className="text-center py-12 text-on-surface-variant">
                       <Icon name="payments" size={36} className="opacity-30 mb-2" /><p>Aucun paiement pour ce mois</p>
                     </td></tr>
                   )}
@@ -2122,6 +2122,16 @@ export default function Payments() {
                             </span>
                           );
                         })()}
+                      </td>
+                      <td className="px-4 py-3.5 text-right text-sm">
+                        {p.commissionAmount != null
+                          ? <span className="text-amber-700 font-semibold">−{fmt(p.commissionAmount)}<span className="block text-[10px] font-normal text-on-surface-variant">{p.commissionRate}%</span></span>
+                          : <span className="text-on-surface-variant">—</span>}
+                      </td>
+                      <td className="px-4 py-3.5 text-right text-sm">
+                        {p.montantNet != null
+                          ? <span className="text-green-700 font-bold">{fmt(p.montantNet)}</span>
+                          : <span className="text-on-surface-variant">—</span>}
                       </td>
                       <td className="px-4 py-3.5 text-sm text-on-surface">{p.dueDate || '—'}</td>
                       <td className="px-4 py-3.5 text-sm text-on-surface">{p.paidDate || <span className="text-on-surface-variant">—</span>}</td>
