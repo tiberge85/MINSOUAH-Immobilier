@@ -33,6 +33,7 @@ export const MODULES = [
   { key: 'finance',      label: 'Finances',        icon: 'account_balance_wallet',   path: '/finance',      actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'payments',     label: 'Paiements',       icon: 'payments',                 path: '/payments',     actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'bordereaux',   label: 'Bordereaux de versement', icon: 'receipt_long',     path: '/bordereaux',   actions: ['view', 'create', 'edit', 'delete', 'validate'] },
+  { key: 'revenus',      label: 'Revenus Minsouah',        icon: 'savings',          path: '/revenus-minsouah', actions: ['view'] },
   { key: 'maintenance',  label: 'Maintenance',     icon: 'engineering',              path: '/maintenance',  actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'inspections',  label: 'États des lieux', icon: 'home_work',                path: '/inspections',  actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'calendar',     label: 'Calendrier',      icon: 'calendar_month',           path: '/calendar',     actions: ['view', 'create', 'edit', 'delete'] },

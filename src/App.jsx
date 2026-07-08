@@ -35,6 +35,7 @@ import PublicTenantPortal from './pages/PublicTenantPortal';
 import Referrers     from './pages/Referrers';
 import Prestataires  from './pages/Prestataires';
 import Bordereaux    from './pages/Bordereaux';
+import RevenusMinsouah from './pages/RevenusMinsouah';
 import PublicBordereau from './pages/PublicBordereau';
 import PublicQuittance from './pages/PublicQuittance';
 
@@ -278,6 +279,7 @@ function AppRoutes() {
         <Route path="finance"      element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'ACCOUNTANT']} module="finance"><Finance /></ProtectedRoute>} />
         <Route path="payments"     element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'ACCOUNTANT']} module="payments"><Payments /></ProtectedRoute>} />
         <Route path="bordereaux"   element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'ACCOUNTANT']} module="bordereaux"><Bordereaux /></ProtectedRoute>} />
+        <Route path="revenus-minsouah" element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'ACCOUNTANT']} module="revenus"><RevenusMinsouah /></ProtectedRoute>} />
         <Route path="maintenance"  element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'TECHNICIAN', 'CONCIERGE']} module="maintenance"><Maintenance /></ProtectedRoute>} />
         <Route path="inspections"  element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE']} module="inspections"><Inspections /></ProtectedRoute>} />
         <Route path="inbox"        element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE', 'TECHNICIAN', 'ACCOUNTANT']} module="inbox"><Inbox /></ProtectedRoute>} />
