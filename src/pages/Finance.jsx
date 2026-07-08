@@ -50,7 +50,10 @@ export default function Finance() {
   const canCreate = can(state.currentUser, 'finance', 'create');
   const canEdit   = can(state.currentUser, 'finance', 'edit');
   const canDelete = can(state.currentUser, 'finance', 'delete');
-  const { transactions = [], payments = [] } = state;
+  // Strict org isolation for financial reports — only the active org's rows
+  const myOrgId = state.currentUser?.orgId || null;
+  const transactions = useMemo(() => (myOrgId ? (state.transactions || []).filter(t => t.orgId === myOrgId) : (state.transactions || [])), [state.transactions, myOrgId]);
+  const payments = useMemo(() => (myOrgId ? (state.payments || []).filter(p => p.orgId === myOrgId) : (state.payments || [])), [state.payments, myOrgId]);
   const [chartType, setChartType] = useState('area');
   const [chartPeriod, setChartPeriod] = useState('12 Mois');
   const [typeFilter, setTypeFilter] = useState('Tous');

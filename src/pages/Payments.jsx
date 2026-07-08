@@ -873,7 +873,7 @@ function Field({ label, required, children }) {
 const inputCls = 'w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary';
 
 /* ── Post-clôture report ──────────────────────────────────────────────────── */
-function buildPostClotureHTML(closure, postPmts, orgSettings) {
+function buildPostClotureHTML(closure, postPmts, pendingPmts, orgSettings) {
   const org = orgSettings || {};
   const orgLogo = org.logo || '';
   const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
@@ -881,6 +881,14 @@ function buildPostClotureHTML(closure, postPmts, orgSettings) {
   const snap = closure.snapshot || {};
   const closedDate = closure.closedAt ? new Date(closure.closedAt).toLocaleDateString('fr-FR') : '—';
   const totalPost = postPmts.reduce((s, p) => s + (p.amount || 0), 0);
+  const pending = pendingPmts || [];
+  const totalPending = pending.reduce((s, p) => s + (p.amount || 0), 0);
+  const pendingRows = pending.map(p => `<tr>
+    <td style="padding:8px 10px">${p.propertyName || '—'}</td>
+    <td style="padding:8px 10px;font-weight:600">${p.tenantName || '—'}</td>
+    <td style="padding:8px 10px;text-align:right;font-weight:700;color:#b91c1c">${fCFA(p.amount)}</td>
+    <td style="padding:8px 10px">${p.tenantPhone || '—'}</td>
+  </tr>`).join('');
   const newTotal = (snap.totalCollected || 0) + totalPost;
   const newRate = snap.totalExpected > 0 ? Math.round(newTotal / snap.totalExpected * 100) : 0;
 
@@ -963,6 +971,16 @@ function buildPostClotureHTML(closure, postPmts, orgSettings) {
     ${postPmts.length > 0 ? `<tfoot><tr style="background:#dcfce7;font-weight:800"><td colspan="2" style="padding:8px 10px;color:#15803d">TOTAL POST-CLÔTURE</td><td style="padding:8px 10px;text-align:right;color:#15803d">${fCFA(totalPost)}</td><td colspan="2"></td></tr></tfoot>` : ''}
   </table>
 
+  <h3 style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#b45309;font-weight:800;margin:18px 0 8px;padding-bottom:4px;border-bottom:1px solid #e3d9cc">
+    Locataires à régler après échéance (${pending.length})
+  </h3>
+  <p style="font-size:10px;color:#817662;margin-bottom:8px">Locataires n'ayant pas encore payé le loyer de ${closure.month} — paiements attendus après la date d'échéance.</p>
+  <table>
+    <thead><tr><th>Propriété</th><th>Locataire</th><th style="text-align:right">Montant dû</th><th>Téléphone</th></tr></thead>
+    <tbody>${pendingRows || '<tr><td colspan="4" style="text-align:center;padding:12px;color:#15803d;font-style:italic">Tous les loyers ont été réglés ✓</td></tr>'}</tbody>
+    ${pending.length > 0 ? `<tfoot><tr style="background:#fee2e2;font-weight:800"><td colspan="2" style="padding:8px 10px;color:#b91c1c">TOTAL RESTANT À RÉGLER</td><td style="padding:8px 10px;text-align:right;color:#b91c1c">${fCFA(totalPending)}</td><td></td></tr></tfoot>` : ''}
+  </table>
+
   <div class="footer">${org.companyName || 'Minsouah'} · Rapport Post-Clôture ${closure.month} · ${today}</div>
 </div>
 <script>window.onload=()=>window.print();</script>
@@ -972,7 +990,18 @@ function buildPostClotureHTML(closure, postPmts, orgSettings) {
 /* ── Main component ─────────────────────────────────────────────────────── */
 export default function Payments() {
   const { state, dispatch } = useApp();
-  const { payments = [], properties = [], tenants = [], contracts = [], transactions = [], orgSettings, monthClosures = [], budgets = [] } = state;
+  const { orgSettings, budgets = [] } = state;
+  // Strict org isolation: even if the store somehow holds cross-org rows
+  // (e.g. multi-org admin), every report/list here only counts the ACTIVE org's
+  // patrimoine. Rows carry orgId; when an active org is set we keep only its rows.
+  const myOrgId = state.currentUser?.orgId || null;
+  const scopeOrg = (arr) => (myOrgId ? (arr || []).filter(x => x.orgId === myOrgId) : (arr || []));
+  const payments      = useMemo(() => scopeOrg(state.payments),      [state.payments, myOrgId]);      // eslint-disable-line react-hooks/exhaustive-deps
+  const properties    = useMemo(() => scopeOrg(state.properties),    [state.properties, myOrgId]);    // eslint-disable-line react-hooks/exhaustive-deps
+  const tenants       = useMemo(() => scopeOrg(state.tenants),       [state.tenants, myOrgId]);       // eslint-disable-line react-hooks/exhaustive-deps
+  const contracts     = useMemo(() => scopeOrg(state.contracts),     [state.contracts, myOrgId]);     // eslint-disable-line react-hooks/exhaustive-deps
+  const transactions  = useMemo(() => scopeOrg(state.transactions),  [state.transactions, myOrgId]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const monthClosures = useMemo(() => scopeOrg(state.monthClosures), [state.monthClosures, myOrgId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fine-grained permissions for this module
   const canCreate = can(state.currentUser, 'payments', 'create');
@@ -1832,7 +1861,9 @@ export default function Payments() {
       }
       return false;
     });
-    const html = buildPostClotureHTML(closure, postPmts, orgSettings);
+    // Tenants of this (org-scoped) month still expected to pay after the deadline
+    const pendingPmts = payments.filter(p => p.month === month && p.status !== 'Payé' && p.status !== 'Annulé');
+    const html = buildPostClotureHTML(closure, postPmts, pendingPmts, orgSettings);
     const win = window.open('', '_blank', 'width=900,height=700');
     if (win) { win.document.write(html); win.document.close(); }
   };
