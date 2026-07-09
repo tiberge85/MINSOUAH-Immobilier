@@ -50,6 +50,20 @@ function paidTs(p) {
 }
 
 const fmt = n => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
+
+// Petites phrases de motivation chrétienne + encouragement au paiement,
+// tirées au hasard pour clôturer chaque rappel de loyer.
+const REMINDER_BLESSINGS = [
+  '« Rendez à chacun ce qui lui est dû. » (Romains 13:7) — Que Dieu bénisse votre foyer et prospère votre travail. 🙏',
+  '« Donnez, et il vous sera donné. » (Luc 6:38) — Régler ses engagements attire la bénédiction. Bon courage à vous !',
+  '« Que tout se fasse avec ordre. » (1 Corinthiens 14:40) — Merci pour votre fidélité ; que le Seigneur pourvoie à tous vos besoins. 🙏',
+  '« L\'Éternel est mon berger, je ne manquerai de rien. » (Psaume 23:1) — Un petit effort aujourd\'hui, une grande paix demain.',
+  '« Ne devez rien à personne, si ce n\'est de vous aimer les uns les autres. » (Romains 13:8) — Que la paix de Dieu vous accompagne. 🙏',
+  '« Celui qui est fidèle dans les petites choses l\'est aussi dans les grandes. » (Luc 16:10) — Merci de votre sérieux, Dieu vous le rendra.',
+  '« Confie-toi en l\'Éternel et fais le bien. » (Psaume 37:3) — Votre régularité est une bénédiction pour tous. Restez béni !',
+  '« Tout ce que vous faites, faites-le de bon cœur. » (Colossiens 3:23) — Merci d\'honorer vos engagements. Que Dieu vous garde. 🙏',
+];
+const pickBlessing = () => REMINDER_BLESSINGS[Math.floor(Math.random() * REMINDER_BLESSINGS.length)];
 const phoneForWA = raw => { const d = (raw || '').replace(/\D/g, ''); if (!d) return ''; return d.startsWith('225') ? d : '225' + d; };
 
 const statusColor = {
@@ -1912,7 +1926,7 @@ export default function Payments() {
     if (!phone) { alert('Numéro de téléphone manquant pour ce locataire.'); return; }
     const penalty = Math.round((p.amount || 0) * 0.10);
     const msg = encodeURIComponent(
-      `Bonjour ${p.tenantName},\n\nNous vous rappelons que votre loyer de ${fmt(p.amount)} pour ${p.month} est en attente de règlement.\nPropriété : ${p.propertyName}\n\nMerci d'effectuer le paiement avant le 10 du mois. Passé ce délai, une pénalité de 10% (${fmt(penalty)}) s'appliquera au montant, soit un total de ${fmt((p.amount || 0) + penalty)}.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
+      `Bonjour ${p.tenantName},\n\nNous vous rappelons que votre loyer de ${fmt(p.amount)} pour ${p.month} est en attente de règlement.\nPropriété : ${p.propertyName}\n\nMerci d'effectuer le paiement avant le 10 du mois. Passé ce délai, une pénalité de 10% (${fmt(penalty)}) s'appliquera au montant, soit un total de ${fmt((p.amount || 0) + penalty)}.\n\n${pickBlessing()}\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
     );
     window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
     dispatch({ type: 'SEND_REMINDER', payload: p.id });
@@ -1948,7 +1962,7 @@ export default function Payments() {
       if (phone) {
         const penalty = Math.round((p.amount || 0) * 0.10);
         const msg = encodeURIComponent(
-          `Bonjour ${p.tenantName},\n\nNous vous rappelons que votre loyer de ${fmt(p.amount)} pour ${p.month} est en attente de règlement.\nPropriété : ${p.propertyName}\n\nMerci d'effectuer le paiement avant le 10 du mois. Passé ce délai, une pénalité de 10% (${fmt(penalty)}) s'appliquera au montant, soit un total de ${fmt((p.amount || 0) + penalty)}.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
+          `Bonjour ${p.tenantName},\n\nNous vous rappelons que votre loyer de ${fmt(p.amount)} pour ${p.month} est en attente de règlement.\nPropriété : ${p.propertyName}\n\nMerci d'effectuer le paiement avant le 10 du mois. Passé ce délai, une pénalité de 10% (${fmt(penalty)}) s'appliquera au montant, soit un total de ${fmt((p.amount || 0) + penalty)}.\n\n${pickBlessing()}\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
         );
         setTimeout(() => window.open(`https://wa.me/${phone}?text=${msg}`, '_blank'), i * 600);
       }
