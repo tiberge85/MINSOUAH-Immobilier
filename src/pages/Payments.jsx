@@ -1910,8 +1910,9 @@ export default function Payments() {
   const sendWhatsAppReminder = (p) => {
     const phone = phoneForWA(p.tenantPhone);
     if (!phone) { alert('Numéro de téléphone manquant pour ce locataire.'); return; }
+    const penalty = Math.round((p.amount || 0) * 0.10);
     const msg = encodeURIComponent(
-      `Bonjour ${p.tenantName},\n\nNous vous rappelons que votre loyer de ${fmt(p.amount)} pour ${p.month} est en attente de règlement.\nPropriété : ${p.propertyName}\n\nMerci de procéder au paiement dès que possible.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
+      `Bonjour ${p.tenantName},\n\nNous vous rappelons que votre loyer de ${fmt(p.amount)} pour ${p.month} est en attente de règlement.\nPropriété : ${p.propertyName}\n\nMerci d'effectuer le paiement avant le 10 du mois. Passé ce délai, une pénalité de 10% (${fmt(penalty)}) s'appliquera au montant, soit un total de ${fmt((p.amount || 0) + penalty)}.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
     );
     window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
     dispatch({ type: 'SEND_REMINDER', payload: p.id });
@@ -1945,8 +1946,9 @@ export default function Payments() {
     currentMonthUnpaid.forEach((p, i) => {
       const phone = phoneForWA(p.tenantPhone);
       if (phone) {
+        const penalty = Math.round((p.amount || 0) * 0.10);
         const msg = encodeURIComponent(
-          `Bonjour ${p.tenantName},\n\nNous vous rappelons que votre loyer de ${fmt(p.amount)} pour ${p.month} est en attente de règlement.\nPropriété : ${p.propertyName}\n\nMerci de procéder au paiement avant le 10 du mois.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
+          `Bonjour ${p.tenantName},\n\nNous vous rappelons que votre loyer de ${fmt(p.amount)} pour ${p.month} est en attente de règlement.\nPropriété : ${p.propertyName}\n\nMerci d'effectuer le paiement avant le 10 du mois. Passé ce délai, une pénalité de 10% (${fmt(penalty)}) s'appliquera au montant, soit un total de ${fmt((p.amount || 0) + penalty)}.\n\n— ${orgSettings?.companyName || 'Minsouah Immobilier'}`
         );
         setTimeout(() => window.open(`https://wa.me/${phone}?text=${msg}`, '_blank'), i * 600);
       }
