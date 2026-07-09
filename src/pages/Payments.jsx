@@ -9,6 +9,7 @@ import { sendEmail, buildReminderHtml } from '../lib/email';
 import { SCI_NORA_LOGO, SCI_NORA_STAMP } from '../lib/sciNoraAssets';
 import { can } from '../lib/permissions';
 import { QRCodeCanvas } from 'qrcode.react';
+import { currentMonthUnpaidList } from '../lib/rentStatus';
 
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
@@ -1241,7 +1242,28 @@ export default function Payments() {
   const totalExpected = monthPmts.reduce((s, p) => s + (p.amount || 0), 0);
   const totalCollected = monthPmts.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
   const totalPending = monthPmts.filter(p => p.status !== 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
-  const recoveryRate = monthPmts.length ? Math.round(monthPmts.filter(p => p.status === 'Payé').length / monthPmts.length * 100) : 0;
+  // Recovery rate = paid / (paid + REALLY unpaid this selected month). The
+  // denominator counts active-contract tenants without a paid record (not just
+  // existing records) — otherwise a month with only the paid records showed 100%.
+  const recoveryRate = (() => {
+    const paidCount = monthPmts.filter(p => p.status === 'Payé').length;
+    const [selMn, selYr] = (selectedMonth || '').split(' ');
+    const selIdx = MONTH_NAMES.indexOf(selMn);
+    const selDate = selIdx >= 0 ? new Date(Number(selYr), selIdx, 1) : null;
+    const recorded = new Set(monthPmts.map(p => (p.tenantName || '').toLowerCase().trim()).filter(Boolean));
+    let unpaidCount = monthPmts.filter(p => p.status !== 'Payé' && p.status !== 'Annulé').length;
+    (contracts || []).filter(c => c.status === 'Actif' || c.status === 'Expirant').forEach(c => {
+      const name = (c.tenant || '').toLowerCase().trim();
+      if (!name || recorded.has(name)) return;
+      const tenant = (tenants || []).find(t => (t.name || '').toLowerCase().trim() === name || (c.tenantId && String(t.id) === String(c.tenantId)));
+      const psDate = tenant?.paymentStartDate ? new Date(tenant.paymentStartDate) : null;
+      const psFirst = psDate && !isNaN(psDate.getTime()) ? new Date(psDate.getFullYear(), psDate.getMonth(), 1) : null;
+      if (psFirst && selDate && selDate < psFirst) return; // still in advance for this month
+      unpaidCount++;
+    });
+    const total = paidCount + unpaidCount;
+    return total > 0 ? Math.round((paidCount / total) * 100) : 0;
+  })();
 
   /* ── Current month unpaid (for Rappels tab) ──
      Combine explicit unpaid payment records with active-contract tenants who
@@ -1249,46 +1271,10 @@ export default function Payments() {
      when a payment is entered, so unpaid tenants have no record at all).
      Tenants still in their advance period (paymentStartDate not yet reached)
      are excluded. Mirrors the reportUnpaid / penaltyList logic. */
-  const currentMonthUnpaid = useMemo(() => {
-    const currentDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthRecords = (payments || []).filter(p => p.month === currentMonthLabel);
-    // Explicit unpaid records (real payment docs) keep their id / reminderCount
-    const explicit = monthRecords.filter(p => p.status !== 'Payé');
-    // Names already covered by a record this month (paid OR unpaid) — don't duplicate
-    const alreadyInMonth = new Set(
-      monthRecords.map(p => (p.tenantName || '').toLowerCase().trim()).filter(Boolean)
-    );
-
-    const synthesized = [];
-    (contracts || [])
-      .filter(c => c.status === 'Actif' || c.status === 'Expirant')
-      .filter(c => !alreadyInMonth.has((c.tenant || '').toLowerCase().trim()))
-      .forEach(c => {
-        const tenant = (tenants || []).find(t =>
-          (t.name || '').toLowerCase().trim() === (c.tenant || '').toLowerCase().trim() ||
-          (c.tenantId && String(t.id) === String(c.tenantId))
-        );
-        const psDate = tenant?.paymentStartDate ? new Date(tenant.paymentStartDate) : null;
-        // Skip tenants whose payment starts in a LATER month (still in advance).
-        if (psDate && currentDate < monthFirst(psDate)) return;
-        synthesized.push({
-          id: `synth-${c.id}`,
-          isSynthetic: true,
-          contractId: c.id,
-          tenantId: c.tenantId || tenant?.id || null,
-          tenantName: c.tenant || '',
-          tenantPhone: tenant?.phone || '',
-          tenantEmail: tenant?.email || '',
-          propertyName: c.propertyName || '',
-          amount: c.rent || 0,
-          month: currentMonthLabel,
-          status: 'Impayé',
-          reminderCount: 0,
-        });
-      });
-
-    return [...explicit, ...synthesized];
-  }, [payments, currentMonthLabel, contracts, tenants, now]);
+  const currentMonthUnpaid = useMemo(
+    () => currentMonthUnpaidList({ payments, contracts, tenants }, now),
+    [payments, contracts, tenants, now]
+  );
 
   /* ── Active tenants in their ADVANCE period this month (paid caution/avance,
         payment starts a later month) → not due this month, shown for clarity ── */

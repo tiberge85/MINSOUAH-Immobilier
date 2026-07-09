@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate, Navigate } from 'react-route
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { canView, PATH_TO_MODULE } from '../lib/permissions';
+import { currentMonthUnpaidList } from '../lib/rentStatus';
 import Icon from './Icon';
 
 const ROLE_LABELS = {
@@ -77,7 +78,12 @@ export default function Layout() {
   const { state, dispatch } = useApp();
   const { dark, toggle: toggleDark } = useTheme();
   const { currentUser } = state;
-  const unpaidCount = (state.payments || []).filter(p => p.status !== 'Payé').length;
+  // Badge Paiements = nombre de locataires n'ayant pas encore payé ce mois-ci
+  // (diminue à chaque encaissement — même décompte que l'onglet Rappels).
+  const unpaidCount = useMemo(
+    () => currentMonthUnpaidList({ payments: state.payments, contracts: state.contracts, tenants: state.tenants }).length,
+    [state.payments, state.contracts, state.tenants]
+  );
 
   /* ── Org switcher ── */
   const [showOrgMenu, setShowOrgMenu] = useState(false);
