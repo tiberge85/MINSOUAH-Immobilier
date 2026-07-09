@@ -1848,7 +1848,7 @@ function CommissionsTab({ state, dispatch, currentUser, showToast }) {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="font-bold text-lg text-on-surface flex items-center gap-2"><Icon name="percent" filled /> Commissions de gestion</h2>
-          <p className="text-sm text-on-surface-variant mt-0.5">Taux prélevés par Minsouah sur chaque loyer encaissé. Priorité : propriétaire &gt; immeuble &gt; organisation &gt; défaut ({DEFAULT_COMMISSION_RATE} %).</p>
+          <p className="text-sm text-on-surface-variant mt-0.5">Taux prélevés par Minsouah sur chaque loyer encaissé. Priorité : propriétaire &gt; immeuble &gt; organisation. Sans règle configurée, aucune commission n'est prélevée (0 %).</p>
         </div>
         {isAdmin && <button onClick={() => setShowForm(v => !v)} className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary/90"><Icon name="add" size={16} /> Ajouter un taux</button>}
       </div>
@@ -1905,7 +1905,7 @@ function CommissionsTab({ state, dispatch, currentUser, showToast }) {
         {rates.length === 0 && (
           <div className="text-center py-8 text-on-surface-variant">
             <Icon name="percent" size={36} className="opacity-30 mb-2" />
-            <p>Aucun taux spécifique — le taux par défaut de <strong>{DEFAULT_COMMISSION_RATE} %</strong> s'applique.</p>
+            <p>Aucun taux configuré — <strong>aucune commission (0 %)</strong> n'est prélevée. Ajoutez un taux pour activer les commissions.</p>
           </div>
         )}
         {rates.sort((a, b) => (b.ownerId ? 2 : b.buildingName ? 1 : 0) - (a.ownerId ? 2 : a.buildingName ? 1 : 0)).map(r => (
