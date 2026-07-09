@@ -28,6 +28,27 @@ function parseTxDate(str) {
   return new Date(str);
 }
 
+// Robust parser for a paidDate that may also be French "14 janv. 2026"
+const FR_MONTHS_ABBR = { jan: 0, fev: 1, fev2: 1, mar: 2, avr: 3, mai: 4, jui: 5, juil: 6, aou: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+function parsePaidDate(str) {
+  if (!str) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) { const d = new Date(str); return isNaN(d) ? null : d; }
+  if (str.includes('/')) { const [d, m, y] = str.split('/'); return new Date(Number(y), Number(m) - 1, Number(d)); }
+  const m = String(str).match(/^(\d{1,2})\s+([^\s.]+)\.?\s+(\d{4})/);
+  if (m) {
+    const key = m[2].toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').slice(0, 3);
+    const idx = key === 'jui' ? (/juil/i.test(m[2]) ? 6 : 5) : FR_MONTHS_ABBR[key];
+    if (idx != null) return new Date(Number(m[3]), idx, Number(m[1]));
+  }
+  const d = new Date(str);
+  return isNaN(d) ? null : d;
+}
+// Sort key for a payment by its payment date (fallback to createdAt), most recent first
+function paidTs(p) {
+  const d = parsePaidDate(p.paidDate) || (p.createdAt ? new Date(p.createdAt) : null);
+  return d && !isNaN(d) ? d.getTime() : 0;
+}
+
 const fmt = n => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
 const phoneForWA = raw => { const d = (raw || '').replace(/\D/g, ''); if (!d) return ''; return d.startsWith('225') ? d : '225' + d; };
 
@@ -1235,7 +1256,8 @@ export default function Payments() {
     })();
     const matchTenant = !filterTenantId || String(p.tenantId) === String(filterTenantId);
     return matchMonth && matchStatus && matchSearch && matchProp && matchTenant;
-  }), [payments, selectedMonth, statusFilter, search, filterPropKey, filterTenantId, allPropertyOptions]);
+  }).sort((a, b) => paidTs(b) - paidTs(a)), // classer par date de paiement, plus récent d'abord
+  [payments, selectedMonth, statusFilter, search, filterPropKey, filterTenantId, allPropertyOptions]);
 
   /* ── Stats for selected month ── */
   const monthPmts = payments.filter(p => p.month === selectedMonth);
