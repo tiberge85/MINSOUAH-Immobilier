@@ -134,18 +134,24 @@ export default function Bordereaux() {
   const [search, setSearch] = useState('');
   const [fType, setFType] = useState('Tous');
   const [fStatus, setFStatus] = useState('Tous');
+  const [fFrom, setFFrom] = useState('');   // date de début (yyyy-mm-dd)
+  const [fTo, setFTo] = useState('');       // date de fin (yyyy-mm-dd)
+  // Date d'un bordereau au format comparable yyyy-mm-dd
+  const bordDay = (b) => (b.date || (b.createdAt || '').slice(0, 10) || '');
   const filteredList = useMemo(() => {
     const q = search.toLowerCase().trim();
     return [...bordereaux]
       .filter(b => (fType === 'Tous' || b.type === fType))
       .filter(b => (fStatus === 'Tous' || b.status === fStatus))
+      .filter(b => !fFrom || bordDay(b) >= fFrom)
+      .filter(b => !fTo || bordDay(b) <= fTo)
       .filter(b => !q ||
         (b.number || '').toLowerCase().includes(q) ||
         (b.ownerName || '').toLowerCase().includes(q) ||
         (b.createdBy?.userName || '').toLowerCase().includes(q) ||
         (b.lines || []).some(l => (l.tenantName || '').toLowerCase().includes(q) || (l.propertyName || '').toLowerCase().includes(q)))
       .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-  }, [bordereaux, search, fType, fStatus]);
+  }, [bordereaux, search, fType, fStatus, fFrom, fTo]);
 
   /* ════════════════ EXPORTS ════════════════ */
   const listToRows = (list) => list.map(b => ({
@@ -222,6 +228,7 @@ export default function Bordereaux() {
         <ListTab
           list={filteredList} search={search} setSearch={setSearch}
           fType={fType} setFType={setFType} fStatus={fStatus} setFStatus={setFStatus}
+          fFrom={fFrom} setFFrom={setFFrom} fTo={fTo} setFTo={setFTo}
           onOpen={setDetail} onExcel={exportExcel} onCSV={exportCSV}
         />
       )}
@@ -328,7 +335,8 @@ function DashboardTab({ metrics, chartData, granularity, setGranularity }) {
 }
 
 /* ════════════════════════════ LIST ════════════════════════════ */
-function ListTab({ list, search, setSearch, fType, setFType, fStatus, setFStatus, onOpen, onExcel, onCSV }) {
+function ListTab({ list, search, setSearch, fType, setFType, fStatus, setFStatus, fFrom, setFFrom, fTo, setFTo, onOpen, onExcel, onCSV }) {
+  const hasDateFilter = fFrom || fTo;
   return (
     <div className="bg-surface rounded-2xl border border-outline-variant/20 p-4 flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -348,6 +356,25 @@ function ListTab({ list, search, setSearch, fType, setFType, fStatus, setFStatus
         </select>
         <Btn small variant="secondary" icon="table_view" onClick={onExcel}>Excel</Btn>
         <Btn small variant="secondary" icon="download" onClick={onCSV}>CSV</Btn>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold text-on-surface-variant flex items-center gap-1"><Icon name="calendar_month" size={16} /> Période :</span>
+        <label className="flex items-center gap-1 text-sm text-on-surface-variant">Du
+          <input type="date" value={fFrom} max={fTo || undefined} onChange={e => setFFrom(e.target.value)}
+            className="px-2 py-2 rounded-xl border border-outline-variant/40 bg-surface-container text-sm" />
+        </label>
+        <label className="flex items-center gap-1 text-sm text-on-surface-variant">au
+          <input type="date" value={fTo} min={fFrom || undefined} onChange={e => setFTo(e.target.value)}
+            className="px-2 py-2 rounded-xl border border-outline-variant/40 bg-surface-container text-sm" />
+        </label>
+        {hasDateFilter && (
+          <button onClick={() => { setFFrom(''); setFTo(''); }}
+            className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline px-2 py-1">
+            <Icon name="close" size={14} /> Effacer
+          </button>
+        )}
+        <span className="ml-auto text-xs text-on-surface-variant">{list.length} bordereau{list.length > 1 ? 'x' : ''}</span>
       </div>
 
       <div className="overflow-x-auto">
