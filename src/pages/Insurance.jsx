@@ -116,6 +116,7 @@ export default function Insurance() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [statusFilter, setStatusFilter] = useState(null); // 'Active' | 'Expire bientôt' | 'Expirée' | null
 
   /* ── Sorted insurances ── */
   const sorted = useMemo(() =>
@@ -128,6 +129,12 @@ export default function Insurance() {
       return (a.endDate || '').localeCompare(b.endDate || '');
     }),
   [insurances]);
+
+  /* ── Filtre par statut (via clic sur les cartes) ── */
+  const displayed = useMemo(
+    () => statusFilter ? sorted.filter(i => getStatus(i.endDate) === statusFilter) : sorted,
+    [sorted, statusFilter]
+  );
 
   /* ── Alert: policies expiring or expired ── */
   const alertPolicies = useMemo(() =>
@@ -247,21 +254,29 @@ export default function Insurance() {
       {/* ── Stats bar ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {[
-          { label: 'Total polices',         value: stats.total,        color: 'text-on-surface' },
-          { label: 'Actives',               value: stats.actives,      color: 'text-green-700' },
-          { label: 'Expirant bientôt',      value: stats.expiring,     color: 'text-amber-700' },
-          { label: 'Expirées',              value: stats.expired,      color: 'text-red-700' },
-          { label: 'Prime annuelle totale', value: fmt(stats.totalPremium), color: 'text-primary', wide: true },
-        ].map((s, i) => (
-          <div key={i} className={`bg-surface-container rounded-xl p-4 ${s.wide ? 'col-span-2 sm:col-span-3 lg:col-span-1' : ''}`}>
+          { label: 'Total polices',         value: stats.total,        color: 'text-on-surface', filter: null },
+          { label: 'Actives',               value: stats.actives,      color: 'text-green-700', filter: 'Active' },
+          { label: 'Expirant bientôt',      value: stats.expiring,     color: 'text-amber-700', filter: 'Expire bientôt' },
+          { label: 'Expirées',              value: stats.expired,      color: 'text-red-700', filter: 'Expirée' },
+          { label: 'Prime annuelle totale', value: fmt(stats.totalPremium), color: 'text-primary', wide: true, filter: null },
+        ].map((s, i) => {
+          const clickable = s.filter !== undefined && !s.wide;
+          const active = clickable && statusFilter === s.filter && s.filter !== null;
+          return (
+          <div key={i}
+            onClick={clickable ? () => setStatusFilter(active ? null : s.filter) : undefined}
+            role={clickable ? 'button' : undefined} tabIndex={clickable ? 0 : undefined}
+            onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStatusFilter(active ? null : s.filter); } } : undefined}
+            className={`bg-surface-container rounded-xl p-4 ${s.wide ? 'col-span-2 sm:col-span-3 lg:col-span-1' : ''} ${active ? 'ring-2 ring-primary' : ''} ${clickable ? 'cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/40' : ''}`}>
             <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
             <div className="text-xs text-on-surface-variant mt-0.5">{s.label}</div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* ── Table ── */}
-      {sorted.length === 0 ? (
+      {displayed.length === 0 ? (
         <div className="bg-surface-container rounded-2xl p-12 text-center">
           <Icon name="shield" size={48} className="text-on-surface-variant mx-auto mb-3" />
           <p className="text-on-surface-variant font-medium">Aucune assurance enregistrée</p>
@@ -281,7 +296,7 @@ export default function Insurance() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/20">
-                {sorted.map(ins => {
+                {displayed.map(ins => {
                   const status = getStatus(ins.endDate);
                   const days = daysUntil(ins.endDate);
                   return (

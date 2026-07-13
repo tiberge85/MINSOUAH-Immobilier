@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import Modal from '../components/ui/Modal';
@@ -29,9 +30,11 @@ const SPECIALTY_ICON = {
 };
 
 export default function Prestataires() {
+  const navigate = useNavigate();
   const { state, dispatch } = useApp();
   const prestataires = state.prestataires || [];
   const tickets = state.tickets || [];
+  const scrollToDir = () => document.getElementById('presta-directory')?.scrollIntoView({ behavior: 'smooth' });
 
   const [search, setSearch]       = useState('');
   const [filterSpec, setFilterSpec] = useState('Tous');
@@ -105,12 +108,14 @@ export default function Prestataires() {
       {/* ── KPI bar ─────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-gutter">
         {[
-          { label: 'Prestataires', value: stats.total, icon: 'handyman', color: 'text-primary bg-primary/10' },
-          { label: 'Spécialités actives', value: Object.values(stats.bySpec).filter(v => v > 0).length, icon: 'category', color: 'text-tertiary bg-tertiary/10' },
-          { label: 'Tickets liés', value: tickets.filter(t => t.prestataire).length, icon: 'engineering', color: 'text-amber-700 bg-amber-100' },
-          { label: 'Budget total travaux', value: fmt(stats.totalSpent), icon: 'payments', color: 'text-green-700 bg-green-100' },
+          { label: 'Prestataires', value: stats.total, icon: 'handyman', color: 'text-primary bg-primary/10', action: () => { setFilterSpec('Tous'); scrollToDir(); } },
+          { label: 'Spécialités actives', value: Object.values(stats.bySpec).filter(v => v > 0).length, icon: 'category', color: 'text-tertiary bg-tertiary/10', action: scrollToDir },
+          { label: 'Tickets liés', value: tickets.filter(t => t.prestataire).length, icon: 'engineering', color: 'text-amber-700 bg-amber-100', action: () => navigate('/maintenance') },
+          { label: 'Budget total travaux', value: fmt(stats.totalSpent), icon: 'payments', color: 'text-green-700 bg-green-100', action: scrollToDir },
         ].map(k => (
-          <div key={k.label} className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-center gap-md">
+          <div key={k.label} onClick={k.action} role="button" tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); k.action(); } }}
+            className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-center gap-md cursor-pointer transition-all hover:shadow-md hover:border-primary/40 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/40">
             <div className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 ${k.color}`}>
               <Icon name={k.icon} size={20} />
             </div>
@@ -123,7 +128,7 @@ export default function Prestataires() {
       </div>
 
       {/* ── Filtres spécialité ───────────────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-2">
+      <div id="presta-directory" className="flex flex-wrap gap-2 scroll-mt-24">
         {['Tous', ...SPECIALTIES.filter(s => (stats.bySpec[s] || 0) > 0 || filterSpec === s)].map(s => (
           <button key={s} onClick={() => setFilterSpec(s)}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors flex items-center gap-1.5 ${filterSpec === s ? 'bg-primary text-on-primary' : 'border border-outline-variant text-on-surface-variant hover:bg-surface-container-high'}`}>

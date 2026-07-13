@@ -1190,6 +1190,28 @@ export function AppProvider({ children }) {
           await deleteDoc(wsDoc('tenantDocuments', payload));
           break;
 
+        // ── COMMISSIONS : retirer celles déjà figées sur les paiements d'une org ──
+        case 'CLEAR_ORG_COMMISSIONS': {
+          const targetOrg = payload?.orgId || orgId;
+          const toClear = (st.payments || []).filter(p =>
+            p.orgId === targetOrg &&
+            ((p.commissionAmount || 0) > 0 || (p.commissionRate || 0) > 0 || p.commissionFrozenAt)
+          );
+          for (const p of toClear) {
+            await updateDoc(wsDoc('payments', p.id), {
+              commissionRate: 0,
+              commissionAmount: 0,
+              montantBrut: p.amount || p.montantBrut || 0,
+              montantNet: p.amount || 0,
+              commissionSource: 'aucune',
+              commissionRuleId: null,
+              commissionFrozenAt: null,
+              commissionClearedAt: new Date().toISOString(),
+            });
+          }
+          break;
+        }
+
         // ── CONVERSATIONS ─────────────────────────────────────────────────────
         case 'SEND_MESSAGE': {
           const { convId, message } = payload;

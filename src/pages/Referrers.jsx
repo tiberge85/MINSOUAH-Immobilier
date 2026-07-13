@@ -122,8 +122,12 @@ export default function Referrers() {
           { label: 'Affaires apportées', value: totalReferrals, icon: 'handshake', color: 'text-tertiary bg-tertiary/10' },
           { label: 'Commissions dues', value: fmt(totalCommOwed), icon: 'pending_actions', color: 'text-amber-700 bg-amber-100' },
           { label: 'Commissions payées', value: fmt(totalCommPaid), icon: 'check_circle', color: 'text-green-700 bg-green-100' },
-        ].map(k => (
-          <div key={k.label} className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-center gap-md">
+        ].map(k => {
+          const go = () => document.getElementById('referrers-list')?.scrollIntoView({ behavior: 'smooth' });
+          return (
+          <div key={k.label} onClick={go} role="button" tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }}
+            className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-center gap-md cursor-pointer transition-all hover:shadow-md hover:border-primary/40 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/40">
             <div className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 ${k.color}`}>
               <Icon name={k.icon} size={20} />
             </div>
@@ -132,11 +136,12 @@ export default function Referrers() {
               <p className="font-bold text-on-surface truncate text-sm">{k.value}</p>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+      <div id="referrers-list" className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between scroll-mt-24">
         <div className="relative w-full sm:w-72">
           <Icon name="search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" />
           <input

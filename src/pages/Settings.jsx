@@ -1858,6 +1858,31 @@ function CommissionsTab({ state, dispatch, currentUser, showToast }) {
         Le taux est <strong>figé sur chaque paiement au moment de l'encaissement</strong> — modifier un taux ici n'affecte que les encaissements <strong>futurs</strong>, jamais les paiements déjà validés.
       </div>
 
+      {isAdmin && (() => {
+        const withComm = (state.payments || []).filter(p =>
+          p.orgId === orgId && ((p.commissionAmount || 0) > 0 || (p.commissionRate || 0) > 0 || p.commissionFrozenAt)
+        );
+        if (withComm.length === 0) return null;
+        const totalComm = withComm.reduce((s, p) => s + (p.commissionAmount || 0), 0);
+        return (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-sm text-red-800 min-w-0">
+              <p className="font-bold flex items-center gap-1.5"><Icon name="money_off" size={16} /> Retirer les commissions déjà appliquées</p>
+              <p className="text-xs mt-0.5">{withComm.length} paiement(s) portent une commission figée (total {totalComm.toLocaleString('fr-FR')} FCFA). Cette action la remet à 0 (net = montant encaissé) sur tous ces paiements. Irréversible.</p>
+            </div>
+            <button
+              onClick={() => {
+                if (!window.confirm(`Retirer la commission de ${withComm.length} paiement(s) ? Cette action est irréversible.`)) return;
+                dispatch({ type: 'CLEAR_ORG_COMMISSIONS', payload: { orgId } });
+                showToast('Commissions retirées de tous les paiements de l\'organisation');
+              }}
+              className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-700 whitespace-nowrap flex-shrink-0">
+              <Icon name="money_off" size={16} /> Retirer les commissions
+            </button>
+          </div>
+        );
+      })()}
+
       {showForm && isAdmin && (
         <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 grid sm:grid-cols-2 gap-3">
           <div>
