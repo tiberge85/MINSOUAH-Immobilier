@@ -233,7 +233,10 @@ export default function Finance() {
         {kpis.map((kpi) => (
           <div
             key={kpi.label}
-            className={`p-md rounded-xl shadow-card border border-outline-variant/20 ${
+            onClick={() => document.getElementById('finance-transactions')?.scrollIntoView({ behavior: 'smooth' })}
+            role="button" tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.getElementById('finance-transactions')?.scrollIntoView({ behavior: 'smooth' }); } }}
+            className={`p-md rounded-xl shadow-card border border-outline-variant/20 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/40 ${
               kpi.highlight ? 'bg-primary text-on-primary' : 'bg-surface-container-lowest'
             }`}
           >
@@ -342,7 +345,7 @@ export default function Finance() {
       </div>
 
       {/* Transactions table */}
-      <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
+      <div id="finance-transactions" className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden scroll-mt-24">
         {/* Table header */}
         <div className="p-md border-b border-outline-variant/20 flex flex-wrap justify-between items-center gap-md">
           <h3 className="font-h3 text-h3 text-on-surface">Transactions Récentes</h3>

@@ -26,9 +26,16 @@ const ChartTooltip = ({ active, payload, label }) => {
   );
 };
 
-function KpiCard({ label, value, sub, subIcon, subColor, icon, iconBg }) {
+function KpiCard({ label, value, sub, subIcon, subColor, icon, iconBg, onClick }) {
+  const clickable = typeof onClick === 'function';
   return (
-    <div className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-start justify-between">
+    <div
+      onClick={onClick}
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      className={`bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-start justify-between ${clickable ? 'cursor-pointer transition-all hover:shadow-md hover:border-primary/40 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/40' : ''}`}
+    >
       <div className="min-w-0 flex-1">
         <p className="text-on-surface-variant text-label-sm font-label-sm uppercase tracking-wider mb-base truncate">
           {label}
@@ -156,8 +163,11 @@ export default function Dashboard() {
     } catch { return false; }
   }).length;
 
-  const occupancyRate = properties.length > 0
-    ? Math.round((activeContracts / properties.length) * 100)
+  // Nombre total de logements = somme des unités des immeubles + biens simples
+  // (et non le nombre de fiches « propriété », sinon un immeuble = 1 → taux faussé)
+  const totalUnits = properties.reduce((sum, p) => sum + (p.isBuilding ? (p.units?.length || 0) : 1), 0);
+  const occupancyRate = totalUnits > 0
+    ? Math.min(100, Math.round((activeContracts / totalUnits) * 100))
     : 0;
   const monthlyRevenue = contracts.filter((c) => c.status === 'Actif').reduce((sum, c) => sum + (parseFloat(c.rent) || 0), 0);
 
@@ -179,6 +189,7 @@ export default function Dashboard() {
       sub: `${activeContracts} contrats actifs`,
       subIcon: 'apartment', subColor: 'text-primary',
       icon: 'apartment', iconBg: 'bg-primary/10 text-primary',
+      to: '/assets',
     },
     {
       label: 'Locataires',
@@ -186,6 +197,7 @@ export default function Dashboard() {
       sub: `${tenants.filter(t => t.status === 'Actif' || !t.status).length} actifs`,
       subIcon: 'person', subColor: 'text-tertiary',
       icon: 'group', iconBg: 'bg-tertiary/10 text-tertiary',
+      to: '/rental',
     },
     {
       label: 'Propriétaires',
@@ -193,6 +205,7 @@ export default function Dashboard() {
       sub: `${owners.filter(o => o.status === 'Actif' || !o.status).length} actifs`,
       subIcon: 'manage_accounts', subColor: 'text-tertiary',
       icon: 'manage_accounts', iconBg: 'bg-tertiary/10 text-tertiary',
+      to: '/rental',
     },
     {
       label: "Taux d'Occupation",
@@ -201,6 +214,7 @@ export default function Dashboard() {
       subIcon: expiringSoon > 0 ? 'warning' : 'trending_up',
       subColor: expiringSoon > 0 ? 'text-amber-600' : 'text-green-600',
       icon: 'donut_large', iconBg: 'bg-primary/10 text-primary',
+      to: '/assets',
     },
     {
       label: 'Revenu Mensuel',
@@ -208,6 +222,7 @@ export default function Dashboard() {
       sub: 'Contrats actifs cumulés',
       subIcon: 'trending_up', subColor: 'text-green-600',
       icon: 'payments', iconBg: 'bg-green-100 text-green-700',
+      to: '/finance',
     },
     {
       label: 'Total Encaissé',
@@ -216,6 +231,7 @@ export default function Dashboard() {
       subIcon: recoveryRate >= 80 ? 'check_circle' : 'warning',
       subColor: recoveryRate >= 80 ? 'text-green-600' : 'text-amber-600',
       icon: 'account_balance_wallet', iconBg: 'bg-green-100 text-green-700',
+      to: '/payments',
     },
     {
       label: 'Impayés',
@@ -224,6 +240,7 @@ export default function Dashboard() {
       subIcon: unpaidAmount > 0 ? 'error' : 'check_circle',
       subColor: unpaidAmount > 0 ? 'text-error' : 'text-green-600',
       icon: 'warning', iconBg: unpaidAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700',
+      to: '/payments',
     },
     {
       label: 'Tickets Maintenance',
@@ -232,13 +249,14 @@ export default function Dashboard() {
       subIcon: urgentTickets > 0 ? 'emergency' : 'check_circle',
       subColor: urgentTickets > 0 ? 'text-error' : 'text-green-600',
       icon: 'engineering', iconBg: 'bg-error/10 text-error',
+      to: '/maintenance',
     },
   ];
 
   /* Occupancy pie */
   const occupancyPie = [
     { name: 'Occupés', value: activeContracts, color: '#785a00' },
-    { name: 'Libres', value: Math.max(0, properties.length - activeContracts), color: '#d2c5ae' },
+    { name: 'Libres', value: Math.max(0, totalUnits - activeContracts), color: '#d2c5ae' },
   ].filter(d => d.value > 0);
 
   /* Payment recovery pie */
@@ -271,7 +289,7 @@ export default function Dashboard() {
       {/* KPI cards — 4 per row */}
       <section className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-md">
         {kpiCards.map((card) => (
-          <KpiCard key={card.label} {...card} />
+          <KpiCard key={card.label} {...card} onClick={card.to ? () => navigate(card.to) : undefined} />
         ))}
       </section>
 

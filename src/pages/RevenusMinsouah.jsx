@@ -153,8 +153,11 @@ export default function RevenusMinsouah() {
     return <div className="p-8 text-center text-on-surface-variant"><Icon name="lock" size={40} className="opacity-40 mb-2" /><p>Accès non autorisé.</p></div>;
   }
 
+  const scrollToDetail = () => document.getElementById('revenus-evolution')?.scrollIntoView({ behavior: 'smooth' });
   const KPI = ({ label, value, icon, cls }) => (
-    <div className="bg-surface rounded-2xl border border-outline-variant/20 p-4">
+    <div onClick={scrollToDetail} role="button" tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); scrollToDetail(); } }}
+      className="bg-surface rounded-2xl border border-outline-variant/20 p-4 cursor-pointer transition-all hover:shadow-md hover:border-primary/40 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/40">
       <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-2 ${cls}`}><Icon name={icon} size={20} /></div>
       <p className="text-xs text-on-surface-variant">{label}</p>
       <p className="text-xl font-black text-on-surface mt-0.5">{fmt(value)}</p>
@@ -184,7 +187,7 @@ export default function RevenusMinsouah() {
       </div>
 
       {/* Évolution mensuelle */}
-      <div className="bg-surface rounded-2xl border border-outline-variant/20 p-4">
+      <div id="revenus-evolution" className="bg-surface rounded-2xl border border-outline-variant/20 p-4 scroll-mt-24">
         <h3 className="font-bold text-on-surface mb-3 flex items-center gap-2"><Icon name="bar_chart" size={18} /> Évolution mensuelle des commissions</h3>
         <ResponsiveContainer width="100%" height={280}>
           <BarChart data={monthly}>

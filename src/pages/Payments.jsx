@@ -2069,12 +2069,14 @@ export default function Payments() {
       {/* ── Stats ── */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-md">
         {[
-          { label: 'Loyers Attendus', value: fmt(totalExpected), icon: 'request_quote', cls: 'bg-primary/10 text-primary' },
-          { label: 'Encaissés', value: fmt(totalCollected), icon: 'check_circle', cls: 'bg-green-100 text-green-700' },
-          { label: 'Impayés', value: fmt(totalPending), icon: 'warning', cls: 'bg-red-100 text-red-700' },
-          { label: 'Recouvrement', value: `${recoveryRate}%`, icon: 'percent', cls: recoveryRate >= 80 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700' },
+          { label: 'Loyers Attendus', value: fmt(totalExpected), icon: 'request_quote', cls: 'bg-primary/10 text-primary', action: () => { setTab('payments'); setStatusFilter('Tous'); } },
+          { label: 'Encaissés', value: fmt(totalCollected), icon: 'check_circle', cls: 'bg-green-100 text-green-700', action: () => { setTab('payments'); setStatusFilter('Payé'); } },
+          { label: 'Impayés', value: fmt(totalPending), icon: 'warning', cls: 'bg-red-100 text-red-700', action: () => setTab('reminders') },
+          { label: 'Recouvrement', value: `${recoveryRate}%`, icon: 'percent', cls: recoveryRate >= 80 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700', action: () => setTab('report') },
         ].map(s => (
-          <div key={s.label} className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-center gap-md">
+          <div key={s.label} onClick={s.action} role="button" tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); s.action(); } }}
+            className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-center gap-md cursor-pointer transition-all hover:shadow-md hover:border-primary/40 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/40">
             <div className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 ${s.cls}`}>
               <Icon name={s.icon} size={20} />
             </div>

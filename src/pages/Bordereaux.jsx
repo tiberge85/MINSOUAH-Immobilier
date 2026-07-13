@@ -221,7 +221,8 @@ export default function Bordereaux() {
       </div>
 
       {tab === 'dashboard' && (
-        <DashboardTab metrics={metrics} chartData={chartData} granularity={granularity} setGranularity={setGranularity} />
+        <DashboardTab metrics={metrics} chartData={chartData} granularity={granularity} setGranularity={setGranularity}
+          onOpenList={(f) => { if (f?.type !== undefined) setFType(f.type); if (f?.status !== undefined) setFStatus(f.status); setTab('list'); }} />
       )}
 
       {tab === 'list' && (
@@ -269,18 +270,21 @@ export default function Bordereaux() {
 }
 
 /* ════════════════════════════ DASHBOARD ════════════════════════════ */
-function DashboardTab({ metrics, chartData, granularity, setGranularity }) {
+function DashboardTab({ metrics, chartData, granularity, setGranularity, onOpenList }) {
+  const open = (f) => onOpenList && onOpenList(f);
   const cards = [
-    { label: 'Total encaissé', value: metrics.totalEncaisse, icon: 'payments', color: 'text-primary bg-primary/10' },
-    { label: 'Versé à la comptabilité', value: metrics.verseCompta, icon: 'account_balance', color: 'text-blue-700 bg-blue-100' },
-    { label: 'Reversé aux propriétaires', value: metrics.reverseProprio, icon: 'real_estate_agent', color: 'text-green-700 bg-green-100' },
-    { label: 'En attente de reversement', value: metrics.enAttenteReversement, icon: 'hourglass_top', color: 'text-amber-700 bg-amber-100' },
+    { label: 'Total encaissé', value: metrics.totalEncaisse, icon: 'payments', color: 'text-primary bg-primary/10', filter: { type: 'Tous', status: 'Tous' } },
+    { label: 'Versé à la comptabilité', value: metrics.verseCompta, icon: 'account_balance', color: 'text-blue-700 bg-blue-100', filter: { type: 'COMPTA', status: 'Tous' } },
+    { label: 'Reversé aux propriétaires', value: metrics.reverseProprio, icon: 'real_estate_agent', color: 'text-green-700 bg-green-100', filter: { type: 'PROPRIETAIRE', status: 'Tous' } },
+    { label: 'En attente de reversement', value: metrics.enAttenteReversement, icon: 'hourglass_top', color: 'text-amber-700 bg-amber-100', filter: { type: 'Tous', status: 'Tous' } },
   ];
   return (
     <div className="flex flex-col gap-md">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {cards.map(c => (
-          <div key={c.label} className="bg-surface rounded-2xl border border-outline-variant/20 p-4">
+          <div key={c.label} onClick={() => open(c.filter)} role="button" tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(c.filter); } }}
+            className="bg-surface rounded-2xl border border-outline-variant/20 p-4 cursor-pointer transition-all hover:shadow-md hover:border-primary/40 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/40">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-2 ${c.color}`}><Icon name={c.icon} size={20} /></div>
             <p className="text-xs text-on-surface-variant">{c.label}</p>
             <p className="text-xl font-black text-on-surface mt-0.5">{fmt(c.value)}</p>
@@ -290,12 +294,14 @@ function DashboardTab({ metrics, chartData, granularity, setGranularity }) {
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Bordereaux créés', value: metrics.nbCrees, color: 'text-on-surface' },
-          { label: 'Validés', value: metrics.nbValides, color: 'text-green-700' },
-          { label: 'En attente', value: metrics.nbAttente, color: 'text-amber-700' },
-          { label: 'Annulés', value: metrics.nbAnnules, color: 'text-error' },
+          { label: 'Bordereaux créés', value: metrics.nbCrees, color: 'text-on-surface', filter: { type: 'Tous', status: 'Tous' } },
+          { label: 'Validés', value: metrics.nbValides, color: 'text-green-700', filter: { type: 'Tous', status: 'Validé' } },
+          { label: 'En attente', value: metrics.nbAttente, color: 'text-amber-700', filter: { type: 'Tous', status: 'En attente de validation' } },
+          { label: 'Annulés', value: metrics.nbAnnules, color: 'text-error', filter: { type: 'Tous', status: 'Annulé' } },
         ].map(s => (
-          <div key={s.label} className="bg-surface rounded-2xl border border-outline-variant/20 p-4 text-center">
+          <div key={s.label} onClick={() => open(s.filter)} role="button" tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(s.filter); } }}
+            className="bg-surface rounded-2xl border border-outline-variant/20 p-4 text-center cursor-pointer transition-all hover:shadow-md hover:border-primary/40 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/40">
             <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
             <p className="text-xs text-on-surface-variant">{s.label}</p>
           </div>

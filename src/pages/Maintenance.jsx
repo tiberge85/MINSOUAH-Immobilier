@@ -38,6 +38,7 @@ export default function Maintenance() {
   const prestataires = state.prestataires || [];
   const [priorityFilter, setPriorityFilter] = useState('Tous');
   const [typeFilter, setTypeFilter] = useState(null);
+  const [statusFilter, setStatusFilter] = useState(null);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [detailTicket, setDetailTicket] = useState(null);
@@ -48,11 +49,12 @@ export default function Maintenance() {
   const filtered = tickets.filter((t) => {
     const matchPriority = priorityFilter === 'Tous' || t.priority === priorityFilter;
     const matchType = !typeFilter || t.type === typeFilter;
+    const matchStatus = !statusFilter || t.status === statusFilter;
     const matchSearch =
       t.title.toLowerCase().includes(search.toLowerCase()) ||
       t.property.toLowerCase().includes(search.toLowerCase()) ||
       t.id.toLowerCase().includes(search.toLowerCase());
-    return matchPriority && matchType && matchSearch;
+    return matchPriority && matchType && matchStatus && matchSearch;
   });
 
   // Cost total for currently filtered tickets
@@ -64,18 +66,21 @@ export default function Maintenance() {
       value: tickets.filter((t) => t.status === 'En attente').length,
       icon: 'pending_actions',
       color: 'bg-primary-container/20 text-on-primary-container',
+      status: 'En attente',
     },
     {
       label: 'En Cours',
       value: tickets.filter((t) => t.status === 'En cours').length,
       icon: 'engineering',
       color: 'bg-tertiary/10 text-tertiary',
+      status: 'En cours',
     },
     {
       label: 'Résolus',
       value: tickets.filter((t) => t.status === 'Résolu').length,
       icon: 'check_circle',
       color: 'bg-green-100 text-green-700',
+      status: 'Résolu',
     },
     {
       label: 'Coût total estimé',
@@ -122,17 +127,28 @@ export default function Maintenance() {
 
       {/* Quick Stats Header */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-gutter">
-        {quickStats.map((s) => (
-          <div key={s.label} className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-center gap-md">
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${s.color}`}>
-              <Icon name={s.icon} size={22} />
+        {quickStats.map((s) => {
+          const clickable = !!s.status;
+          const active = clickable && statusFilter === s.status;
+          return (
+            <div
+              key={s.label}
+              onClick={clickable ? () => setStatusFilter(active ? null : s.status) : undefined}
+              role={clickable ? 'button' : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStatusFilter(active ? null : s.status); } } : undefined}
+              className={`bg-surface-container-lowest rounded-xl p-md shadow-card border flex items-center gap-md ${active ? 'border-primary ring-2 ring-primary/40' : 'border-outline-variant/20'} ${clickable ? 'cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/40' : ''}`}
+            >
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${s.color}`}>
+                <Icon name={s.icon} size={22} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-on-surface-variant text-label-sm font-label-sm uppercase tracking-wider">{s.label}</p>
+                <p className={`font-bold text-on-surface truncate ${s.wide ? 'text-body-md' : 'font-h2 text-h2'}`}>{s.value}</p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-on-surface-variant text-label-sm font-label-sm uppercase tracking-wider">{s.label}</p>
-              <p className={`font-bold text-on-surface truncate ${s.wide ? 'text-body-md' : 'font-h2 text-h2'}`}>{s.value}</p>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </section>
 
       {/* Filters */}
