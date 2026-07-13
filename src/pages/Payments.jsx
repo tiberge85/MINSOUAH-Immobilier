@@ -513,23 +513,67 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
     const units = prop.isBuilding ? (prop.units || []) : [{ number: '', type: prop.type, rent: prop.rent }];
     units.forEach(u => {
       const key = unitCatKey(bName, u);
-      if (!CAT_META[key]) CAT_META[key] = { totalUnits: 0, _b: new Set(), _t: new Set(), _rent: 0 };
+      if (!CAT_META[key]) CAT_META[key] = { totalUnits: 0, _b: new Set(), _t: new Set(), _ids: new Set(), _rent: 0 };
       CAT_META[key].totalUnits++;
       if (bName) CAT_META[key]._b.add(bName);
       if (u.type) CAT_META[key]._t.add(u.type);
+      // Identifiant d'unité : n° d'unité (S1, S25…) ou, à défaut, nom du bien (Zabulon…)
+      const idTok = (u.number && String(u.number).trim()) ? String(u.number).trim() : bName;
+      if (idTok) CAT_META[key]._ids.add(idTok);
       const r = unitRent(bName, u);
       if (r && !CAT_META[key]._rent) CAT_META[key]._rent = r;
     });
   });
+
+  /* Résume une liste d'identifiants en plages compactes : ["S1".."S24"] → "S1–S24",
+     et liste les noms d'appartements : "Zabulon, Ruben, Issaka, Juda". */
+  const rangesOf = (ns) => {
+    const out = []; let start = ns[0], prev = ns[0];
+    for (let i = 1; i < ns.length; i++) {
+      if (ns[i] === prev + 1) { prev = ns[i]; continue; }
+      out.push([start, prev]); start = prev = ns[i];
+    }
+    out.push([start, prev]); return out;
+  };
+  const summarizeUnitIds = (idsSet) => {
+    const arr = [...(idsSet || [])].filter(Boolean);
+    if (!arr.length) return '';
+    const byPrefix = {}; const named = [];
+    arr.forEach(s => {
+      const m = String(s).match(/^([A-Za-z]*?)\s*0*(\d+)$/);
+      if (m) { const pfx = (m[1] || '').toUpperCase(); (byPrefix[pfx] ||= []).push(parseInt(m[2], 10)); }
+      else named.push(String(s));
+    });
+    const parts = [];
+    Object.keys(byPrefix).sort().forEach(pfx => {
+      const ns = [...new Set(byPrefix[pfx])].sort((a, b) => a - b);
+      parts.push(rangesOf(ns).map(([a, b]) => a === b ? `${pfx}${a}` : `${pfx}${a}–${pfx}${b}`).join(', '));
+    });
+    if (named.length) parts.push(named.length > 6 ? `${named.slice(0, 6).join(', ')}…` : named.join(', '));
+    return parts.join(' · ');
+  };
+  // Nom de type lisible : champ type de l'unité, sinon déduit (n° "S##" → Studios)
+  const inferType = (m) => {
+    const t = [...(m._t || [])].filter(Boolean);
+    if (t.length) return t.join(' / ');
+    const ids = [...(m._ids || [])].filter(Boolean);
+    if (ids.length && ids.every(s => /^s\s*0*\d+$/i.test(String(s).trim()))) return 'Studios';
+    return 'Appartements';
+  };
   Object.keys(CAT_META).forEach(k => {
     const m = CAT_META[k];
     const buildings = [...m._b].join(', ');
-    if (k === 'Magasins') { m.label = 'Magasins / Locaux Commerciaux'; m.sublabel = buildings; }
-    else {
+    const idSummary = summarizeUnitIds(m._ids);
+    if (k === 'Magasins') {
+      m.label = 'Magasins / Locaux Commerciaux';
+      m.sublabel = [idSummary, buildings].filter(Boolean).join(' · ');
+    } else {
       const rent = m._rent || Number(k) || 0;
-      const types = [...m._t].filter(Boolean).join(', ');
-      m.label = buildings || types || 'Logements';
-      m.sublabel = `${types ? types + ' · ' : ''}${rent.toLocaleString('fr-FR')} FCFA / mois`;
+      const typeName = inferType(m);
+      // Libellé distinctif : type + n°/noms d'unités (ex. "Studios S1–S24", "Appartements Zabulon, Ruben…")
+      m.label = idSummary ? `${typeName} ${idSummary}` : typeName;
+      m.rentLabel = `${rent.toLocaleString('fr-FR')} FCFA / mois`;
+      m.sublabel = `${m.rentLabel}${buildings ? ' · ' + buildings : ''}`;
     }
   });
 
@@ -686,8 +730,9 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
     const totalCat = paidAmt + unpaidAmt;
     const rate = totalCat > 0 ? Math.round(paidAmt / totalCat * 100) : 0;
     const rc = rate >= 80 ? '#15803d' : rate >= 50 ? '#b45309' : '#b91c1c';
+    const rentLbl = CAT_META[cat]?.rentLabel || (() => { const n = Number(cat); return isNaN(n) ? '' : `${n.toLocaleString('fr-FR')} FCFA / mois`; })();
     return `<tr>
-      <td>${catLabel(cat)}</td>
+      <td>${catLabel(cat)}${rentLbl ? `<br><span style="font-size:11px;color:#888;font-weight:600">${rentLbl}</span>` : ''}</td>
       <td style="text-align:center">${data.paid.length + data.unpaid.length}</td>
       <td style="text-align:right;color:#15803d;font-weight:700">${Number(paidAmt).toLocaleString('fr-FR')}</td>
       <td style="text-align:right;color:#b91c1c;font-weight:700">${Number(unpaidAmt).toLocaleString('fr-FR')}</td>
