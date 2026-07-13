@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import SignaturePad from '../components/SignaturePad';
 import SearchSelect from '../components/SearchSelect';
+import TenantDocuments from '../components/TenantDocuments';
 import { openContractReport } from '../lib/contractReport';
 import { can } from '../lib/permissions';
 
@@ -43,6 +44,14 @@ export default function Rental() {
   const [qrTenant, setQrTenant] = useState(null);
   const [portalToken, setPortalToken] = useState(null);
   const [qrGenerating, setQrGenerating] = useState(false);
+  const [docsTenant, setDocsTenant] = useState(null); // locataire dont on gère les documents
+
+  // Nombre de documents par locataire (pour le badge sur la fiche)
+  const docCountByTenant = useMemo(() => {
+    const m = {};
+    (state.tenantDocuments || []).forEach(d => { m[String(d.tenantId)] = (m[String(d.tenantId)] || 0) + 1; });
+    return m;
+  }, [state.tenantDocuments]);
 
   // ── Import locataires ──────────────────────────────────────────────────────
   const [importRows, setImportRows] = useState([]);
@@ -703,10 +712,19 @@ ${sectionsHtml}
                   <h3 className="font-bold text-on-surface truncate">{t.name}</h3>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${STATUS_BADGE[t.status] || ''}`}>{t.status}</span>
                 </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-                  <IconBtn icon="qr_code" color="text-on-surface-variant" title="Portail locataire QR" onClick={() => { setQrTenant(t); setPortalToken(null); }} />
-                  {canEdit && <IconBtn icon="edit" color="text-primary" onClick={() => openEditTenant(t)} />}
-                  {canDelete && <IconBtn icon="delete" color="text-error" onClick={() => setDeleteTarget({ type: 'tenant', data: t })} />}
+                <div className="flex items-center gap-1">
+                  <button title="Documents du dossier" onClick={() => setDocsTenant(t)}
+                    className="relative flex items-center justify-center w-9 h-9 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary transition-colors">
+                    <Icon name="folder" size={18} />
+                    {docCountByTenant[String(t.id)] > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-primary text-on-primary text-[10px] font-bold flex items-center justify-center">{docCountByTenant[String(t.id)]}</span>
+                    )}
+                  </button>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                    <IconBtn icon="qr_code" color="text-on-surface-variant" title="Portail locataire QR" onClick={() => { setQrTenant(t); setPortalToken(null); }} />
+                    {canEdit && <IconBtn icon="edit" color="text-primary" onClick={() => openEditTenant(t)} />}
+                    {canDelete && <IconBtn icon="delete" color="text-error" onClick={() => setDeleteTarget({ type: 'tenant', data: t })} />}
+                  </div>
                 </div>
               </div>
               {(() => {
@@ -1165,6 +1183,17 @@ ${sectionsHtml}
                   </p>
                 </div>
               )}
+
+              <div className="border-t border-outline-variant/20 pt-4">
+                <label className="form-label flex items-center gap-1.5"><Icon name="folder" size={14} className="text-primary" /> Documents du dossier</label>
+                {target?.id ? (
+                  <TenantDocuments tenantId={target.id} tenantName={tForm.name} />
+                ) : (
+                  <p className="text-xs text-on-surface-variant bg-surface-container rounded-lg px-3 py-2 flex items-center gap-1.5">
+                    <Icon name="info" size={14} /> Enregistrez d'abord le locataire, puis rouvrez sa fiche (ou l'icône dossier) pour joindre des documents.
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -1261,6 +1290,27 @@ ${sectionsHtml}
 
           <ModalFooter onCancel={() => setModal(null)} onSave={saveOwner} disabled={!oForm.name} />
         </ModalWrap>
+      )}
+
+      {/* ── Documents du dossier locataire ──────────────────────────────── */}
+      {docsTenant && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && setDocsTenant(null)}>
+          <div className="bg-surface rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="sticky top-0 bg-surface border-b border-outline-variant/20 px-6 py-4 flex justify-between items-center rounded-t-3xl z-10">
+              <div className="flex items-center gap-2 min-w-0">
+                <Icon name="folder_shared" className="text-primary" />
+                <div className="min-w-0">
+                  <h2 className="font-bold text-on-surface truncate">Documents — {docsTenant.name}</h2>
+                  <p className="text-xs text-on-surface-variant truncate">{docsTenant.property || 'Dossier locataire'}</p>
+                </div>
+              </div>
+              <button onClick={() => setDocsTenant(null)} className="text-on-surface-variant hover:text-on-surface"><Icon name="close" size={20} /></button>
+            </div>
+            <div className="p-6">
+              <TenantDocuments tenantId={docsTenant.id} tenantName={docsTenant.name} readOnly={!canEdit} />
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── QR Portail locataire ────────────────────────────────────────── */}

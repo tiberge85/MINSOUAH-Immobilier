@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
 import Badge from '../components/ui/Badge';
 import Icon from '../components/Icon';
+import TenantDocuments from '../components/TenantDocuments';
 import { openEDLReport } from '../lib/inspectionReport';
 import { buildReceiptHTML } from '../lib/quittanceReport';
 
@@ -978,6 +979,17 @@ export default function TenantPortal() {
                 </>
               );
             })()}
+
+            {/* ── Documents du dossier ── */}
+            <h3 className="font-bold text-on-surface mt-4">Documents du dossier</h3>
+            <p className="text-body-sm text-on-surface-variant -mt-2">
+              Pièce d'identité, contrat, justificatifs — joignez et consultez les documents du locataire.
+            </p>
+            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-4">
+              {tenant?.id
+                ? <TenantDocuments tenantId={tenant.id} tenantName={tenantName} />
+                : <p className="text-body-sm text-on-surface-variant">Sélectionnez un locataire.</p>}
+            </div>
           </>
         )}
       </div>

@@ -153,6 +153,7 @@ service cloud.firestore {
     match /workspaces/{wsId}/tenants/{id}       { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/owners/{id}        { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/monthClosures/{id} { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/tenantDocuments/{id} { allow read, write: if allowOrgDoc(wsId); }
 
     // ── Marketplace listings ───────────────────────────────────────────────────
     // Read: any authenticated user (includes anonymous — public marketplace)

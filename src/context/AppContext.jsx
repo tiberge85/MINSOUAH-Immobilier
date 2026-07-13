@@ -280,6 +280,7 @@ export function AppProvider({ children }) {
     prestataires: [],
     bordereaux: [],
     commissionRates: [],
+    tenantDocuments: [],
     currentUser: null,
     orgSettings: DEFAULT_ORG,
     systemSettings: DEFAULT_SYSTEM,
@@ -394,7 +395,8 @@ export function AppProvider({ children }) {
         // entity collections: filtered by orgId for non-admin users
         ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
           'tickets', 'inspections', 'conversations', 'monthClosures',
-          'insurances', 'budgets', 'referrers', 'prestataires', 'bordereaux', 'commissionRates'].forEach(c => sub(c, true));
+          'insurances', 'budgets', 'referrers', 'prestataires', 'bordereaux', 'commissionRates',
+          'tenantDocuments'].forEach(c => sub(c, true));
 
         sub('tenantPortals'); // publicly readable portal tokens
 
@@ -1172,6 +1174,20 @@ export function AppProvider({ children }) {
           break;
         case 'DELETE_INSPECTION':
           await deleteDoc(wsDoc('inspections', payload));
+          break;
+
+        // ── DOCUMENTS LOCATAIRES ──────────────────────────────────────────────
+        case 'ADD_TENANT_DOCUMENT': {
+          const id = payload.id || Date.now();
+          await setDoc(wsDoc('tenantDocuments', id), {
+            ...payload, id, orgId,
+            uploadedAt: payload.uploadedAt || new Date().toISOString(),
+            uploadedBy: payload.uploadedBy || st.currentUser?.name || null,
+          });
+          break;
+        }
+        case 'DELETE_TENANT_DOCUMENT':
+          await deleteDoc(wsDoc('tenantDocuments', payload));
           break;
 
         // ── CONVERSATIONS ─────────────────────────────────────────────────────
