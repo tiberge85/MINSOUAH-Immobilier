@@ -1184,6 +1184,36 @@ ${sectionsHtml}
                 </div>
               )}
 
+              {/* ── Caution & mois d'avance ── */}
+              <div className="border-t border-outline-variant/20 pt-4">
+                <label className="form-label flex items-center gap-1.5"><Icon name="savings" size={14} className="text-primary" /> Caution & mois d'avance</label>
+                <div className="grid grid-cols-2 gap-4 mt-1">
+                  <div>
+                    <label className="form-label">Montant de la caution (FCFA)</label>
+                    <input type="number" min="0" value={tForm.cautionAmount ?? ''}
+                      onChange={e => setTForm(f => ({ ...f, cautionAmount: e.target.value === '' ? '' : Number(e.target.value) }))}
+                      className="form-input" placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="form-label">Nombre de mois d'avance</label>
+                    <input type="number" min="0" value={tForm.advanceMonths ?? ''}
+                      onChange={e => {
+                        const months = e.target.value === '' ? '' : Number(e.target.value);
+                        const rent = Number(allPropertyOptions.find(o => o.value === selectedPropId)?.rent) || 0;
+                        setTForm(f => ({ ...f, advanceMonths: months, advanceAmount: (months && rent) ? months * rent : f.advanceAmount }));
+                      }}
+                      className="form-input" placeholder="0" />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <label className="form-label">Montant total des avances (FCFA)</label>
+                  <input type="number" min="0" value={tForm.advanceAmount ?? ''}
+                    onChange={e => setTForm(f => ({ ...f, advanceAmount: e.target.value === '' ? '' : Number(e.target.value) }))}
+                    className="form-input" placeholder="0" />
+                  <p className="text-xs text-on-surface-variant mt-1">Pré-rempli automatiquement (mois × loyer) — modifiable si besoin.</p>
+                </div>
+              </div>
+
               <div className="border-t border-outline-variant/20 pt-4">
                 <label className="form-label flex items-center gap-1.5"><Icon name="folder" size={14} className="text-primary" /> Documents du dossier</label>
                 {target?.id ? (

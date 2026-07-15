@@ -390,8 +390,107 @@ function buildArrearsRecoveredReportHTML(recoveredByTenant, recoveredTotal, orgS
   </body></html>`;
 }
 
+/* ── Deposits (caution & avances) Report HTML ─────────────────────────────────
+   Rapport séparé des cautions et mois d'avance encaissés à l'entrée des
+   locataires, avec suivi de restitution des cautions. Thème sarcelle. */
+function buildDepositsReportHTML(depositsList, totals, orgSettings) {
+  const org = orgSettings || {};
+  const orgLogo  = org.logo  || '';
+  const orgStamp = org.stamp || '';
+  const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
+  const fmtDate = (d) => {
+    if (!d) return '—';
+    const dt = new Date(d);
+    return isNaN(dt) ? String(d) : dt.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+  const t = totals || {};
+  const rows = depositsList.map((d, idx) => {
+    const cautionStatus = d.cautionAmount > 0
+      ? (d.cautionRefunded
+          ? `<span style="color:#15803d;font-weight:700">Restituée${d.cautionRefundDate ? ` (${fmtDate(d.cautionRefundDate)})` : ''}</span>`
+          : `<span style="color:#b45309;font-weight:700">Détenue</span>`)
+      : '<span style="color:#bbb">—</span>';
+    return `
+      <tr style="${idx % 2 === 0 ? '' : 'background:#f0fdfa'}">
+        <td style="padding:8px 12px;font-weight:600">${d.tenantName || '—'}</td>
+        <td style="padding:8px 12px;color:#555">${d.propertyName || '—'}</td>
+        <td style="padding:8px 12px;text-align:center">${fmtDate(d.entryDate)}</td>
+        <td style="padding:8px 12px;text-align:right;font-weight:700;color:#0f766e">${d.cautionAmount ? fCFA(d.cautionAmount) : '—'}</td>
+        <td style="padding:8px 12px;text-align:center">${d.advanceMonths || '—'}</td>
+        <td style="padding:8px 12px;text-align:right;font-weight:700;color:#0369a1">${d.advanceAmount ? fCFA(d.advanceAmount) : '—'}</td>
+        <td style="padding:8px 12px;text-align:center">${cautionStatus}</td>
+      </tr>`;
+  }).join('');
+
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+  <title>Rapport des Cautions & Avances</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;background:#fff;padding:28px}
+    @media print{body{padding:0}@page{margin:18mm 14mm}}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #0d9488}
+    .org-name{font-size:20px;font-weight:900;color:#0d9488}
+    .kpis{display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap}
+    .kpi{flex:1;min-width:120px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:12px 16px;text-align:center}
+    .kpi-val{font-size:18px;font-weight:900;color:#0d9488}
+    .kpi-lbl{font-size:10px;color:#134e4a;margin-top:2px;text-transform:uppercase;letter-spacing:.05em}
+    h2{font-size:14px;font-weight:800;color:#1a1a1a;margin:20px 0 10px;border-bottom:2px solid #99f6e4;padding-bottom:6px}
+    table{width:100%;border-collapse:collapse;font-size:12px;border:1px solid #99f6e4;border-radius:10px;overflow:hidden}
+    thead tr{background:#0d9488;color:#fff}
+    th{padding:8px 12px;text-align:left}
+    .footer{margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#999;text-align:center}
+  </style></head><body>
+  <div class="header">
+    <div style="display:flex;align-items:center;gap:12px">
+      ${orgLogo
+        ? `<img src="${orgLogo}" style="max-height:52px;max-width:130px;object-fit:contain"/>`
+        : `<div class="org-name">${org.companyName || 'Minsouah Immobilier'}</div>`
+      }
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#1a1a1a">Rapport des Cautions & Avances</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">Généré le ${today}</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+      <div style="background:#0d9488;color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;font-weight:700;white-space:nowrap">${fCFA(t.grandTotal)} encaissés</div>
+      ${orgStamp ? `<img src="${orgStamp}" style="max-height:48px;max-width:48px;object-fit:contain;opacity:0.85"/>` : ''}
+    </div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-val">${depositsList.length}</div><div class="kpi-lbl">Locataires</div></div>
+    <div class="kpi"><div class="kpi-val">${fCFA(t.cautionHeld)}</div><div class="kpi-lbl">Cautions détenues</div></div>
+    <div class="kpi"><div class="kpi-val" style="color:#15803d">${fCFA(t.cautionRefunded)}</div><div class="kpi-lbl">Cautions restituées</div></div>
+    <div class="kpi"><div class="kpi-val" style="color:#0369a1">${fCFA(t.advanceTotal)}</div><div class="kpi-lbl">Avances encaissées</div></div>
+  </div>
+
+  <h2>Détail par locataire</h2>
+  ${depositsList.length === 0
+    ? `<div style="text-align:center;padding:40px;color:#9ca3af;font-style:italic">Aucune caution ni avance enregistrée.</div>`
+    : `<table>
+    <thead><tr>
+      <th>Locataire</th><th>Propriété</th><th style="text-align:center">Entrée</th>
+      <th style="text-align:right">Caution</th><th style="text-align:center">Mois d'avance</th>
+      <th style="text-align:right">Montant avance</th><th style="text-align:center">Statut caution</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr style="background:#ccfbf1;font-weight:800">
+      <td colspan="3" style="padding:8px 12px;color:#134e4a">TOTAUX</td>
+      <td style="padding:8px 12px;text-align:right;color:#0f766e">${fCFA(t.cautionHeld + t.cautionRefunded)}</td>
+      <td></td>
+      <td style="padding:8px 12px;text-align:right;color:#0369a1">${fCFA(t.advanceTotal)}</td>
+      <td style="padding:8px 12px;text-align:center;color:#134e4a">${fCFA(t.grandTotal)}</td>
+    </tr></tfoot>
+  </table>`}
+
+  <div class="footer">${org.companyName || 'Minsouah Immobilier'} · Document généré automatiquement · ${today}</div>
+  <script>window.onload=()=>window.print();</script>
+  </body></html>`;
+}
+
 /* ── Global Report HTML ───────────────────────────────────────────────────── */
-function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], arrearsByTenant = [], advanceTenants = [], orgSettings = {} }) {
+function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], arrearsByTenant = [], advanceTenants = [], deposits = [], depositsTotals = {}, orgSettings = {} }) {
   const org = orgSettings;
   const orgLogo = org.logo || '';
   const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
@@ -457,6 +556,26 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
         </tr>`;
       }).join('')
     : '<tr><td colspan="4" style="padding:12px;text-align:center;color:#bbb;font-style:italic">Aucun locataire en avance</td></tr>';
+
+  // Cautions & avances (encaissements à l'entrée)
+  const depCaution = deposits.reduce((s, d) => s + (Number(d.cautionAmount) || 0), 0);
+  const depAdvance = deposits.reduce((s, d) => s + (Number(d.advanceAmount) || 0), 0);
+  const depTotal = depCaution + depAdvance;
+  const depositRows = deposits.length > 0
+    ? deposits.map(d => {
+        const statut = (Number(d.cautionAmount) || 0) > 0
+          ? (d.cautionRefunded ? '<span style="color:#15803d;font-weight:700">Restituée</span>' : '<span style="color:#b45309;font-weight:700">Détenue</span>')
+          : '—';
+        return `<tr>
+          <td style="padding:8px 10px;font-weight:700;color:#0f766e">${d.tenantName || '—'}</td>
+          <td style="padding:8px 10px">${d.propertyName || '—'}</td>
+          <td style="padding:8px 10px;text-align:right">${d.cautionAmount ? fCFA(d.cautionAmount) : '—'}</td>
+          <td style="padding:8px 10px;text-align:center">${d.advanceMonths || '—'}</td>
+          <td style="padding:8px 10px;text-align:right">${d.advanceAmount ? fCFA(d.advanceAmount) : '—'}</td>
+          <td style="padding:8px 10px;text-align:center">${statut}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="6" style="padding:12px;text-align:center;color:#bbb;font-style:italic">Aucune caution ni avance enregistrée</td></tr>';
 
   const paidCount = expectedContracts.filter(c => paidNames.has((c.tenant || '').toLowerCase().trim())).length;
   const unpaidCount = expectedContracts.length - paidCount;
@@ -537,6 +656,11 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
       <div class="kpi-v" style="color:#b91c1c">${fCFA(totalArrieres)}</div>
       <div class="kpi-s">${arrearsByTenant.length} locataire(s) en retard</div>
     </div>
+    <div class="kpi">
+      <div class="kpi-l">Cautions & avances</div>
+      <div class="kpi-v" style="color:#0d9488">${fCFA(depTotal)}</div>
+      <div class="kpi-s">Caution ${fCFA(depCaution)} · Avance ${fCFA(depAdvance)}</div>
+    </div>
   </div>
 
   <div style="margin-bottom:16px">
@@ -571,6 +695,16 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
     <table>
       <thead><tr><th>Locataire</th><th>Propriété</th><th style="text-align:right">Loyer mensuel</th><th style="text-align:center">1er paiement dû le</th></tr></thead>
       <tbody>${advanceRows}</tbody>
+    </table>
+  </section>
+
+  <!-- Cautions & avances -->
+  <section>
+    <h2>Cautions & avances encaissées</h2>
+    <table>
+      <thead><tr><th>Locataire</th><th>Propriété</th><th style="text-align:right">Caution</th><th style="text-align:center">Mois d'avance</th><th style="text-align:right">Montant avance</th><th style="text-align:center">Statut caution</th></tr></thead>
+      <tbody>${depositRows}</tbody>
+      ${deposits.length > 0 ? `<tfoot><tr style="background:#f0fdfa;font-weight:800"><td colspan="2" style="padding:8px 10px;color:#0f766e">TOTAL CAUTIONS & AVANCES</td><td style="padding:8px 10px;text-align:right;color:#0f766e">${fCFA(depCaution)}</td><td></td><td style="padding:8px 10px;text-align:right;color:#0369a1">${fCFA(depAdvance)}</td><td style="padding:8px 10px;text-align:center;color:#0f766e">${fCFA(depTotal)}</td></tr></tfoot>` : ''}
     </table>
   </section>
 
@@ -1651,6 +1785,52 @@ export default function Payments() {
 
   const recoveredTotal = recoveredArrears.reduce((s, p) => s + ((p.amount && p.amount > 0) ? p.amount : 0), 0);
 
+  /* ── Cautions & avances : saisies sur la fiche du locataire à l'entrée ──
+     Rapport séparé (onglet dédié) + inclusion dans le rapport global. */
+  const depositsList = useMemo(() => {
+    return (tenants || [])
+      .map(t => {
+        const cautionAmount = Number(t.cautionAmount) || 0;
+        const advanceAmount = Number(t.advanceAmount) || 0;
+        if (cautionAmount <= 0 && advanceAmount <= 0) return null;
+        return {
+          tenantId: t.id,
+          tenantName: t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim(),
+          propertyName: t.property || '',
+          entryDate: t.since || '',
+          cautionAmount,
+          advanceMonths: Number(t.advanceMonths) || 0,
+          advanceAmount,
+          cautionRefunded: !!t.cautionRefunded,
+          cautionRefundDate: t.cautionRefundDate || '',
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => (b.cautionAmount + b.advanceAmount) - (a.cautionAmount + a.advanceAmount));
+  }, [tenants]);
+
+  const depositsTotals = useMemo(() => ({
+    cautionHeld:     depositsList.filter(d => !d.cautionRefunded).reduce((s, d) => s + d.cautionAmount, 0),
+    cautionRefunded: depositsList.filter(d => d.cautionRefunded).reduce((s, d) => s + d.cautionAmount, 0),
+    advanceTotal:    depositsList.reduce((s, d) => s + d.advanceAmount, 0),
+    grandTotal:      depositsList.reduce((s, d) => s + d.cautionAmount + d.advanceAmount, 0),
+  }), [depositsList]);
+
+  const toggleCautionRefund = (d) => {
+    const tenant = (tenants || []).find(t => String(t.id) === String(d.tenantId));
+    if (!tenant) return;
+    const nowRefunded = !d.cautionRefunded;
+    if (nowRefunded && !window.confirm(`Marquer la caution de ${d.tenantName} comme restituée ?`)) return;
+    dispatch({
+      type: 'UPDATE_TENANT',
+      payload: {
+        ...tenant,
+        cautionRefunded: nowRefunded,
+        cautionRefundDate: nowRefunded ? new Date().toISOString().split('T')[0] : '',
+      },
+    });
+  };
+
   // A payment is "anticipé" (advance) when it was settled BEFORE the month it covers
   // (e.g. a tenant paying several months upfront → one 'Payé' record per month).
   const isAdvancePayment = (p) => {
@@ -2063,6 +2243,12 @@ export default function Payments() {
     if (win) { win.document.write(html); win.document.close(); }
   };
 
+  const handlePrintDeposits = () => {
+    const html = buildDepositsReportHTML(depositsList, depositsTotals, orgSettings);
+    const win = window.open('', '_blank', 'width=900,height=700');
+    if (win) { win.document.write(html); win.document.close(); }
+  };
+
   const handleExportExcel = () => {
     const monthData = payments
       .filter(p => p.month === selectedMonth)
@@ -2107,6 +2293,8 @@ export default function Payments() {
       payments,
       arrearsByTenant,
       advanceTenants: reportAdvance,
+      deposits: depositsList,
+      depositsTotals,
       orgSettings,
     });
     const win = window.open('', '_blank', 'width=900,height=700');
@@ -2238,6 +2426,7 @@ export default function Payments() {
     { id: 'reminders', label: 'Rappels du mois', icon: 'notifications_active', badge: currentMonthUnpaid.length },
     { id: 'penalties', label: 'Pénalités 10%', icon: 'gavel', badge: isAfterDeadline ? penaltyList.length : 0 },
     { id: 'arrears', label: 'Arriérés', icon: 'history', badge: arrearsList.length },
+    { id: 'deposits', label: 'Cautions & avances', icon: 'savings', badge: depositsList.length },
     { id: 'report', label: 'Rapport mensuel', icon: 'bar_chart' },
   ];
 
@@ -2902,6 +3091,89 @@ export default function Payments() {
             </div>
           );
           })()}
+        </div>
+      )}
+
+      {/* ══════════════════ TAB: CAUTIONS & AVANCES ══════════════════ */}
+      {tab === 'deposits' && (
+        <div className="flex flex-col gap-md">
+          <div className="flex items-center justify-between flex-wrap gap-sm">
+            <div>
+              <h3 className="font-bold text-on-surface text-base">Cautions & avances</h3>
+              <p className="text-sm text-on-surface-variant mt-0.5">
+                {depositsList.length} locataire(s) · Total encaissé : <span className="font-bold text-primary">{fmt(depositsTotals.grandTotal)}</span>
+              </p>
+            </div>
+            {depositsList.length > 0 && (
+              <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintDeposits}>Exporter PDF</Btn>
+            )}
+          </div>
+
+          <section className="grid grid-cols-2 lg:grid-cols-4 gap-md">
+            {[
+              { label: 'Cautions détenues', value: fmt(depositsTotals.cautionHeld), icon: 'shield', cls: 'bg-primary/10 text-primary' },
+              { label: 'Avances encaissées', value: fmt(depositsTotals.advanceTotal), icon: 'event_available', cls: 'bg-blue-100 text-blue-700' },
+              { label: 'Cautions restituées', value: fmt(depositsTotals.cautionRefunded), icon: 'undo', cls: 'bg-green-100 text-green-700' },
+              { label: 'Total encaissé', value: fmt(depositsTotals.grandTotal), icon: 'savings', cls: 'bg-amber-100 text-amber-700' },
+            ].map(s => (
+              <div key={s.label} className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-center gap-md">
+                <div className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 ${s.cls}`}><Icon name={s.icon} size={20} /></div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-on-surface-variant text-[10px] md:text-xs uppercase tracking-wider font-semibold truncate">{s.label}</p>
+                  <p className="font-bold text-on-surface mt-0.5 text-sm md:text-base truncate">{s.value}</p>
+                </div>
+              </div>
+            ))}
+          </section>
+
+          <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-secondary text-on-primary">
+                  <tr>
+                    {['Locataire / Propriété','Entrée','Caution','Mois d\'avance','Montant avance','Statut caution','Action'].map((h,i) => (
+                      <th key={h+i} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider ${(i>=2 && i<=4) ? 'text-right' : ''}`}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-outline-variant/20">
+                  {depositsList.length === 0 && (
+                    <tr><td colSpan={7} className="text-center py-12 text-on-surface-variant">
+                      <Icon name="savings" size={36} className="opacity-30 mb-2" /><p>Aucune caution ni avance enregistrée</p>
+                      <p className="text-xs mt-1">Renseignez-les à la création d'un locataire (onglet Location).</p>
+                    </td></tr>
+                  )}
+                  {depositsList.map(d => (
+                    <tr key={d.tenantId} className="hover:bg-surface-container-low transition-colors">
+                      <td className="px-4 py-3.5">
+                        <p className="font-semibold text-sm text-on-surface">{d.tenantName}</p>
+                        <p className="text-xs text-on-surface-variant">{d.propertyName}</p>
+                      </td>
+                      <td className="px-4 py-3.5 text-sm text-on-surface-variant">{d.entryDate ? new Date(d.entryDate).toLocaleDateString('fr-CI') : '—'}</td>
+                      <td className="px-4 py-3.5 text-right text-sm font-semibold">{d.cautionAmount ? fmt(d.cautionAmount) : '—'}</td>
+                      <td className="px-4 py-3.5 text-right text-sm">{d.advanceMonths || '—'}</td>
+                      <td className="px-4 py-3.5 text-right text-sm font-semibold">{d.advanceAmount ? fmt(d.advanceAmount) : '—'}</td>
+                      <td className="px-4 py-3.5">
+                        {d.cautionAmount > 0 ? (
+                          d.cautionRefunded
+                            ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700"><Icon name="check_circle" size={13} /> Restituée{d.cautionRefundDate ? ` · ${new Date(d.cautionRefundDate).toLocaleDateString('fr-CI')}` : ''}</span>
+                            : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700"><Icon name="lock" size={13} /> Détenue</span>
+                        ) : <span className="text-on-surface-variant text-xs">—</span>}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {d.cautionAmount > 0 && (
+                          <button onClick={() => toggleCautionRefund(d)}
+                            className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors whitespace-nowrap ${d.cautionRefunded ? 'border-outline-variant text-on-surface-variant hover:bg-surface-container-high' : 'border-green-600/30 text-green-700 hover:bg-green-50'}`}>
+                            {d.cautionRefunded ? 'Annuler' : 'Marquer restituée'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
