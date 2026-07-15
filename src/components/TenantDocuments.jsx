@@ -1,16 +1,21 @@
 import { useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { uploadFile, deleteFile, STORAGE_PATHS } from '../lib/storage';
 import Icon from './Icon';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Documents du locataire — dossier complet, consultable partout.
 
-   Les fichiers sont stockés dans la collection Firestore `tenantDocuments`
-   (une entrée = un fichier), en base64. Les images sont compressées ; les
-   autres fichiers (PDF…) sont limités pour respecter la limite Firestore de
-   ~1 Mo par document. Réutilisable en lecture seule (portail locataire) ou en
-   édition (gestion locative).
+   Les fichiers sont désormais stockés dans Firebase Storage (jusqu'à 7 Mo par
+   fichier). La collection Firestore `tenantDocuments` ne garde que les
+   métadonnées + l'URL de téléchargement (`downloadUrl`) et le chemin Storage
+   (`storagePath`). Les anciens documents encodés en base64 (`dataUrl`) restent
+   lisibles pour compatibilité. Réutilisable en lecture seule (portail locataire)
+   ou en édition (gestion locative).
    ──────────────────────────────────────────────────────────────────────────── */
+
+// Limite par fichier (Firebase Storage) — porté à 7 Mo.
+const MAX_FILE_BYTES = 7 * 1024 * 1024;
 
 export const DOC_CATEGORIES = [
   "Pièce d'identité",
@@ -81,6 +86,9 @@ function dataUrlToBlob(dataUrl) {
 }
 
 export function openDocument(docu) {
+  // Nouveau : fichier dans Firebase Storage
+  if (docu.downloadUrl) { window.open(docu.downloadUrl, '_blank', 'noopener'); return; }
+  // Ancien : base64 dans Firestore
   try {
     const url = URL.createObjectURL(dataUrlToBlob(docu.dataUrl));
     window.open(url, '_blank');
@@ -91,6 +99,15 @@ export function openDocument(docu) {
 }
 
 export function downloadDocument(docu) {
+  // Nouveau : fichier dans Firebase Storage
+  if (docu.downloadUrl) {
+    const a = document.createElement('a');
+    a.href = docu.downloadUrl; a.target = '_blank'; a.rel = 'noopener';
+    a.download = docu.fileName || docu.name || 'document';
+    document.body.appendChild(a); a.click(); a.remove();
+    return;
+  }
+  // Ancien : base64 dans Firestore
   try {
     const url = URL.createObjectURL(dataUrlToBlob(docu.dataUrl));
     const a = document.createElement('a');
@@ -105,7 +122,9 @@ export default function TenantDocuments({ tenantId, tenantName, readOnly = false
   const fileRef = useRef(null);
   const [category, setCategory] = useState(DOC_CATEGORIES[0]);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(null);
   const [error, setError] = useState('');
+  const orgId = state.currentUser?.orgId || 'default';
 
   const docs = useMemo(
     () => (state.tenantDocuments || [])
@@ -122,41 +141,42 @@ export default function TenantDocuments({ tenantId, tenantName, readOnly = false
     setBusy(true);
     try {
       for (const file of files) {
-        let dataUrl;
-        if (file.type?.startsWith('image/')) {
-          dataUrl = await compressImage(file);
-          // Recompression plus agressive si encore trop lourd
-          if (dataUrl.length > MAX_STORED_BYTES) dataUrl = await compressImage(file, 1200, 0.6);
-          if (dataUrl.length > MAX_STORED_BYTES) dataUrl = await compressImage(file, 1000, 0.5);
-        } else {
-          dataUrl = await readAsDataUrl(file);
-        }
-        if (dataUrl.length > MAX_STORED_BYTES) {
-          setError(`« ${file.name} » est trop volumineux (max ~700 Ko pour un PDF, ou utilisez une image). Compressez le fichier puis réessayez.`);
+        if (file.size > MAX_FILE_BYTES) {
+          setError(`« ${file.name} » dépasse la limite de 7 Mo. Choisissez un fichier plus léger.`);
           continue;
         }
+        const docId = Date.now() + Math.floor(Math.random() * 1e6);
+        const safeName = (file.name || 'document').replace(/[^\w.\-]+/g, '_').slice(0, 80);
+        // Chemin à UN SEUL segment sous documents/ pour matcher la règle Storage
+        // `orgs/{orgId}/documents/{fileName}` (écriture manager, tout type, ≤ 25 Mo).
+        const path = `${STORAGE_PATHS.documents(orgId)}/t${tenantId}_${docId}_${safeName}`;
+        setProgress(0);
+        const downloadUrl = await uploadFile(path, file, setProgress);
         await dispatch({
           type: 'ADD_TENANT_DOCUMENT',
           payload: {
-            id: Date.now() + Math.floor(Math.random() * 1e6),
+            id: docId,
             tenantId, tenantName: tenantName || '',
             name: file.name, fileName: file.name,
             category,
             mimeType: file.type || 'application/octet-stream',
             size: file.size || 0,
-            dataUrl,
+            storagePath: path,
+            downloadUrl,
           },
         });
       }
     } catch (err) {
-      setError("Échec de l'ajout du document. Réessayez.");
+      setError("Échec de l'ajout du document. Vérifiez votre connexion puis réessayez.");
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   };
 
   const remove = (d) => {
     if (!confirm(`Supprimer le document « ${d.name} » ?`)) return;
+    if (d.storagePath) deleteFile(d.storagePath).catch(() => {}); // best-effort Storage cleanup
     dispatch({ type: 'DELETE_TENANT_DOCUMENT', payload: d.id });
   };
 
@@ -177,9 +197,9 @@ export default function TenantDocuments({ tenantId, tenantName, readOnly = false
           <button type="button" disabled={busy} onClick={() => fileRef.current?.click()}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-bold hover:bg-primary/90 disabled:opacity-50">
             <Icon name={busy ? 'hourglass_empty' : 'upload_file'} size={18} />
-            {busy ? 'Ajout…' : 'Ajouter un document'}
+            {busy ? (progress != null ? `Envoi… ${progress}%` : 'Ajout…') : 'Ajouter un document'}
           </button>
-          <span className="text-xs text-on-surface-variant">Images, PDF, Word — max ~700 Ko par fichier.</span>
+          <span className="text-xs text-on-surface-variant">Images, PDF, Word — max 7 Mo par fichier.</span>
         </div>
       )}
 
@@ -200,7 +220,7 @@ export default function TenantDocuments({ tenantId, tenantName, readOnly = false
             <div key={d.id} className="flex items-center gap-3 p-2.5 rounded-xl border border-outline-variant/30 bg-surface hover:bg-surface-container-low transition-colors">
               <div className="w-11 h-11 rounded-lg overflow-hidden flex items-center justify-center bg-surface-container shrink-0">
                 {isImage(d)
-                  ? <img src={d.dataUrl} alt={d.name} className="w-full h-full object-cover" />
+                  ? <img src={d.downloadUrl || d.dataUrl} alt={d.name} className="w-full h-full object-cover" />
                   : <Icon name={catIcon(d.category)} className="text-primary" size={22} />}
               </div>
               <div className="flex-1 min-w-0">
