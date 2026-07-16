@@ -1,21 +1,29 @@
 import { useMemo, useRef, useState } from 'react';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { useApp } from '../context/AppContext';
-import { uploadFile, deleteFile, STORAGE_PATHS } from '../lib/storage';
+import { db } from '../lib/firebase';
 import Icon from './Icon';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Documents du locataire — dossier complet, consultable partout.
 
-   Les fichiers sont désormais stockés dans Firebase Storage (jusqu'à 7 Mo par
-   fichier). La collection Firestore `tenantDocuments` ne garde que les
-   métadonnées + l'URL de téléchargement (`downloadUrl`) et le chemin Storage
-   (`storagePath`). Les anciens documents encodés en base64 (`dataUrl`) restent
+   Stockage 100 % Firestore (plan gratuit), sans Firebase Storage. Un fichier
+   volumineux (jusqu'à 7 Mo) est encodé en base64 puis DÉCOUPÉ en morceaux de
+   < 1 Mo, chacun enregistré comme un document séparé de la collection
+   `tenantDocuments` (champ `_chunk: true`). Le document « métadonnées » porte
+   `chunked: true` + `chunkCount`. À l'ouverture, les morceaux sont réassemblés.
+   Les anciens documents encodés en base64 dans un seul champ `dataUrl` restent
    lisibles pour compatibilité. Réutilisable en lecture seule (portail locataire)
    ou en édition (gestion locative).
    ──────────────────────────────────────────────────────────────────────────── */
 
-// Limite par fichier (Firebase Storage) — porté à 7 Mo.
+const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
+
+// Limite par fichier (binaire) — portée à 7 Mo.
 const MAX_FILE_BYTES = 7 * 1024 * 1024;
+// Taille d'un morceau de base64 (caractères) — bien en dessous de la limite
+// Firestore de ~1 Mo par document.
+const CHUNK_SIZE = 700 * 1024;
 
 export const DOC_CATEGORIES = [
   "Pièce d'identité",
@@ -26,9 +34,6 @@ export const DOC_CATEGORIES = [
   'Attestation',
   'Autre',
 ];
-
-// Limite prudente pour le fichier ENCODÉ base64 (Firestore ≈ 1 Mo / document).
-const MAX_STORED_BYTES = 950 * 1024;
 
 const fmtSize = (b) => {
   if (!b) return '';
@@ -46,7 +51,7 @@ const catIcon = (c) => ({
   'Attestation': 'verified',
 }[c] || 'attach_file');
 
-// Compression d'image via canvas → JPEG (comme les états des lieux)
+// Compression d'image via canvas → JPEG (réduit le nombre de morceaux)
 const compressImage = (file, maxDim = 1600, quality = 0.72) => new Promise((resolve) => {
   const reader = new FileReader();
   reader.onload = (ev) => {
@@ -85,33 +90,30 @@ function dataUrlToBlob(dataUrl) {
   return new Blob([arr], { type: mime });
 }
 
-export function openDocument(docu) {
-  // Nouveau : fichier dans Firebase Storage
-  if (docu.downloadUrl) { window.open(docu.downloadUrl, '_blank', 'noopener'); return; }
-  // Ancien : base64 dans Firestore
+function openResolved(dataUrl) {
+  if (!dataUrl) { alert('Document introuvable ou incomplet.'); return; }
+  if (/^https?:\/\//.test(dataUrl)) { window.open(dataUrl, '_blank', 'noopener'); return; }
   try {
-    const url = URL.createObjectURL(dataUrlToBlob(docu.dataUrl));
+    const url = URL.createObjectURL(dataUrlToBlob(dataUrl));
     window.open(url, '_blank');
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch {
-    window.open(docu.dataUrl, '_blank');
+    window.open(dataUrl, '_blank');
   }
 }
 
-export function downloadDocument(docu) {
-  // Nouveau : fichier dans Firebase Storage
-  if (docu.downloadUrl) {
+function downloadResolved(dataUrl, filename) {
+  if (!dataUrl) { alert('Document introuvable ou incomplet.'); return; }
+  if (/^https?:\/\//.test(dataUrl)) {
     const a = document.createElement('a');
-    a.href = docu.downloadUrl; a.target = '_blank'; a.rel = 'noopener';
-    a.download = docu.fileName || docu.name || 'document';
+    a.href = dataUrl; a.target = '_blank'; a.rel = 'noopener'; a.download = filename || 'document';
     document.body.appendChild(a); a.click(); a.remove();
     return;
   }
-  // Ancien : base64 dans Firestore
   try {
-    const url = URL.createObjectURL(dataUrlToBlob(docu.dataUrl));
+    const url = URL.createObjectURL(dataUrlToBlob(dataUrl));
     const a = document.createElement('a');
-    a.href = url; a.download = docu.fileName || docu.name || 'document';
+    a.href = url; a.download = filename || 'document';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch { /* ignore */ }
@@ -126,12 +128,27 @@ export default function TenantDocuments({ tenantId, tenantName, readOnly = false
   const [error, setError] = useState('');
   const orgId = state.currentUser?.orgId || 'default';
 
+  // Documents "métadonnées" du locataire (on exclut les morceaux `_chunk`)
   const docs = useMemo(
     () => (state.tenantDocuments || [])
-      .filter(d => String(d.tenantId) === String(tenantId))
+      .filter(d => !d._chunk && String(d.tenantId) === String(tenantId))
       .sort((a, b) => (b.uploadedAt || '').localeCompare(a.uploadedAt || '')),
     [state.tenantDocuments, tenantId]
   );
+
+  // Réassemble le base64 d'un document (ancien champ dataUrl, URL Storage, ou morceaux)
+  const resolveDataUrl = (d) => {
+    if (d.dataUrl) return d.dataUrl;
+    if (d.downloadUrl) return d.downloadUrl;
+    if (d.chunked) {
+      const parts = (state.tenantDocuments || [])
+        .filter(c => c._chunk && String(c.parentId) === String(d.id))
+        .sort((a, b) => (a.i || 0) - (b.i || 0))
+        .map(c => c.data || '');
+      return parts.join('');
+    }
+    return '';
+  };
 
   const onFiles = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -145,13 +162,31 @@ export default function TenantDocuments({ tenantId, tenantName, readOnly = false
           setError(`« ${file.name} » dépasse la limite de 7 Mo. Choisissez un fichier plus léger.`);
           continue;
         }
+        // Encodage base64 (les images sont compressées pour réduire le poids)
+        let dataUrl;
+        if (file.type?.startsWith('image/')) {
+          dataUrl = await compressImage(file);
+        } else {
+          dataUrl = await readAsDataUrl(file);
+        }
+
         const docId = Date.now() + Math.floor(Math.random() * 1e6);
-        const safeName = (file.name || 'document').replace(/[^\w.\-]+/g, '_').slice(0, 80);
-        // Chemin à UN SEUL segment sous documents/ pour matcher la règle Storage
-        // `orgs/{orgId}/documents/{fileName}` (écriture manager, tout type, ≤ 25 Mo).
-        const path = `${STORAGE_PATHS.documents(orgId)}/t${tenantId}_${docId}_${safeName}`;
+
+        // Découpe en morceaux < 1 Mo
+        const chunks = [];
+        for (let i = 0; i < dataUrl.length; i += CHUNK_SIZE) chunks.push(dataUrl.slice(i, i + CHUNK_SIZE));
+
         setProgress(0);
-        const downloadUrl = await uploadFile(path, file, setProgress);
+        // 1) Écrit les morceaux (documents séparés `_chunk`) dans la même collection
+        for (let i = 0; i < chunks.length; i++) {
+          const chunkId = `${docId}__c${i}`;
+          await setDoc(doc(db, 'workspaces', WS, 'tenantDocuments', chunkId), {
+            id: chunkId, _chunk: true, parentId: docId, i, data: chunks[i], orgId,
+          });
+          setProgress(Math.round(((i + 1) / chunks.length) * 100));
+        }
+
+        // 2) Écrit le document "métadonnées" (sans le contenu)
         await dispatch({
           type: 'ADD_TENANT_DOCUMENT',
           payload: {
@@ -161,8 +196,8 @@ export default function TenantDocuments({ tenantId, tenantName, readOnly = false
             category,
             mimeType: file.type || 'application/octet-stream',
             size: file.size || 0,
-            storagePath: path,
-            downloadUrl,
+            chunked: true,
+            chunkCount: chunks.length,
           },
         });
       }
@@ -176,7 +211,12 @@ export default function TenantDocuments({ tenantId, tenantName, readOnly = false
 
   const remove = (d) => {
     if (!confirm(`Supprimer le document « ${d.name} » ?`)) return;
-    if (d.storagePath) deleteFile(d.storagePath).catch(() => {}); // best-effort Storage cleanup
+    // Supprime d'abord les morceaux liés
+    if (d.chunked) {
+      (state.tenantDocuments || [])
+        .filter(c => c._chunk && String(c.parentId) === String(d.id))
+        .forEach(c => { deleteDoc(doc(db, 'workspaces', WS, 'tenantDocuments', String(c.id))).catch(() => {}); });
+    }
     dispatch({ type: 'DELETE_TENANT_DOCUMENT', payload: d.id });
   };
 
@@ -220,7 +260,7 @@ export default function TenantDocuments({ tenantId, tenantName, readOnly = false
             <div key={d.id} className="flex items-center gap-3 p-2.5 rounded-xl border border-outline-variant/30 bg-surface hover:bg-surface-container-low transition-colors">
               <div className="w-11 h-11 rounded-lg overflow-hidden flex items-center justify-center bg-surface-container shrink-0">
                 {isImage(d)
-                  ? <img src={d.downloadUrl || d.dataUrl} alt={d.name} className="w-full h-full object-cover" />
+                  ? <img src={resolveDataUrl(d)} alt={d.name} className="w-full h-full object-cover" />
                   : <Icon name={catIcon(d.category)} className="text-primary" size={22} />}
               </div>
               <div className="flex-1 min-w-0">
@@ -230,9 +270,9 @@ export default function TenantDocuments({ tenantId, tenantName, readOnly = false
                 </p>
               </div>
               <div className="flex items-center gap-0.5 shrink-0">
-                <button type="button" title="Consulter" onClick={() => openDocument(d)}
+                <button type="button" title="Consulter" onClick={() => openResolved(resolveDataUrl(d))}
                   className="p-1.5 rounded-lg text-primary hover:bg-primary/10"><Icon name="visibility" size={18} /></button>
-                <button type="button" title="Télécharger" onClick={() => downloadDocument(d)}
+                <button type="button" title="Télécharger" onClick={() => downloadResolved(resolveDataUrl(d), d.fileName || d.name)}
                   className="p-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container"><Icon name="download" size={18} /></button>
                 {!readOnly && (
                   <button type="button" title="Supprimer" onClick={() => remove(d)}
