@@ -1788,10 +1788,20 @@ export default function Payments() {
         const amount = Number(p.amount) || 0;
         if (amount <= 0) return null; // pas de montant réel → ignoré
         const paid = parsePaidDate(p.paidDate);
-        const monthsLate = paid ? ((paid.getFullYear() - monthStart.getFullYear()) * 12 + (paid.getMonth() - monthStart.getMonth())) : null;
+        if (!paid || isNaN(paid.getTime())) return null;
+        const monthsLate = (paid.getFullYear() - monthStart.getFullYear()) * 12 + (paid.getMonth() - monthStart.getMonth());
+        // Un arriéré RECOUVRÉ doit avoir été réglé au moins 1 mois APRÈS son mois
+        // (payé dans son propre mois = à l'heure, pas un arriéré).
+        if (monthsLate < 1) return null;
         return { ...p, amount, monthsLate };
       })
-      .filter(Boolean);
+      .filter(Boolean)
+      // Déduplication : évite qu'un même loyer (locataire + mois + propriété + date)
+      // apparaisse plusieurs fois (ex. MME BILAL en triple).
+      .filter((p, i, arr) => {
+        const key = (x) => `${(x.tenantName||'').toLowerCase().trim()}|${(x.month||'').toLowerCase().trim()}|${(x.propertyName||'').toLowerCase().trim()}|${x.amount}|${x.paidDate||''}`;
+        return arr.findIndex(x => key(x) === key(p)) === i;
+      });
   }, [payments, now]);
 
   const recoveredByTenant = useMemo(() => {

@@ -126,6 +126,13 @@ export default function Rental() {
   }).sort((a, b) => tSort ? normN(a.name).localeCompare(normN(b.name)) : 0);
   const filteredOwners = owners.filter(o => o.name.toLowerCase().includes(q));
 
+  // Compteurs des filtres locataires (avec / sans contrat)
+  const tenantFilterCount = (f) => {
+    if (f === 'Avec contrat') return tenants.filter(t => tenantsWithContract.has(normN(t.name))).length;
+    if (f === 'Sans contrat') return tenants.filter(t => !tenantsWithContract.has(normN(t.name))).length;
+    return tenants.length;
+  };
+
   // ── Ouvrir les modales ─────────────────────────────────────────────────────
   const openAddContract = () => {
     setCForm({ propertyName: '', tenant: '', rent: '', endDate: '', status: 'Brouillon', propertyType: 'Résidentiel', propertyIcon: 'apartment', sigBailleur: null, sigPreneur: null });
@@ -697,12 +704,16 @@ ${sectionsHtml}
       {/* ── LOCATAIRES ──────────────────────────────────────────────────── */}
       {tab === 'Locataires' && (
         <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar items-center">
-          {['Tous', 'Avec contrat', 'Sans contrat'].map(f => (
-            <button key={f} onClick={() => setTFilter(f)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${tFilter === f ? 'bg-primary text-on-primary' : 'bg-surface border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high'}`}>
-              {f}
-            </button>
-          ))}
+          {['Tous', 'Avec contrat', 'Sans contrat'].map(f => {
+            const active = tFilter === f;
+            return (
+              <button key={f} onClick={() => setTFilter(f)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${active ? 'bg-primary text-on-primary' : 'bg-surface border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high'}`}>
+                {f}
+                <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold ${active ? 'bg-on-primary/20 text-on-primary' : 'bg-surface-container-high text-on-surface-variant'}`}>{tenantFilterCount(f)}</span>
+              </button>
+            );
+          })}
           <div className="w-px h-4 bg-outline-variant/40 mx-1 flex-shrink-0" />
           <button onClick={() => setTSort(s => !s)}
             className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${tSort ? 'bg-primary text-on-primary' : 'bg-surface border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high'}`}>
