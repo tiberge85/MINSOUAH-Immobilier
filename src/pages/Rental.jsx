@@ -1200,7 +1200,11 @@ ${sectionsHtml}
                       onChange={e => {
                         const months = e.target.value === '' ? '' : Number(e.target.value);
                         const rent = Number(allPropertyOptions.find(o => o.value === selectedPropId)?.rent) || 0;
-                        setTForm(f => ({ ...f, advanceMonths: months, advanceAmount: (months && rent) ? months * rent : f.advanceAmount }));
+                        const MN = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+                        const base = tForm.since ? new Date(tForm.since) : new Date();
+                        const list = [];
+                        for (let k = 0; k < (Number(months) || 0); k++) { const d = new Date(base.getFullYear(), base.getMonth() + k, 1); list.push(`${MN[d.getMonth()]} ${d.getFullYear()}`); }
+                        setTForm(f => ({ ...f, advanceMonths: months, advanceAmount: (months && rent) ? months * rent : f.advanceAmount, advanceMonthsList: list }));
                       }}
                       className="form-input" placeholder="0" />
                   </div>
@@ -1211,6 +1215,34 @@ ${sectionsHtml}
                     onChange={e => setTForm(f => ({ ...f, advanceAmount: e.target.value === '' ? '' : Number(e.target.value) }))}
                     className="form-input" placeholder="0" />
                   <p className="text-xs text-on-surface-variant mt-1">Pré-rempli automatiquement (mois × loyer) — modifiable si besoin.</p>
+                </div>
+                <div className="mt-3">
+                  <label className="form-label">Mois d'avance concernés</label>
+                  <p className="text-xs text-on-surface-variant mb-2">Cliquez pour sélectionner/désélectionner les mois couverts par l'avance.</p>
+                  {(() => {
+                    const MN = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+                    const base = tForm.since ? new Date(tForm.since) : new Date();
+                    const opts = [];
+                    for (let k = -1; k <= 12; k++) { const d = new Date(base.getFullYear(), base.getMonth() + k, 1); opts.push(`${MN[d.getMonth()]} ${d.getFullYear()}`); }
+                    const sel = tForm.advanceMonthsList || [];
+                    const toggle = (m) => setTForm(f => {
+                      const cur = f.advanceMonthsList || [];
+                      return { ...f, advanceMonthsList: cur.includes(m) ? cur.filter(x => x !== m) : [...cur, m] };
+                    });
+                    return (
+                      <div className="flex flex-wrap gap-1.5">
+                        {opts.map(m => {
+                          const on = sel.includes(m);
+                          return (
+                            <button type="button" key={m} onClick={() => toggle(m)}
+                              className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${on ? 'bg-primary text-on-primary border-primary' : 'border-outline-variant text-on-surface-variant hover:bg-surface-container-high'}`}>
+                              {m}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 

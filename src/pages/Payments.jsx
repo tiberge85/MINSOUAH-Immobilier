@@ -1821,18 +1821,28 @@ export default function Payments() {
         const advanceAmount = Number(t.advanceAmount) || 0;
         if (cautionAmount <= 0 && advanceAmount <= 0) return null;
         const advMonths = Number(t.advanceMonths) || 0;
-        // Mois couverts par l'avance : à partir du mois d'entrée, sur advMonths mois.
         const entry = t.since ? new Date(t.since) : null;
-        const advanceMonthLabels = [];
-        if (entry && !isNaN(entry.getTime()) && advMonths > 0) {
+        // Mois couverts par l'avance : on privilégie la liste précisée à la création
+        // (advanceMonthsList), sinon on la calcule à partir du mois d'entrée.
+        let advanceMonthLabels = Array.isArray(t.advanceMonthsList) ? [...t.advanceMonthsList] : [];
+        if (!advanceMonthLabels.length && entry && !isNaN(entry.getTime()) && advMonths > 0) {
           for (let k = 0; k < advMonths; k++) {
             const d = new Date(entry.getFullYear(), entry.getMonth() + k, 1);
             advanceMonthLabels.push(`${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`);
           }
         }
-        // Prochaine échéance = 1er loyer après l'avance (paymentStartDate si dispo,
-        // sinon entrée + nombre de mois d'avance).
-        let nextPaymentDate = t.paymentStartDate || '';
+        // Trie chronologiquement les mois couverts
+        const labelToTime = (lbl) => { const [mn, yr] = (lbl || '').split(' '); const i = MONTH_NAMES.indexOf(mn); return i >= 0 ? new Date(parseInt(yr), i, 1).getTime() : 0; };
+        advanceMonthLabels.sort((a, b) => labelToTime(a) - labelToTime(b));
+        // Prochaine échéance = 1er loyer après l'avance : le mois qui suit le DERNIER
+        // mois couvert (sinon paymentStartDate, sinon entrée + nb de mois).
+        let nextPaymentDate = '';
+        if (advanceMonthLabels.length) {
+          const last = advanceMonthLabels[advanceMonthLabels.length - 1];
+          const [mn, yr] = last.split(' '); const i = MONTH_NAMES.indexOf(mn);
+          if (i >= 0) { const np = new Date(parseInt(yr), i + 1, 1); nextPaymentDate = np.toISOString().split('T')[0]; }
+        }
+        if (!nextPaymentDate) nextPaymentDate = t.paymentStartDate || '';
         if (!nextPaymentDate && entry && !isNaN(entry.getTime()) && advMonths > 0) {
           const np = new Date(entry.getFullYear(), entry.getMonth() + advMonths, entry.getDate());
           nextPaymentDate = np.toISOString().split('T')[0];
@@ -1843,7 +1853,7 @@ export default function Payments() {
           propertyName: t.property || '',
           entryDate: t.since || '',
           cautionAmount,
-          advanceMonths: advMonths,
+          advanceMonths: advanceMonthLabels.length || advMonths,
           advanceAmount,
           advanceMonthLabels,
           nextPaymentDate,

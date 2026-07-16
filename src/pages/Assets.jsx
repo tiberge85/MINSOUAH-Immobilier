@@ -368,6 +368,15 @@ export default function Assets() {
     setTarget(updated);
   };
 
+  // Déplacer un appartement d'un type à un autre (unité d'immeuble ou bien simple)
+  const changeUnitType = (building, unit, newType) => {
+    const units = (building.units || []).map(u => u.id === unit.id ? { ...u, type: newType } : u);
+    dispatch({ type: 'UPDATE_PROPERTY', payload: { ...building, units } });
+  };
+  const changePropertyType = (p, newType) => {
+    dispatch({ type: 'UPDATE_PROPERTY', payload: { ...p, type: newType, isBuilding: false } });
+  };
+
   // ── Rendu ──────────────────────────────────────────────────────────────────
   return (
     <div className="px-4 md:px-6 pt-6 pb-20 max-w-7xl mx-auto">
@@ -477,6 +486,8 @@ export default function Assets() {
                   key={`${item.building.id}-${item.data.id || idx}`}
                   unit={item.data}
                   building={item.building}
+                  canEdit={canEdit}
+                  onChangeType={(nt) => changeUnitType(item.building, item.data, nt)}
                   onBuildingDetail={() => { setTarget(item.building); setModal('detail'); setAddingUnitToDetail(false); setDetailUnitEdit(null); }}
                 />
               );
@@ -501,6 +512,7 @@ export default function Assets() {
                 onEdit={() => openEdit(p)}
                 onDelete={() => { setTarget(p); setModal('delete'); }}
                 onQr={() => setQrModal(p)}
+                onChangeType={(nt) => changePropertyType(p, nt)}
                 canEdit={canEdit}
                 canDelete={canDelete}
               />
@@ -959,7 +971,7 @@ export default function Assets() {
 }
 
 // ── Cartes ────────────────────────────────────────────────────────────────────
-function UnitFlatCard({ unit, building, onBuildingDetail }) {
+function UnitFlatCard({ unit, building, onBuildingDetail, onChangeType, canEdit }) {
   const statusColor = {
     'Loué':        'bg-green-100 text-green-800 border-green-200',
     'Disponible':  'bg-blue-50 text-blue-700 border-blue-200',
@@ -997,6 +1009,17 @@ function UnitFlatCard({ unit, building, onBuildingDetail }) {
           </span>
           <span className="font-bold text-primary text-sm">{fmt(unit.rent)}/mois</span>
         </div>
+        {canEdit && onChangeType && (
+          <div className="mt-3 pt-3 border-t border-outline-variant/10" onClick={e => e.stopPropagation()}>
+            <label className="text-[10px] uppercase tracking-wide text-on-surface-variant font-semibold flex items-center gap-1">
+              <Icon name="swap_horiz" size={12} /> Déplacer vers le type
+            </label>
+            <select value={UNIT_TYPES.includes(unit.type) ? unit.type : 'Studio'} onChange={e => onChangeType(e.target.value)}
+              className="w-full mt-1 px-2 py-1.5 rounded-lg border border-outline-variant/40 bg-surface-container text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
+              {UNIT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1084,7 +1107,7 @@ function BuildingCard({ building, onDetail, onEdit, onDelete, onQr, canEdit, can
   );
 }
 
-function PropertyCard({ property, onDetail, onEdit, onDelete, onQr, canEdit, canDelete }) {
+function PropertyCard({ property, onDetail, onEdit, onDelete, onQr, onChangeType, canEdit, canDelete }) {
   return (
     <div onClick={onDetail} className="bg-surface rounded-2xl overflow-hidden border border-outline-variant/20 shadow-sm hover:shadow-md transition-shadow cursor-pointer group">
       <div className="relative h-44 overflow-hidden bg-surface-container">
@@ -1131,6 +1154,17 @@ function PropertyCard({ property, onDetail, onEdit, onDelete, onQr, canEdit, can
           </div>
           <span className="font-bold text-primary text-sm">{fmt(property.rent)}/mois</span>
         </div>
+        {canEdit && onChangeType && !property.isBuilding && (
+          <div className="mt-3 pt-3 border-t border-outline-variant/10" onClick={e => e.stopPropagation()}>
+            <label className="text-[10px] uppercase tracking-wide text-on-surface-variant font-semibold flex items-center gap-1">
+              <Icon name="swap_horiz" size={12} /> Déplacer vers le type
+            </label>
+            <select value={UNIT_TYPES.includes(property.type) ? property.type : 'Studio'} onChange={e => onChangeType(e.target.value)}
+              className="w-full mt-1 px-2 py-1.5 rounded-lg border border-outline-variant/40 bg-surface-container text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
+              {UNIT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        )}
       </div>
     </div>
   );
