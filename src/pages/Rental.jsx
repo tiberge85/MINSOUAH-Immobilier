@@ -113,7 +113,10 @@ export default function Rental() {
   const filteredContracts = contracts.filter(c =>
     (cFilter === 'Tous' || c.status === cFilter) &&
     (c.tenant.toLowerCase().includes(q) || c.propertyName.toLowerCase().includes(q))
-  );
+  ).sort((a, b) => (a.propertyName || '').localeCompare(b.propertyName || '', 'fr', { numeric: true, sensitivity: 'base' }));
+
+  // Nombre de contrats par statut (pour les compteurs des filtres)
+  const contractStatusCount = (s) => s === 'Tous' ? contracts.length : contracts.filter(c => c.status === s).length;
   const normQ = normN(q);
   const tenantsWithContract = useMemo(() => new Set(contracts.filter(c => c.status === 'Actif' || c.status === 'Expirant').map(c => normN(c.tenant))), [contracts]);
   const filteredTenants = tenants.filter(t => {
@@ -632,12 +635,17 @@ ${sectionsHtml}
       {tab === 'Contrats' && (
         <div>
           <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar">
-            {CONTRACT_STATUSES.map(s => (
-              <button key={s} onClick={() => setCFilter(s)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${cFilter === s ? 'bg-primary text-on-primary' : 'bg-surface border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high'}`}>
-                {s}
-              </button>
-            ))}
+            {CONTRACT_STATUSES.map(s => {
+              const count = contractStatusCount(s);
+              const active = cFilter === s;
+              return (
+                <button key={s} onClick={() => setCFilter(s)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${active ? 'bg-primary text-on-primary' : 'bg-surface border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high'}`}>
+                  {s}
+                  <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold ${active ? 'bg-on-primary/20 text-on-primary' : 'bg-surface-container-high text-on-surface-variant'}`}>{count}</span>
+                </button>
+              );
+            })}
           </div>
           <div className="bg-surface rounded-2xl border border-outline-variant/20 overflow-hidden">
             <div className="overflow-x-auto">
