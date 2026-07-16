@@ -166,56 +166,51 @@ function buildPenaltyReportHTML(penaltyList, month, orgSettings) {
 }
 
 /* ── Arrears Report HTML ──────────────────────────────────────────────────── */
-function buildArrearsReportHTML(arrearsByTenant, arrearsTotal, orgSettings) {
+function buildArrearsReportHTML(arrearsByMonth, arrearsTotal, orgSettings) {
   const org = orgSettings || {};
   const orgLogo  = org.logo  || '';
   const orgStamp = org.stamp || '';
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
   const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
-  const totalTenants = arrearsByTenant.length;
-  const totalMonths = arrearsByTenant.reduce((s, g) => s + g.payments.length, 0);
+  const totalMonthsCount = arrearsByMonth.length;
+  const totalLines = arrearsByMonth.reduce((s, g) => s + g.payments.length, 0);
+  const tenantSet = new Set(arrearsByMonth.flatMap(g => g.payments.map(p => (p.tenantName || '').toLowerCase())));
 
-  /* Bar chart SVG */
-  const maxAmt = Math.max(...arrearsByTenant.map(g => g.total), 1);
-  const BAR_H = 22; const BAR_GAP = 8; const LEFT = 160; const RIGHT = 320;
-  const svgH = arrearsByTenant.length * (BAR_H + BAR_GAP) + 20;
-  const bars = arrearsByTenant.map((g, i) => {
-    const barW = Math.max(4, Math.round((g.total / maxAmt) * RIGHT));
-    const y = i * (BAR_H + BAR_GAP) + 10;
-    const name = g.tenantName.length > 22 ? g.tenantName.slice(0, 20) + '…' : g.tenantName;
-    return `
-      <text x="${LEFT - 6}" y="${y + BAR_H * 0.72}" text-anchor="end" font-size="11" fill="#374151">${name}</text>
-      <rect x="${LEFT}" y="${y}" width="${barW}" height="${BAR_H}" fill="#f59e0b" rx="3"/>
-      <text x="${LEFT + barW + 6}" y="${y + BAR_H * 0.72}" font-size="10" fill="#92400e" font-weight="700">${fCFA(g.total)}</text>`;
-  }).join('');
-  const barChart = `<svg viewBox="0 0 ${LEFT + RIGHT + 120} ${svgH}" width="100%" style="max-height:${Math.min(svgH, 300)}px">${bars}</svg>`;
-
-  /* Tenant tables */
-  const tenantSections = arrearsByTenant.map(g => {
+  /* Sections par mois — sous-total par mois + cumul général croissant */
+  let cumul = 0;
+  const monthSections = arrearsByMonth.map(g => {
+    cumul += g.total;
     const rows = g.payments.map((p, idx) => `
       <tr style="${idx % 2 === 0 ? '' : 'background:#fffbeb'}">
-        <td style="padding:8px 12px;font-weight:600">${p.month}</td>
+        <td style="padding:8px 12px;font-weight:600">${p.tenantName || '—'}</td>
         <td style="padding:8px 12px;color:#555">${p.propertyName || '—'}</td>
         <td style="padding:8px 12px;text-align:right;font-weight:700;color:#92400e">${fCFA(p.amount)}</td>
-        <td style="padding:8px 12px;text-align:center;color:${p.status === 'En retard' ? '#b45309' : '#b91c1c'};font-weight:600">${p.status}</td>
+        <td style="padding:8px 12px;text-align:center;color:${p.status === 'En retard' ? '#b45309' : '#b91c1c'};font-weight:600">${p.status || 'Impayé'}</td>
       </tr>`).join('');
     return `
       <div style="margin-bottom:20px;border:1px solid #fcd34d;border-radius:10px;overflow:hidden">
         <div style="background:#fef3c7;padding:10px 16px;display:flex;justify-content:space-between;align-items:center">
           <div>
-            <span style="font-size:14px;font-weight:800;color:#78350f">${g.tenantName}</span>
-            <span style="font-size:11px;color:#92400e;margin-left:10px">${g.payments.length} mois impayé(s)</span>
+            <span style="font-size:14px;font-weight:800;color:#78350f">${g.month}</span>
+            <span style="font-size:11px;color:#92400e;margin-left:10px">${g.payments.length} locataire(s) impayé(s)</span>
           </div>
           <span style="font-weight:900;color:#78350f;background:#fde68a;padding:4px 12px;border-radius:8px;font-size:13px">${fCFA(g.total)}</span>
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead><tr style="background:#f59e0b;color:#fff">
-            <th style="padding:7px 12px;text-align:left">Mois</th>
+            <th style="padding:7px 12px;text-align:left">Locataire</th>
             <th style="padding:7px 12px;text-align:left">Propriété</th>
-            <th style="padding:7px 12px;text-align:right">Montant</th>
+            <th style="padding:7px 12px;text-align:right">Montant dû</th>
             <th style="padding:7px 12px;text-align:center">Statut</th>
           </tr></thead>
           <tbody>${rows}</tbody>
+          <tfoot>
+            <tr style="background:#fde68a;font-weight:800">
+              <td colspan="2" style="padding:7px 12px;color:#78350f">Sous-total ${g.month}</td>
+              <td style="padding:7px 12px;text-align:right;color:#78350f">${fCFA(g.total)}</td>
+              <td style="padding:7px 12px;text-align:center;color:#92400e;font-size:11px">Cumul : ${fCFA(cumul)}</td>
+            </tr>
+          </tfoot>
         </table>
       </div>`;
   }).join('');
@@ -243,26 +238,26 @@ function buildArrearsReportHTML(arrearsByTenant, arrearsTotal, orgSettings) {
       }
       <div>
         <div style="font-size:13px;font-weight:700;color:#1a1a1a">Rapport des Arriérés de Loyers</div>
-        <div style="font-size:11px;color:#666;margin-top:2px">Généré le ${today}</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">Classé par mois concerné · Généré le ${today}</div>
       </div>
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
-      <div style="background:#f59e0b;color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;font-weight:700;white-space:nowrap">${totalTenants} locataire(s)</div>
+      <div style="background:#f59e0b;color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;font-weight:700;white-space:nowrap">${fCFA(arrearsTotal)} à récupérer</div>
       ${orgStamp ? `<img src="${orgStamp}" style="max-height:48px;max-width:48px;object-fit:contain;opacity:0.85"/>` : ''}
     </div>
   </div>
 
   <div class="kpis">
-    <div class="kpi"><div class="kpi-val">${totalTenants}</div><div class="kpi-lbl">Locataires concernés</div></div>
-    <div class="kpi"><div class="kpi-val">${totalMonths}</div><div class="kpi-lbl">Mois impayés</div></div>
+    <div class="kpi"><div class="kpi-val">${totalMonthsCount}</div><div class="kpi-lbl">Mois concernés</div></div>
+    <div class="kpi"><div class="kpi-val">${totalLines}</div><div class="kpi-lbl">Lignes impayées</div></div>
+    <div class="kpi"><div class="kpi-val">${tenantSet.size}</div><div class="kpi-lbl">Locataires</div></div>
     <div class="kpi" style="background:#fff7ed;border-color:#fed7aa"><div class="kpi-val" style="color:#c2410c">${fCFA(arrearsTotal)}</div><div class="kpi-lbl">Total à récupérer</div></div>
   </div>
 
-  <h2>Arriérés par locataire</h2>
-  <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:16px;margin-bottom:20px">${barChart}</div>
-
-  <h2>Détail par locataire</h2>
-  ${tenantSections}
+  ${totalLines === 0
+    ? `<div style="text-align:center;padding:40px;color:#9ca3af;font-style:italic">Aucun arriéré enregistré.</div>`
+    : `<h2>Détail par mois concerné</h2>
+  ${monthSections}`}
 
   <div class="footer">${org.companyName || 'Minsouah Immobilier'} · Document généré automatiquement · ${today}</div>
   <script>window.onload=()=>window.print();</script>
@@ -273,16 +268,15 @@ function buildArrearsReportHTML(arrearsByTenant, arrearsTotal, orgSettings) {
    Rapport des arriérés RÉGLÉS (recouvrés) : loyers de mois passés finalement
    encaissés. Vert = recouvrement (positif), par opposition au rapport des
    arriérés restant dus (ambre/rouge). */
-function buildArrearsRecoveredReportHTML(recoveredByTenant, recoveredTotal, orgSettings) {
+function buildArrearsRecoveredReportHTML(recoveredByMonth, recoveredTotal, orgSettings) {
   const org = orgSettings || {};
   const orgLogo  = org.logo  || '';
   const orgStamp = org.stamp || '';
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
   const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
-  const totalTenants = recoveredByTenant.length;
-  const totalSettlements = recoveredByTenant.reduce((s, g) => s + g.payments.length, 0);
-  const allLate = recoveredByTenant.flatMap(g => g.payments.map(p => p.monthsLate || 0));
-  const avgLate = allLate.length ? Math.round((allLate.reduce((s, n) => s + n, 0) / allLate.length) * 10) / 10 : 0;
+  const totalMonths = recoveredByMonth.length;
+  const totalSettlements = recoveredByMonth.reduce((s, g) => s + g.payments.length, 0);
+  const tenantSet = new Set(recoveredByMonth.flatMap(g => g.payments.map(p => (p.tenantName || '').toLowerCase())));
   const fmtPaid = (p) => {
     if (p.paidDate && /^\d{4}-\d{2}-\d{2}/.test(p.paidDate)) {
       const dt = new Date(p.paidDate);
@@ -291,49 +285,43 @@ function buildArrearsRecoveredReportHTML(recoveredByTenant, recoveredTotal, orgS
     return p.paidDate || '—';
   };
 
-  /* Bar chart SVG (montant recouvré par locataire) */
-  const maxAmt = Math.max(...recoveredByTenant.map(g => g.total), 1);
-  const BAR_H = 22; const BAR_GAP = 8; const LEFT = 160; const RIGHT = 320;
-  const svgH = recoveredByTenant.length * (BAR_H + BAR_GAP) + 20;
-  const bars = recoveredByTenant.map((g, i) => {
-    const barW = Math.max(4, Math.round((g.total / maxAmt) * RIGHT));
-    const y = i * (BAR_H + BAR_GAP) + 10;
-    const name = g.tenantName.length > 22 ? g.tenantName.slice(0, 20) + '…' : g.tenantName;
-    return `
-      <text x="${LEFT - 6}" y="${y + BAR_H * 0.72}" text-anchor="end" font-size="11" fill="#374151">${name}</text>
-      <rect x="${LEFT}" y="${y}" width="${barW}" height="${BAR_H}" fill="#16a34a" rx="3"/>
-      <text x="${LEFT + barW + 6}" y="${y + BAR_H * 0.72}" font-size="10" fill="#15803d" font-weight="700">${fCFA(g.total)}</text>`;
-  }).join('');
-  const barChart = `<svg viewBox="0 0 ${LEFT + RIGHT + 120} ${svgH}" width="100%" style="max-height:${Math.min(svgH, 300)}px">${bars}</svg>`;
-
-  /* Tenant tables */
-  const tenantSections = recoveredByTenant.map(g => {
+  /* Sections par mois — chacune avec sous-total, + cumul général croissant */
+  let cumul = 0;
+  const monthSections = recoveredByMonth.map(g => {
+    cumul += g.total;
     const rows = g.payments.map((p, idx) => `
       <tr style="${idx % 2 === 0 ? '' : 'background:#f0fdf4'}">
-        <td style="padding:8px 12px;font-weight:600">${p.month}</td>
+        <td style="padding:8px 12px;font-weight:600">${p.tenantName || '—'}</td>
         <td style="padding:8px 12px;color:#555">${p.propertyName || '—'}</td>
         <td style="padding:8px 12px;text-align:right;font-weight:700;color:#15803d">${fCFA(p.amount)}</td>
         <td style="padding:8px 12px;text-align:center;color:#166534;font-weight:600">${fmtPaid(p)}</td>
-        <td style="padding:8px 12px;text-align:center;color:${(p.monthsLate || 0) >= 3 ? '#b45309' : '#65a30d'};font-weight:600">${p.monthsLate || 0} mois</td>
+        <td style="padding:8px 12px;text-align:center;color:${(p.monthsLate || 0) >= 3 ? '#b45309' : '#65a30d'};font-weight:600">${p.monthsLate != null ? `${p.monthsLate} mois` : '—'}</td>
       </tr>`).join('');
     return `
       <div style="margin-bottom:20px;border:1px solid #86efac;border-radius:10px;overflow:hidden">
         <div style="background:#dcfce7;padding:10px 16px;display:flex;justify-content:space-between;align-items:center">
           <div>
-            <span style="font-size:14px;font-weight:800;color:#14532d">${g.tenantName}</span>
-            <span style="font-size:11px;color:#15803d;margin-left:10px">${g.payments.length} arriéré(s) recouvré(s)</span>
+            <span style="font-size:14px;font-weight:800;color:#14532d">${g.month}</span>
+            <span style="font-size:11px;color:#15803d;margin-left:10px">${g.payments.length} règlement(s)</span>
           </div>
           <span style="font-weight:900;color:#14532d;background:#bbf7d0;padding:4px 12px;border-radius:8px;font-size:13px">${fCFA(g.total)}</span>
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead><tr style="background:#16a34a;color:#fff">
-            <th style="padding:7px 12px;text-align:left">Mois concerné</th>
+            <th style="padding:7px 12px;text-align:left">Locataire</th>
             <th style="padding:7px 12px;text-align:left">Propriété</th>
             <th style="padding:7px 12px;text-align:right">Montant</th>
             <th style="padding:7px 12px;text-align:center">Réglé le</th>
             <th style="padding:7px 12px;text-align:center">Retard</th>
           </tr></thead>
           <tbody>${rows}</tbody>
+          <tfoot>
+            <tr style="background:#bbf7d0;font-weight:800">
+              <td colspan="2" style="padding:7px 12px;color:#14532d">Sous-total ${g.month}</td>
+              <td style="padding:7px 12px;text-align:right;color:#14532d">${fCFA(g.total)}</td>
+              <td colspan="2" style="padding:7px 12px;text-align:right;color:#166534;font-size:11px">Cumul : ${fCFA(cumul)}</td>
+            </tr>
+          </tfoot>
         </table>
       </div>`;
   }).join('');
@@ -361,7 +349,7 @@ function buildArrearsRecoveredReportHTML(recoveredByTenant, recoveredTotal, orgS
       }
       <div>
         <div style="font-size:13px;font-weight:700;color:#1a1a1a">Rapport des Arriérés Recouvrés</div>
-        <div style="font-size:11px;color:#666;margin-top:2px">Généré le ${today}</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">Loyers en retard finalement encaissés · Généré le ${today}</div>
       </div>
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
@@ -371,19 +359,16 @@ function buildArrearsRecoveredReportHTML(recoveredByTenant, recoveredTotal, orgS
   </div>
 
   <div class="kpis">
-    <div class="kpi"><div class="kpi-val">${totalTenants}</div><div class="kpi-lbl">Locataires concernés</div></div>
+    <div class="kpi"><div class="kpi-val">${totalMonths}</div><div class="kpi-lbl">Mois concernés</div></div>
     <div class="kpi"><div class="kpi-val">${totalSettlements}</div><div class="kpi-lbl">Arriérés recouvrés</div></div>
+    <div class="kpi"><div class="kpi-val">${tenantSet.size}</div><div class="kpi-lbl">Locataires</div></div>
     <div class="kpi" style="background:#ecfdf5;border-color:#a7f3d0"><div class="kpi-val" style="color:#059669">${fCFA(recoveredTotal)}</div><div class="kpi-lbl">Total recouvré</div></div>
-    <div class="kpi"><div class="kpi-val">${avgLate}</div><div class="kpi-lbl">Retard moyen (mois)</div></div>
   </div>
 
   ${totalSettlements === 0
     ? `<div style="text-align:center;padding:40px;color:#9ca3af;font-style:italic">Aucun arriéré recouvré à ce jour.</div>`
-    : `<h2>Montant recouvré par locataire</h2>
-  <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px;margin-bottom:20px">${barChart}</div>
-
-  <h2>Détail par locataire</h2>
-  ${tenantSections}`}
+    : `<h2>Détail par mois concerné</h2>
+  ${monthSections}`}
 
   <div class="footer">${org.companyName || 'Minsouah Immobilier'} · Document généré automatiquement · ${today}</div>
   <script>window.onload=()=>window.print();</script>
@@ -492,7 +477,7 @@ function buildDepositsReportHTML(depositsList, totals, orgSettings) {
 }
 
 /* ── Global Report HTML ───────────────────────────────────────────────────── */
-function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], arrearsByTenant = [], advanceTenants = [], deposits = [], depositsTotals = {}, orgSettings = {} }) {
+function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], arrearsByTenant = [], advanceTenants = [], deposits = [], depositsTotals = {}, synthesis = null, orgSettings = {} }) {
   const org = orgSettings;
   const orgLogo = org.logo || '';
   const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
@@ -659,9 +644,14 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
       <div class="kpi-s">${arrearsByTenant.length} locataire(s) en retard</div>
     </div>
     <div class="kpi">
-      <div class="kpi-l">Cautions & avances</div>
-      <div class="kpi-v" style="color:#0d9488">${fCFA(depTotal)}</div>
-      <div class="kpi-s">Caution ${fCFA(depCaution)} · Avance ${fCFA(depAdvance)}</div>
+      <div class="kpi-l">Cautions reçues</div>
+      <div class="kpi-v" style="color:#0d9488">${fCFA(depCaution)}</div>
+      <div class="kpi-s">Total des cautions détenues</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">Avances reçues</div>
+      <div class="kpi-v" style="color:#0369a1">${fCFA(depAdvance)}</div>
+      <div class="kpi-s">Total des mois d'avance encaissés</div>
     </div>
   </div>
 
@@ -671,6 +661,26 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
     </div>
     <div class="rate-bar"><div class="rate-fill" style="width:${recoveryRate}%"></div></div>
   </div>
+
+  ${synthesis ? `
+  <!-- Synthèse des encaissements (caisse) -->
+  <section>
+    <h2>Synthèse des encaissements — ${currentMonth} · Montant à reverser</h2>
+    <table>
+      <tbody>
+        <tr><td style="padding:8px 10px;font-weight:700">Loyers du mois encaissés</td><td style="padding:8px 10px;text-align:right;font-weight:700;color:#15803d">${fCFA(synthesis.loyersMois)}</td></tr>
+        ${['Studio','2 Pièces','3 Pièces','Magasin'].filter(k => (synthesis.byType?.[k] || 0) > 0).map(k => `<tr><td style="padding:5px 10px 5px 26px;color:#6b7280;font-size:11px">· ${k}</td><td style="padding:5px 10px;text-align:right;color:#6b7280;font-size:11px">${fCFA(synthesis.byType[k])}</td></tr>`).join('')}
+        ${(synthesis.byType?.Autre || 0) > 0 ? `<tr><td style="padding:5px 10px 5px 26px;color:#6b7280;font-size:11px">· Autre</td><td style="padding:5px 10px;text-align:right;color:#6b7280;font-size:11px">${fCFA(synthesis.byType.Autre)}</td></tr>` : ''}
+        <tr><td style="padding:8px 10px">Arriérés recouvrés (mois antérieurs)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.arrieres)}</td></tr>
+        <tr><td style="padding:8px 10px">Loyers anticipés (mois à venir)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.anticipes)}</td></tr>
+        <tr><td style="padding:8px 10px">Cautions & avances (nouveaux locataires)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.cautionsAvances)}</td></tr>
+        <tr style="background:#f0fdf4;font-weight:800"><td style="padding:9px 10px;color:#15803d">TOTAL ENCAISSÉ EN ${currentMonth.toUpperCase()}</td><td style="padding:9px 10px;text-align:right;color:#15803d">${fCFA(synthesis.totalEncaisse)}</td></tr>
+        <tr><td style="padding:8px 10px;color:#b91c1c">(−) Charges du mois</td><td style="padding:8px 10px;text-align:right;color:#b91c1c">− ${fCFA(synthesis.charges)}</td></tr>
+        <tr style="background:#785a00;color:#fff;font-weight:900"><td style="padding:11px 10px;font-size:13px">TOTAL GÉNÉRAL À REVERSER</td><td style="padding:11px 10px;text-align:right;font-size:14px">${fCFA(synthesis.totalAReverser)}</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:9px;color:#b0a090;margin-top:6px">Encaissements réels du mois (par date de paiement) : loyers du mois + arriérés recouvrés + loyers anticipés + cautions & avances des nouveaux locataires, diminués des charges du mois.</p>
+  </section>` : ''}
 
   <!-- Current month detail -->
   <section>
@@ -1718,26 +1728,46 @@ export default function Payments() {
   // Arrears = explicit unpaid records from months BEFORE the current month.
   // These are created when a month is closed (CLOSE_MONTH turns unpaid active
   // tenants into "Impayé" records) or entered manually — NOT auto-synthesized.
+  // Mois déjà clôturés → leurs impayés basculent en arriérés, même s'il s'agit
+  // du mois en cours (à la clôture, les rappels du mois deviennent des arriérés).
+  const closedMonthSet = useMemo(
+    () => new Set((monthClosures || []).map(c => c.month)),
+    [monthClosures]
+  );
+
   const arrearsList = useMemo(() => {
     const cy = now.getFullYear();
     const cm = now.getMonth();
-    return (payments || []).filter(p => {
+    const raw = (payments || []).filter(p => {
       if (p.status === 'Payé' || p.status === 'Annulé') return false;
       if (!p.month) return false;
       const [mn, yr] = p.month.split(' ');
       const idx = MONTH_NAMES.indexOf(mn);
       if (idx === -1) return false;
       const y = parseInt(yr);
-      return y < cy || (y === cy && idx < cm);
+      const isPast = y < cy || (y === cy && idx < cm);
+      // Arriéré = impayé d'un mois PASSÉ, OU d'un mois déjà CLÔTURÉ (mois courant inclus)
+      return isPast || closedMonthSet.has(p.month);
     });
-  }, [payments, now]);
+    // Déduplication : un même locataire + mois + propriété ne doit apparaître qu'une
+    // seule fois (évite les répétitions dues à des enregistrements en double).
+    const seen = new Set();
+    const out = [];
+    for (const p of raw) {
+      const key = `${(p.tenantName || '').toLowerCase().trim()}|${(p.month || '').toLowerCase().trim()}|${(p.propertyName || '').toLowerCase().trim()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(p);
+    }
+    return out;
+  }, [payments, now, closedMonthSet]);
   const arrearsTotal = arrearsList.reduce((s, p) => s + (p.amount || 0), 0);
 
   /* ── Arrears grouped by tenant ── */
   const arrearsByTenant = useMemo(() => {
     const groups = {};
     arrearsList.forEach(p => {
-      const key = (p.tenantName || '—').toLowerCase();
+      const key = (p.tenantName || '—').toLowerCase().trim();
       if (!groups[key]) groups[key] = { tenantName: p.tenantName || '—', tenantPhone: p.tenantPhone || '', payments: [], total: 0 };
       groups[key].payments.push(p);
       groups[key].total += p.amount || 0;
@@ -1756,29 +1786,62 @@ export default function Payments() {
   };
   const selectedDate = monthLabelToDate(selectedMonth);
 
+  /* ── Arriérés groupés par MOIS concerné (du plus ancien au plus récent) ── */
+  const arrearsByMonth = useMemo(() => {
+    const groups = {};
+    arrearsList.forEach(p => {
+      const key = p.month || '—';
+      if (!groups[key]) groups[key] = { month: key, monthDate: monthLabelToDate(key), payments: [], total: 0 };
+      groups[key].payments.push(p);
+      groups[key].total += Number(p.amount) || 0;
+    });
+    Object.values(groups).forEach(g => g.payments.sort((a, b) => (a.tenantName || '').localeCompare(b.tenantName || '')));
+    return Object.values(groups).sort((a, b) => (a.monthDate?.getTime() || 0) - (b.monthDate?.getTime() || 0));
+  }, [arrearsList]);
+
   /* ── Arriérés RECOUVRÉS : loyer d'un mois passé réglé APRÈS ce mois ──
      Un arriéré recouvré = un enregistrement 'Payé' dont la date de règlement
      tombe dans un mois postérieur au mois couvert (loyer en retard finalement
      encaissé). Sert de base au rapport "Arriérés recouvrés". */
   const recoveredArrears = useMemo(() => {
+    const cy = now.getFullYear();
+    const cm = now.getMonth();
     return (payments || [])
       .filter(p => p.status === 'Payé')
+      // UNIQUEMENT les vrais arriérés : loyers qui étaient marqués impayés/arriérés
+      // (ajoutés dans l'onglet Arriérés → isArrear, générés par une clôture →
+      // autoGenerated, ou réglés après clôture → postCloture). On évite ainsi de
+      // compter des paiements normaux à date tardive ou des données douteuses.
+      .filter(p => p.isArrear || p.autoGenerated || p.postCloture)
       .map(p => {
         const monthStart = monthLabelToDate(p.month);
+        if (!monthStart) return null; // mois invalide (ex. « s2 ») → ignoré
+        // Le mois couvert doit être STRICTEMENT antérieur au mois courant
+        const isPast = monthStart.getFullYear() < cy || (monthStart.getFullYear() === cy && monthStart.getMonth() < cm);
+        if (!isPast) return null;
+        const amount = Number(p.amount) || 0;
+        if (amount <= 0) return null; // pas de montant réel → ignoré
         const paid = parsePaidDate(p.paidDate);
-        if (!monthStart || !paid || isNaN(paid.getTime())) return null;
-        const paidFirst = new Date(paid.getFullYear(), paid.getMonth(), 1);
-        if (paidFirst <= monthStart) return null; // réglé dans son mois (ou en avance) → pas un arriéré
+        if (!paid || isNaN(paid.getTime())) return null;
         const monthsLate = (paid.getFullYear() - monthStart.getFullYear()) * 12 + (paid.getMonth() - monthStart.getMonth());
-        return { ...p, monthsLate };
+        // Un arriéré RECOUVRÉ doit avoir été réglé au moins 1 mois APRÈS son mois
+        // (payé dans son propre mois = à l'heure, pas un arriéré).
+        if (monthsLate < 1) return null;
+        return { ...p, amount, monthsLate };
       })
-      .filter(Boolean);
-  }, [payments]);
+      .filter(Boolean)
+      // Déduplication : évite qu'un même loyer (locataire + mois + propriété + date)
+      // apparaisse plusieurs fois (ex. MME BILAL en triple).
+      .filter((p, i, arr) => {
+        const key = (x) => `${(x.tenantName||'').toLowerCase().trim()}|${(x.month||'').toLowerCase().trim()}|${(x.propertyName||'').toLowerCase().trim()}|${x.amount}|${x.paidDate||''}`;
+        return arr.findIndex(x => key(x) === key(p)) === i;
+      });
+  }, [payments, now]);
 
   const recoveredByTenant = useMemo(() => {
     const groups = {};
     recoveredArrears.forEach(p => {
-      const key = (p.tenantName || '—').toLowerCase();
+      const key = (p.tenantName || '—').toLowerCase().trim();
       if (!groups[key]) groups[key] = { tenantName: p.tenantName || '—', tenantPhone: p.tenantPhone || '', payments: [], total: 0 };
       groups[key].payments.push(p);
       groups[key].total += (p.amount && p.amount > 0) ? p.amount : 0;
@@ -1789,7 +1852,20 @@ export default function Payments() {
     return Object.values(groups).sort((a, b) => b.total - a.total);
   }, [recoveredArrears]);
 
-  const recoveredTotal = recoveredArrears.reduce((s, p) => s + ((p.amount && p.amount > 0) ? p.amount : 0), 0);
+  // Regroupement par MOIS concerné (pour un rapport clair, du plus récent au plus ancien)
+  const recoveredByMonth = useMemo(() => {
+    const groups = {};
+    recoveredArrears.forEach(p => {
+      const key = p.month || '—';
+      if (!groups[key]) groups[key] = { month: key, monthDate: monthLabelToDate(key), payments: [], total: 0 };
+      groups[key].payments.push(p);
+      groups[key].total += Number(p.amount) || 0;
+    });
+    Object.values(groups).forEach(g => g.payments.sort((a, b) => (a.tenantName || '').localeCompare(b.tenantName || '')));
+    return Object.values(groups).sort((a, b) => (b.monthDate?.getTime() || 0) - (a.monthDate?.getTime() || 0));
+  }, [recoveredArrears]);
+
+  const recoveredTotal = recoveredArrears.reduce((s, p) => s + (Number(p.amount) || 0), 0);
 
   /* ── Cautions & avances : saisies sur la fiche du locataire à l'entrée ──
      Rapport séparé (onglet dédié) + inclusion dans le rapport global. */
@@ -1800,18 +1876,28 @@ export default function Payments() {
         const advanceAmount = Number(t.advanceAmount) || 0;
         if (cautionAmount <= 0 && advanceAmount <= 0) return null;
         const advMonths = Number(t.advanceMonths) || 0;
-        // Mois couverts par l'avance : à partir du mois d'entrée, sur advMonths mois.
         const entry = t.since ? new Date(t.since) : null;
-        const advanceMonthLabels = [];
-        if (entry && !isNaN(entry.getTime()) && advMonths > 0) {
+        // Mois couverts par l'avance : on privilégie la liste précisée à la création
+        // (advanceMonthsList), sinon on la calcule à partir du mois d'entrée.
+        let advanceMonthLabels = Array.isArray(t.advanceMonthsList) ? [...t.advanceMonthsList] : [];
+        if (!advanceMonthLabels.length && entry && !isNaN(entry.getTime()) && advMonths > 0) {
           for (let k = 0; k < advMonths; k++) {
             const d = new Date(entry.getFullYear(), entry.getMonth() + k, 1);
             advanceMonthLabels.push(`${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`);
           }
         }
-        // Prochaine échéance = 1er loyer après l'avance (paymentStartDate si dispo,
-        // sinon entrée + nombre de mois d'avance).
-        let nextPaymentDate = t.paymentStartDate || '';
+        // Trie chronologiquement les mois couverts
+        const labelToTime = (lbl) => { const [mn, yr] = (lbl || '').split(' '); const i = MONTH_NAMES.indexOf(mn); return i >= 0 ? new Date(parseInt(yr), i, 1).getTime() : 0; };
+        advanceMonthLabels.sort((a, b) => labelToTime(a) - labelToTime(b));
+        // Prochaine échéance = 1er loyer après l'avance : le mois qui suit le DERNIER
+        // mois couvert (sinon paymentStartDate, sinon entrée + nb de mois).
+        let nextPaymentDate = '';
+        if (advanceMonthLabels.length) {
+          const last = advanceMonthLabels[advanceMonthLabels.length - 1];
+          const [mn, yr] = last.split(' '); const i = MONTH_NAMES.indexOf(mn);
+          if (i >= 0) { const np = new Date(parseInt(yr), i + 1, 1); nextPaymentDate = np.toISOString().split('T')[0]; }
+        }
+        if (!nextPaymentDate) nextPaymentDate = t.paymentStartDate || '';
         if (!nextPaymentDate && entry && !isNaN(entry.getTime()) && advMonths > 0) {
           const np = new Date(entry.getFullYear(), entry.getMonth() + advMonths, entry.getDate());
           nextPaymentDate = np.toISOString().split('T')[0];
@@ -1822,7 +1908,7 @@ export default function Payments() {
           propertyName: t.property || '',
           entryDate: t.since || '',
           cautionAmount,
-          advanceMonths: advMonths,
+          advanceMonths: advanceMonthLabels.length || advMonths,
           advanceAmount,
           advanceMonthLabels,
           nextPaymentDate,
@@ -2257,13 +2343,13 @@ export default function Payments() {
   };
 
   const handlePrintArrears = () => {
-    const html = buildArrearsReportHTML(arrearsByTenant, arrearsTotal, orgSettings);
+    const html = buildArrearsReportHTML(arrearsByMonth, arrearsTotal, orgSettings);
     const win = window.open('', '_blank', 'width=900,height=700');
     if (win) { win.document.write(html); win.document.close(); }
   };
 
   const handlePrintArrearsRecovered = () => {
-    const html = buildArrearsRecoveredReportHTML(recoveredByTenant, recoveredTotal, orgSettings);
+    const html = buildArrearsRecoveredReportHTML(recoveredByMonth, recoveredTotal, orgSettings);
     const win = window.open('', '_blank', 'width=900,height=700');
     if (win) { win.document.write(html); win.document.close(); }
   };
@@ -2311,6 +2397,59 @@ export default function Payments() {
     if (win) { win.document.write(html); win.document.close(); }
   };
 
+  // Synthèse "caisse" du mois : tout ce qui a été ENCAISSÉ (par date de paiement)
+  // pendant le mois, ventilé, moins les charges du mois = total à reverser.
+  const buildMonthSynthesis = (monthLabel) => {
+    const target = monthLabelToDate(monthLabel);
+    if (!target) return null;
+    const inSel = (dt) => dt && !isNaN(dt.getTime()) && dt.getFullYear() === target.getFullYear() && dt.getMonth() === target.getMonth();
+    const UT = ['Studio', '2 Pièces', '3 Pièces', 'Magasin'];
+    const typeOfPayment = (p) => {
+      const pn = (p.propertyName || '').toLowerCase().trim();
+      if (!pn) return 'Autre';
+      for (const prop of (properties || [])) {
+        const name = (prop.name || '').toLowerCase().trim();
+        if (!name) continue;
+        if (prop.isBuilding && pn.startsWith(name)) {
+          const u = (prop.units || []).find(u => u.number && pn.includes(String(u.number).toLowerCase()));
+          if (u && UT.includes(u.type)) return u.type;
+        } else if (!prop.isBuilding && (pn === name || pn.startsWith(name))) {
+          if (UT.includes(prop.type)) return prop.type;
+        }
+      }
+      return 'Autre';
+    };
+    let loyersMois = 0, arrieres = 0, anticipes = 0;
+    const byType = { 'Studio': 0, '2 Pièces': 0, '3 Pièces': 0, 'Magasin': 0, 'Autre': 0 };
+    (payments || []).forEach(p => {
+      if (p.status !== 'Payé') return;
+      const amt = Number(p.amount) || 0;
+      const cov = monthLabelToDate(p.month);
+      const paidInSel = inSel(parsePaidDate(p.paidDate));
+      if (cov && cov.getTime() === target.getTime()) {
+        // Loyer du MOIS : compté dès qu'il est payé (par mois de loyer), comme
+        // l'« Encaissé » du rapport — indépendant de la date de règlement.
+        loyersMois += amt; byType[typeOfPayment(p)] += amt;
+      } else if (cov && cov.getTime() < target.getTime()) {
+        // Arriéré : compté seulement s'il a été ENCAISSÉ pendant ce mois.
+        if (paidInSel) arrieres += amt;
+      } else if (cov && cov.getTime() > target.getTime()) {
+        // Loyer anticipé : compté seulement s'il a été ENCAISSÉ pendant ce mois.
+        if (paidInSel) anticipes += amt;
+      }
+    });
+    let cautionsAvances = 0;
+    (tenants || []).forEach(t => {
+      const entry = t.since ? new Date(t.since) : null;
+      if (inSel(entry)) cautionsAvances += (Number(t.cautionAmount) || 0) + (Number(t.advanceAmount) || 0);
+    });
+    const totalEncaisse = loyersMois + arrieres + anticipes + cautionsAvances;
+    const charges = (transactions || [])
+      .filter(t => { const d = parseTxDate(t.date); return d && inSel(d) && !t.positive; })
+      .reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
+    return { loyersMois, byType, arrieres, anticipes, cautionsAvances, totalEncaisse, charges, totalAReverser: totalEncaisse - charges };
+  };
+
   const handlePrintGlobalReport = () => {
     const html = buildGlobalReportHTML({
       currentMonth: selectedMonth,
@@ -2320,6 +2459,7 @@ export default function Payments() {
       advanceTenants: reportAdvance,
       deposits: depositsList,
       depositsTotals,
+      synthesis: buildMonthSynthesis(selectedMonth),
       orgSettings,
     });
     const win = window.open('', '_blank', 'width=900,height=700');
