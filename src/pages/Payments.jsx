@@ -417,8 +417,9 @@ function buildDepositsReportHTML(depositsList, totals, orgSettings) {
         <td style="padding:8px 12px;color:#555">${d.propertyName || '—'}</td>
         <td style="padding:8px 12px;text-align:center">${fmtDate(d.entryDate)}</td>
         <td style="padding:8px 12px;text-align:right;font-weight:700;color:#0f766e">${d.cautionAmount ? fCFA(d.cautionAmount) : '—'}</td>
-        <td style="padding:8px 12px;text-align:center">${d.advanceMonths || '—'}</td>
         <td style="padding:8px 12px;text-align:right;font-weight:700;color:#0369a1">${d.advanceAmount ? fCFA(d.advanceAmount) : '—'}</td>
+        <td style="padding:8px 12px;color:#0369a1;font-size:11px">${(d.advanceMonthLabels && d.advanceMonthLabels.length) ? `${d.advanceMonths} mois — ${d.advanceMonthLabels.join(', ')}` : (d.advanceMonths ? `${d.advanceMonths} mois` : '—')}</td>
+        <td style="padding:8px 12px;text-align:center;font-weight:700;color:#0f766e">${d.nextPaymentDate ? fmtDate(d.nextPaymentDate) : '—'}</td>
         <td style="padding:8px 12px;text-align:center">${cautionStatus}</td>
       </tr>`;
   }).join('');
@@ -471,15 +472,16 @@ function buildDepositsReportHTML(depositsList, totals, orgSettings) {
     : `<table>
     <thead><tr>
       <th>Locataire</th><th>Propriété</th><th style="text-align:center">Entrée</th>
-      <th style="text-align:right">Caution</th><th style="text-align:center">Mois d'avance</th>
-      <th style="text-align:right">Montant avance</th><th style="text-align:center">Statut caution</th>
+      <th style="text-align:right">Caution</th><th style="text-align:right">Montant avance</th>
+      <th>Mois d'avance couverts</th><th style="text-align:center">Prochaine échéance</th><th style="text-align:center">Statut caution</th>
     </tr></thead>
     <tbody>${rows}</tbody>
     <tfoot><tr style="background:#ccfbf1;font-weight:800">
       <td colspan="3" style="padding:8px 12px;color:#134e4a">TOTAUX</td>
       <td style="padding:8px 12px;text-align:right;color:#0f766e">${fCFA(t.cautionHeld + t.cautionRefunded)}</td>
-      <td></td>
       <td style="padding:8px 12px;text-align:right;color:#0369a1">${fCFA(t.advanceTotal)}</td>
+      <td></td>
+      <td></td>
       <td style="padding:8px 12px;text-align:center;color:#134e4a">${fCFA(t.grandTotal)}</td>
     </tr></tfoot>
   </table>`}
@@ -1384,6 +1386,7 @@ export default function Payments() {
   const [selectedMonth, setSelectedMonth] = useState(currentMonthLabel);
   const [statusFilter, setStatusFilter] = useState('Tous');
   const [search, setSearch] = useState('');
+  const [listSearch, setListSearch] = useState(''); // recherche dans les onglets Rappels/Pénalités/Arriérés/Cautions
   const [filterPropKey, setFilterPropKey] = useState('');
   const [filterTenantId, setFilterTenantId] = useState('');
 
@@ -1575,7 +1578,10 @@ export default function Payments() {
 
   /* ── Stats for selected month ── */
   const monthPmts = payments.filter(p => p.month === selectedMonth);
-  const totalExpected = monthPmts.reduce((s, p) => s + (p.amount || 0), 0);
+  // Loyers attendus = somme des loyers de TOUS les contrats actifs / expirants
+  const totalExpected = (contracts || [])
+    .filter(c => c.status === 'Actif' || c.status === 'Expirant')
+    .reduce((s, c) => s + (Number(c.rent) || 0), 0);
   const totalCollected = monthPmts.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
   // Impayés du mois = enregistrements non réglés (avec repli sur le loyer du contrat
   // quand le montant est à 0) + locataires actifs SANS aucun enregistrement ce mois
@@ -1793,14 +1799,33 @@ export default function Payments() {
         const cautionAmount = Number(t.cautionAmount) || 0;
         const advanceAmount = Number(t.advanceAmount) || 0;
         if (cautionAmount <= 0 && advanceAmount <= 0) return null;
+        const advMonths = Number(t.advanceMonths) || 0;
+        // Mois couverts par l'avance : à partir du mois d'entrée, sur advMonths mois.
+        const entry = t.since ? new Date(t.since) : null;
+        const advanceMonthLabels = [];
+        if (entry && !isNaN(entry.getTime()) && advMonths > 0) {
+          for (let k = 0; k < advMonths; k++) {
+            const d = new Date(entry.getFullYear(), entry.getMonth() + k, 1);
+            advanceMonthLabels.push(`${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`);
+          }
+        }
+        // Prochaine échéance = 1er loyer après l'avance (paymentStartDate si dispo,
+        // sinon entrée + nombre de mois d'avance).
+        let nextPaymentDate = t.paymentStartDate || '';
+        if (!nextPaymentDate && entry && !isNaN(entry.getTime()) && advMonths > 0) {
+          const np = new Date(entry.getFullYear(), entry.getMonth() + advMonths, entry.getDate());
+          nextPaymentDate = np.toISOString().split('T')[0];
+        }
         return {
           tenantId: t.id,
           tenantName: t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim(),
           propertyName: t.property || '',
           entryDate: t.since || '',
           cautionAmount,
-          advanceMonths: Number(t.advanceMonths) || 0,
+          advanceMonths: advMonths,
           advanceAmount,
+          advanceMonthLabels,
+          nextPaymentDate,
           cautionRefunded: !!t.cautionRefunded,
           cautionRefundDate: t.cautionRefundDate || '',
         };
@@ -2430,6 +2455,23 @@ export default function Payments() {
     { id: 'report', label: 'Rapport mensuel', icon: 'bar_chart' },
   ];
 
+  // ── Recherche partagée des onglets Rappels / Pénalités / Arriérés / Cautions ──
+  const lq = listSearch.trim().toLowerCase();
+  const matchLS = (...vals) => !lq || vals.some(v => (v || '').toString().toLowerCase().includes(lq));
+  // Rendu inline (fonction appelée, PAS un composant <X/> — sinon l'input perd le focus à chaque frappe)
+  const renderListSearch = (placeholder) => (
+    <div className="relative w-full sm:w-72">
+      <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-outline" size={15} />
+      <input type="text" value={listSearch} onChange={e => setListSearch(e.target.value)} placeholder={placeholder || 'Rechercher un locataire, une propriété…'}
+        className="w-full pl-8 pr-8 py-2 border border-outline-variant rounded-lg bg-surface-container-low text-sm focus:outline-none focus:border-primary" />
+      {listSearch && (
+        <button onClick={() => setListSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface">
+          <Icon name="close" size={15} />
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl max-w-7xl mx-auto flex flex-col gap-gutter">
 
@@ -2472,7 +2514,7 @@ export default function Payments() {
       {/* ── Tabs ── */}
       <div className="flex gap-1 bg-surface-container-low rounded-xl p-1 w-full overflow-x-auto">
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
+          <button key={t.id} onClick={() => { setTab(t.id); setListSearch(''); }}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors relative ${
               tab === t.id ? 'bg-surface text-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
             }`}>
@@ -2717,6 +2759,7 @@ export default function Payments() {
             </div>
           ) : (
             <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 overflow-hidden shadow-card">
+              <div className="p-sm border-b border-outline-variant/20">{renderListSearch()}</div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead className="bg-secondary text-on-primary">
@@ -2727,7 +2770,7 @@ export default function Payments() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant/20">
-                    {currentMonthUnpaid.map(p => (
+                    {currentMonthUnpaid.filter(p => matchLS(p.tenantName, p.propertyName)).map(p => (
                       <tr key={p.id} className="hover:bg-surface-container-low transition-colors">
                         <td className="px-4 py-3.5">
                           <p className="font-semibold text-sm">{p.tenantName}</p>
@@ -2857,6 +2900,7 @@ export default function Payments() {
             </div>
           ) : (
             <div className="bg-surface-container-lowest rounded-xl border border-red-200 overflow-hidden shadow-card">
+              <div className="p-sm border-b border-red-200">{renderListSearch()}</div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead className="bg-red-700 text-white">
@@ -2867,7 +2911,7 @@ export default function Payments() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant/20">
-                    {penaltyList.map((item, i) => (
+                    {penaltyList.filter(item => matchLS(item.tenantName, item.propertyName)).map((item, i) => (
                       <tr key={i} className="hover:bg-red-50/40 transition-colors">
                         <td className="px-4 py-3.5">
                           <p className="font-semibold text-sm">{item.tenantName}</p>
@@ -3126,24 +3170,26 @@ export default function Payments() {
             ))}
           </section>
 
+          {depositsList.length > 0 && renderListSearch()}
+
           <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="bg-secondary text-on-primary">
                   <tr>
-                    {['Locataire / Propriété','Entrée','Caution','Mois d\'avance','Montant avance','Statut caution','Action'].map((h,i) => (
-                      <th key={h+i} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider ${(i>=2 && i<=4) ? 'text-right' : ''}`}>{h}</th>
+                    {['Locataire / Propriété','Entrée','Caution','Montant avance','Mois d\'avance couverts','Prochaine échéance','Statut caution','Action'].map((h,i) => (
+                      <th key={h+i} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider ${(i===2 || i===3) ? 'text-right' : ''}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/20">
                   {depositsList.length === 0 && (
-                    <tr><td colSpan={7} className="text-center py-12 text-on-surface-variant">
+                    <tr><td colSpan={8} className="text-center py-12 text-on-surface-variant">
                       <Icon name="savings" size={36} className="opacity-30 mb-2" /><p>Aucune caution ni avance enregistrée</p>
                       <p className="text-xs mt-1">Renseignez-les à la création d'un locataire (onglet Location).</p>
                     </td></tr>
                   )}
-                  {depositsList.map(d => (
+                  {depositsList.filter(d => matchLS(d.tenantName, d.propertyName)).map(d => (
                     <tr key={d.tenantId} className="hover:bg-surface-container-low transition-colors">
                       <td className="px-4 py-3.5">
                         <p className="font-semibold text-sm text-on-surface">{d.tenantName}</p>
@@ -3151,8 +3197,13 @@ export default function Payments() {
                       </td>
                       <td className="px-4 py-3.5 text-sm text-on-surface-variant">{d.entryDate ? new Date(d.entryDate).toLocaleDateString('fr-CI') : '—'}</td>
                       <td className="px-4 py-3.5 text-right text-sm font-semibold">{d.cautionAmount ? fmt(d.cautionAmount) : '—'}</td>
-                      <td className="px-4 py-3.5 text-right text-sm">{d.advanceMonths || '—'}</td>
                       <td className="px-4 py-3.5 text-right text-sm font-semibold">{d.advanceAmount ? fmt(d.advanceAmount) : '—'}</td>
+                      <td className="px-4 py-3.5 text-sm text-on-surface-variant">
+                        {d.advanceMonthLabels && d.advanceMonthLabels.length
+                          ? <span title={d.advanceMonthLabels.join(', ')}>{d.advanceMonths} mois<span className="block text-xs text-blue-700">{d.advanceMonthLabels.join(', ')}</span></span>
+                          : (d.advanceMonths ? `${d.advanceMonths} mois` : '—')}
+                      </td>
+                      <td className="px-4 py-3.5 text-sm font-semibold text-teal-700">{d.nextPaymentDate ? new Date(d.nextPaymentDate).toLocaleDateString('fr-CI') : '—'}</td>
                       <td className="px-4 py-3.5">
                         {d.cautionAmount > 0 ? (
                           d.cautionRefunded
