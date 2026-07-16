@@ -644,9 +644,14 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
       <div class="kpi-s">${arrearsByTenant.length} locataire(s) en retard</div>
     </div>
     <div class="kpi">
-      <div class="kpi-l">Cautions & avances</div>
-      <div class="kpi-v" style="color:#0d9488">${fCFA(depTotal)}</div>
-      <div class="kpi-s">Caution ${fCFA(depCaution)} · Avance ${fCFA(depAdvance)}</div>
+      <div class="kpi-l">Cautions reçues</div>
+      <div class="kpi-v" style="color:#0d9488">${fCFA(depCaution)}</div>
+      <div class="kpi-s">Total des cautions détenues</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">Avances reçues</div>
+      <div class="kpi-v" style="color:#0369a1">${fCFA(depAdvance)}</div>
+      <div class="kpi-s">Total des mois d'avance encaissés</div>
     </div>
   </div>
 
