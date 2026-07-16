@@ -1386,6 +1386,7 @@ export default function Payments() {
   const [selectedMonth, setSelectedMonth] = useState(currentMonthLabel);
   const [statusFilter, setStatusFilter] = useState('Tous');
   const [search, setSearch] = useState('');
+  const [listSearch, setListSearch] = useState(''); // recherche dans les onglets Rappels/Pénalités/Arriérés/Cautions
   const [filterPropKey, setFilterPropKey] = useState('');
   const [filterTenantId, setFilterTenantId] = useState('');
 
@@ -1577,7 +1578,10 @@ export default function Payments() {
 
   /* ── Stats for selected month ── */
   const monthPmts = payments.filter(p => p.month === selectedMonth);
-  const totalExpected = monthPmts.reduce((s, p) => s + (p.amount || 0), 0);
+  // Loyers attendus = somme des loyers de TOUS les contrats actifs / expirants
+  const totalExpected = (contracts || [])
+    .filter(c => c.status === 'Actif' || c.status === 'Expirant')
+    .reduce((s, c) => s + (Number(c.rent) || 0), 0);
   const totalCollected = monthPmts.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
   // Impayés du mois = enregistrements non réglés (avec repli sur le loyer du contrat
   // quand le montant est à 0) + locataires actifs SANS aucun enregistrement ce mois
@@ -2451,6 +2455,23 @@ export default function Payments() {
     { id: 'report', label: 'Rapport mensuel', icon: 'bar_chart' },
   ];
 
+  // ── Recherche partagée des onglets Rappels / Pénalités / Arriérés / Cautions ──
+  const lq = listSearch.trim().toLowerCase();
+  const matchLS = (...vals) => !lq || vals.some(v => (v || '').toString().toLowerCase().includes(lq));
+  // Rendu inline (fonction appelée, PAS un composant <X/> — sinon l'input perd le focus à chaque frappe)
+  const renderListSearch = (placeholder) => (
+    <div className="relative w-full sm:w-72">
+      <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-outline" size={15} />
+      <input type="text" value={listSearch} onChange={e => setListSearch(e.target.value)} placeholder={placeholder || 'Rechercher un locataire, une propriété…'}
+        className="w-full pl-8 pr-8 py-2 border border-outline-variant rounded-lg bg-surface-container-low text-sm focus:outline-none focus:border-primary" />
+      {listSearch && (
+        <button onClick={() => setListSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface">
+          <Icon name="close" size={15} />
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl max-w-7xl mx-auto flex flex-col gap-gutter">
 
@@ -2493,7 +2514,7 @@ export default function Payments() {
       {/* ── Tabs ── */}
       <div className="flex gap-1 bg-surface-container-low rounded-xl p-1 w-full overflow-x-auto">
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
+          <button key={t.id} onClick={() => { setTab(t.id); setListSearch(''); }}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors relative ${
               tab === t.id ? 'bg-surface text-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
             }`}>
@@ -2738,6 +2759,7 @@ export default function Payments() {
             </div>
           ) : (
             <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 overflow-hidden shadow-card">
+              <div className="p-sm border-b border-outline-variant/20">{renderListSearch()}</div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead className="bg-secondary text-on-primary">
@@ -2748,7 +2770,7 @@ export default function Payments() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant/20">
-                    {currentMonthUnpaid.map(p => (
+                    {currentMonthUnpaid.filter(p => matchLS(p.tenantName, p.propertyName)).map(p => (
                       <tr key={p.id} className="hover:bg-surface-container-low transition-colors">
                         <td className="px-4 py-3.5">
                           <p className="font-semibold text-sm">{p.tenantName}</p>
@@ -2878,6 +2900,7 @@ export default function Payments() {
             </div>
           ) : (
             <div className="bg-surface-container-lowest rounded-xl border border-red-200 overflow-hidden shadow-card">
+              <div className="p-sm border-b border-red-200">{renderListSearch()}</div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead className="bg-red-700 text-white">
@@ -2888,7 +2911,7 @@ export default function Payments() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant/20">
-                    {penaltyList.map((item, i) => (
+                    {penaltyList.filter(item => matchLS(item.tenantName, item.propertyName)).map((item, i) => (
                       <tr key={i} className="hover:bg-red-50/40 transition-colors">
                         <td className="px-4 py-3.5">
                           <p className="font-semibold text-sm">{item.tenantName}</p>
@@ -3147,6 +3170,8 @@ export default function Payments() {
             ))}
           </section>
 
+          {depositsList.length > 0 && renderListSearch()}
+
           <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left">
@@ -3164,7 +3189,7 @@ export default function Payments() {
                       <p className="text-xs mt-1">Renseignez-les à la création d'un locataire (onglet Location).</p>
                     </td></tr>
                   )}
-                  {depositsList.map(d => (
+                  {depositsList.filter(d => matchLS(d.tenantName, d.propertyName)).map(d => (
                     <tr key={d.tenantId} className="hover:bg-surface-container-low transition-colors">
                       <td className="px-4 py-3.5">
                         <p className="font-semibold text-sm text-on-surface">{d.tenantName}</p>
