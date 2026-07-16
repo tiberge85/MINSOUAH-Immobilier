@@ -1730,6 +1730,17 @@ export default function Payments() {
     return Object.values(groups).sort((a, b) => b.total - a.total);
   }, [arrearsList]);
 
+  /* ── Report month payments ── */
+  const reportPaid = monthPmts.filter(p => p.status === 'Payé');
+
+  // Helper: convert "Juin 2026" → Date(2026, 5, 1)
+  const monthLabelToDate = (label) => {
+    const [mn, yr] = (label || '').split(' ');
+    const idx = MONTH_NAMES.indexOf(mn);
+    return idx >= 0 ? new Date(parseInt(yr), idx, 1) : null;
+  };
+  const selectedDate = monthLabelToDate(selectedMonth);
+
   /* ── Arriérés groupés par MOIS concerné (du plus ancien au plus récent) ── */
   const arrearsByMonth = useMemo(() => {
     const groups = {};
@@ -1742,17 +1753,6 @@ export default function Payments() {
     Object.values(groups).forEach(g => g.payments.sort((a, b) => (a.tenantName || '').localeCompare(b.tenantName || '')));
     return Object.values(groups).sort((a, b) => (a.monthDate?.getTime() || 0) - (b.monthDate?.getTime() || 0));
   }, [arrearsList]);
-
-  /* ── Report month payments ── */
-  const reportPaid = monthPmts.filter(p => p.status === 'Payé');
-
-  // Helper: convert "Juin 2026" → Date(2026, 5, 1)
-  const monthLabelToDate = (label) => {
-    const [mn, yr] = (label || '').split(' ');
-    const idx = MONTH_NAMES.indexOf(mn);
-    return idx >= 0 ? new Date(parseInt(yr), idx, 1) : null;
-  };
-  const selectedDate = monthLabelToDate(selectedMonth);
 
   /* ── Arriérés RECOUVRÉS : loyer d'un mois passé réglé APRÈS ce mois ──
      Un arriéré recouvré = un enregistrement 'Payé' dont la date de règlement
