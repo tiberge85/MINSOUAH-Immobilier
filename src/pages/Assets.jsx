@@ -151,9 +151,10 @@ export default function Assets() {
   const [qrModal, setQrModal] = useState(null); // property or building object
 
   // ── Filtres ────────────────────────────────────────────────────────────────
-  // Un chip de type = un type de pièce (Studio, 2 Pièces…) ou « Autre » (non catégorisé)
-  const matchUnitType = (t, f) => f === 'Autre' ? !UNIT_TYPES.includes(t) : t === f;
-  const isTypeChip = (f) => UNIT_TYPES.includes(f) || f === 'Autre';
+  // Type normalisé : tout type non reconnu (vide, « S2 »…) est compté comme Studio.
+  const normType = (t) => UNIT_TYPES.includes(t) ? t : 'Studio';
+  const matchUnitType = (t, f) => normType(t) === f;
+  const isTypeChip = (f) => UNIT_TYPES.includes(f);
 
   const filtered = properties.filter(p => {
     const q = search.toLowerCase();
@@ -212,15 +213,39 @@ export default function Assets() {
   // La somme Studio + 2 Pièces + 3 Pièces + Magasin + Autre = Total (totalUnits).
   // « Autre » = biens/unités sans type reconnu (type vide, ou « Immeuble » sur un bien simple).
   const typeCounts = useMemo(() => {
-    const c = { 'Studio': 0, '2 Pièces': 0, '3 Pièces': 0, 'Magasin': 0, 'Autre': 0 };
+    const c = { 'Studio': 0, '2 Pièces': 0, '3 Pièces': 0, 'Magasin': 0 };
     let immeubles = 0;
-    const bump = (t) => { if (UNIT_TYPES.includes(t)) c[t] += 1; else c['Autre'] += 1; };
+    const bump = (t) => { c[normType(t)] += 1; };
     properties.forEach(p => {
       if (p.isBuilding) { immeubles += 1; (p.units || []).forEach(u => bump(u.type)); }
       else bump(p.type);
     });
     return { ...c, Immeuble: immeubles };
   }, [properties]);
+
+  // Biens/unités dont le type n'est pas reconnu (à corriger en « Studio »)
+  const untypedCount = useMemo(() => {
+    let n = 0;
+    properties.forEach(p => {
+      if (p.isBuilding) n += (p.units || []).filter(u => !UNIT_TYPES.includes(u.type)).length;
+      else if (!UNIT_TYPES.includes(p.type)) n += 1;
+    });
+    return n;
+  }, [properties]);
+
+  const fixUntypedToStudio = () => {
+    if (!window.confirm(`Classer ${untypedCount} bien(s) sans type en « Studio » ? Cette action modifie leur fiche.`)) return;
+    properties.forEach(p => {
+      if (p.isBuilding) {
+        if ((p.units || []).some(u => !UNIT_TYPES.includes(u.type))) {
+          const units = p.units.map(u => UNIT_TYPES.includes(u.type) ? u : { ...u, type: 'Studio' });
+          dispatch({ type: 'UPDATE_PROPERTY', payload: { ...p, units } });
+        }
+      } else if (!UNIT_TYPES.includes(p.type)) {
+        dispatch({ type: 'UPDATE_PROPERTY', payload: { ...p, type: 'Studio' } });
+      }
+    });
+  };
 
   // ── Gestion formulaire ─────────────────────────────────────────────────────
   const openAdd = () => { setForm(EMPTY_FORM); setStep(1); setAddingUnit(false); setModal('add'); };
@@ -383,7 +408,7 @@ export default function Assets() {
       {/* Filtres + Recherche */}
       <div className="flex flex-col md:flex-row gap-3 mb-6">
         <div className="flex gap-2 overflow-x-auto no-scrollbar flex-1">
-          {[...CATEGORIES, ...(typeCounts.Autre > 0 ? ['Autre'] : [])].map(c => {
+          {CATEGORIES.map(c => {
             const count = c === 'Tous' ? totalUnits : c === 'Immeuble' ? typeCounts.Immeuble : (typeCounts[c] ?? 0);
             const active = filter === c;
             return (
@@ -409,6 +434,20 @@ export default function Assets() {
           )}
         </div>
       </div>
+
+      {/* Correction des biens sans type */}
+      {canCreate && untypedCount > 0 && (
+        <div className="flex items-center gap-3 flex-wrap bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 mb-4">
+          <Icon name="info" size={18} className="text-amber-700 flex-shrink-0" />
+          <span className="text-sm text-amber-800 flex-1">
+            <strong>{untypedCount}</strong> bien(s) sans type reconnu (comptés comme Studio). Clique pour les enregistrer définitivement en « Studio ».
+          </span>
+          <button onClick={fixUntypedToStudio}
+            className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold hover:bg-amber-700 transition-colors whitespace-nowrap">
+            Classer en Studio
+          </button>
+        </div>
+      )}
 
       {/* Grille des biens */}
       {(statusFilter || isUnitTypeFilter) && (
