@@ -2405,13 +2405,19 @@ export default function Payments() {
     const inSel = (dt) => dt && !isNaN(dt.getTime()) && dt.getFullYear() === target.getFullYear() && dt.getMonth() === target.getMonth();
     const UT = ['Studio', '2 Pièces', '3 Pièces', 'Magasin'];
     const typeOfPayment = (p) => {
-      const pn = (p.propertyName || '').toLowerCase().trim();
+      const pnRaw = (p.propertyName || '').trim();
+      const pn = pnRaw.toLowerCase();
       if (!pn) return 'Autre';
+      // Libellé = « Immeuble — Appartement (étage) » → on isole le n° d'appartement
+      const afterDash = pnRaw.includes('—') ? pnRaw.split('—').slice(1).join('—') : pnRaw;
+      const unitLabel = afterDash.split('(')[0].trim().toLowerCase(); // ex. "s2", "app issaka"
+      const base = (pnRaw.split('—')[0] || '').trim().toLowerCase();
       for (const prop of (properties || [])) {
         const name = (prop.name || '').toLowerCase().trim();
         if (!name) continue;
-        if (prop.isBuilding && pn.startsWith(name)) {
-          const u = (prop.units || []).find(u => u.number && pn.includes(String(u.number).toLowerCase()));
+        if (prop.isBuilding && (base === name || pn.startsWith(name))) {
+          // Correspondance EXACTE du numéro d'appartement (évite S2 ↔ S21)
+          const u = (prop.units || []).find(u => String(u.number || '').trim().toLowerCase() === unitLabel);
           if (u && UT.includes(u.type)) return u.type;
         } else if (!prop.isBuilding && (pn === name || pn.startsWith(name))) {
           if (UT.includes(prop.type)) return prop.type;
