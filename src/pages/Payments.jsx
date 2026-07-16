@@ -1706,7 +1706,7 @@ export default function Payments() {
   const arrearsList = useMemo(() => {
     const cy = now.getFullYear();
     const cm = now.getMonth();
-    return (payments || []).filter(p => {
+    const raw = (payments || []).filter(p => {
       if (p.status === 'Payé' || p.status === 'Annulé') return false;
       if (!p.month) return false;
       const [mn, yr] = p.month.split(' ');
@@ -1715,6 +1715,17 @@ export default function Payments() {
       const y = parseInt(yr);
       return y < cy || (y === cy && idx < cm);
     });
+    // Déduplication : un même locataire + mois + propriété ne doit apparaître qu'une
+    // seule fois (évite les répétitions dues à des enregistrements en double).
+    const seen = new Set();
+    const out = [];
+    for (const p of raw) {
+      const key = `${(p.tenantName || '').toLowerCase().trim()}|${(p.month || '').toLowerCase().trim()}|${(p.propertyName || '').toLowerCase().trim()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(p);
+    }
+    return out;
   }, [payments, now]);
   const arrearsTotal = arrearsList.reduce((s, p) => s + (p.amount || 0), 0);
 
@@ -1722,7 +1733,7 @@ export default function Payments() {
   const arrearsByTenant = useMemo(() => {
     const groups = {};
     arrearsList.forEach(p => {
-      const key = (p.tenantName || '—').toLowerCase();
+      const key = (p.tenantName || '—').toLowerCase().trim();
       if (!groups[key]) groups[key] = { tenantName: p.tenantName || '—', tenantPhone: p.tenantPhone || '', payments: [], total: 0 };
       groups[key].payments.push(p);
       groups[key].total += p.amount || 0;
@@ -1786,7 +1797,7 @@ export default function Payments() {
   const recoveredByTenant = useMemo(() => {
     const groups = {};
     recoveredArrears.forEach(p => {
-      const key = (p.tenantName || '—').toLowerCase();
+      const key = (p.tenantName || '—').toLowerCase().trim();
       if (!groups[key]) groups[key] = { tenantName: p.tenantName || '—', tenantPhone: p.tenantPhone || '', payments: [], total: 0 };
       groups[key].payments.push(p);
       groups[key].total += (p.amount && p.amount > 0) ? p.amount : 0;
