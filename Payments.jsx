@@ -621,7 +621,7 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
     <div class="kpi">
       <div class="kpi-l">Attendu ce mois</div>
       <div class="kpi-v" style="color:#785a00">${fCFA(totalExpected)}</div>
-      <div class="kpi-s">${expectedContracts.length} contrat(s) actif(s)</div>
+      <div class="kpi-s">${activeContracts.length} contrat(s) actif(s) · ${expectedContracts.length} dû(s) ce mois</div>
     </div>
     <div class="kpi">
       <div class="kpi-l">Encaissé (brut)</div>
