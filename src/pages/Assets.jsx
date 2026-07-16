@@ -151,28 +151,43 @@ export default function Assets() {
   const [qrModal, setQrModal] = useState(null); // property or building object
 
   // ── Filtres ────────────────────────────────────────────────────────────────
+  // Un chip de type = un type de pièce (Studio, 2 Pièces…) ou « Autre » (non catégorisé)
+  const matchUnitType = (t, f) => f === 'Autre' ? !UNIT_TYPES.includes(t) : t === f;
+  const isTypeChip = (f) => UNIT_TYPES.includes(f) || f === 'Autre';
+
   const filtered = properties.filter(p => {
-    const matchCat = filter === 'Tous' || p.type === filter;
     const q = search.toLowerCase();
     const matchSearch = p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q) || (p.owner || '').toLowerCase().includes(q);
+    let matchCat;
+    if (filter === 'Tous') matchCat = true;
+    else if (filter === 'Immeuble') matchCat = p.isBuilding;
+    else if (isTypeChip(filter)) {
+      // bien simple de ce type, OU immeuble contenant au moins une unité de ce type
+      matchCat = (!p.isBuilding && matchUnitType(p.type, filter)) ||
+                 (p.isBuilding && (p.units || []).some(u => matchUnitType(u.type, filter)));
+    } else matchCat = p.type === filter;
     return matchCat && matchSearch;
   });
 
-  // Quand un filtre de statut est actif → affichage à plat (unités individuelles)
+  // Affichage à plat (unités individuelles) quand un filtre de statut OU un filtre
+  // par type de pièce est actif — pour que le nombre affiché colle au compteur.
+  const isUnitTypeFilter = isTypeChip(filter);
   const displayItems = useMemo(() => {
-    if (!statusFilter) return filtered.map(p => ({ _type: p.isBuilding ? 'building' : 'property', data: p }));
+    if (!statusFilter && !isUnitTypeFilter) return filtered.map(p => ({ _type: p.isBuilding ? 'building' : 'property', data: p }));
     const items = [];
     filtered.forEach(p => {
       if (p.isBuilding) {
         (p.units || [])
-          .filter(u => u.status === statusFilter)
+          .filter(u => (!statusFilter || u.status === statusFilter) && (!isUnitTypeFilter || matchUnitType(u.type, filter)))
           .forEach(u => items.push({ _type: 'unit', data: u, building: p }));
-      } else if (p.status === statusFilter) {
-        items.push({ _type: 'property', data: p });
+      } else {
+        const okStatus = !statusFilter || p.status === statusFilter;
+        const okType = !isUnitTypeFilter || matchUnitType(p.type, filter);
+        if (okStatus && okType) items.push({ _type: 'property', data: p });
       }
     });
     return items;
-  }, [statusFilter, filtered]);
+  }, [statusFilter, filtered, isUnitTypeFilter, filter]);
 
   // ── Stats ──────────────────────────────────────────────────────────────────
   const totalUnits = properties.reduce((s, p) => s + (p.isBuilding ? (p.units?.length || 0) : 1), 0);
@@ -192,6 +207,20 @@ export default function Assets() {
     if (p.isBuilding) return s + (p.units?.filter(u => u.status === 'Disponible').length || 0);
     return p.status === 'Disponible' ? s + 1 : s;
   }, 0);
+
+  // ── Répartition par type de pièce (biens simples + unités d'immeubles) ──
+  // La somme Studio + 2 Pièces + 3 Pièces + Magasin + Autre = Total (totalUnits).
+  // « Autre » = biens/unités sans type reconnu (type vide, ou « Immeuble » sur un bien simple).
+  const typeCounts = useMemo(() => {
+    const c = { 'Studio': 0, '2 Pièces': 0, '3 Pièces': 0, 'Magasin': 0, 'Autre': 0 };
+    let immeubles = 0;
+    const bump = (t) => { if (UNIT_TYPES.includes(t)) c[t] += 1; else c['Autre'] += 1; };
+    properties.forEach(p => {
+      if (p.isBuilding) { immeubles += 1; (p.units || []).forEach(u => bump(u.type)); }
+      else bump(p.type);
+    });
+    return { ...c, Immeuble: immeubles };
+  }, [properties]);
 
   // ── Gestion formulaire ─────────────────────────────────────────────────────
   const openAdd = () => { setForm(EMPTY_FORM); setStep(1); setAddingUnit(false); setModal('add'); };
@@ -354,12 +383,17 @@ export default function Assets() {
       {/* Filtres + Recherche */}
       <div className="flex flex-col md:flex-row gap-3 mb-6">
         <div className="flex gap-2 overflow-x-auto no-scrollbar flex-1">
-          {CATEGORIES.map(c => (
-            <button key={c} onClick={() => setFilter(c)}
-              className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-all ${filter === c ? 'bg-primary text-on-primary' : 'bg-surface text-on-surface-variant hover:bg-surface-container-high border border-outline-variant/20'}`}>
-              {c}
-            </button>
-          ))}
+          {[...CATEGORIES, ...(typeCounts.Autre > 0 ? ['Autre'] : [])].map(c => {
+            const count = c === 'Tous' ? totalUnits : c === 'Immeuble' ? typeCounts.Immeuble : (typeCounts[c] ?? 0);
+            const active = filter === c;
+            return (
+              <button key={c} onClick={() => setFilter(c)}
+                className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-2 ${active ? 'bg-primary text-on-primary' : 'bg-surface text-on-surface-variant hover:bg-surface-container-high border border-outline-variant/20'}`}>
+                {c}
+                <span className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-bold ${active ? 'bg-on-primary/20 text-on-primary' : 'bg-surface-container-high text-on-surface-variant'}`}>{count}</span>
+              </button>
+            );
+          })}
         </div>
         <div className="flex gap-3">
           <div className="relative flex-1 md:w-64">
@@ -377,12 +411,16 @@ export default function Assets() {
       </div>
 
       {/* Grille des biens */}
-      {statusFilter && (
-        <div className="flex items-center gap-2 text-sm text-on-surface-variant">
+      {(statusFilter || isUnitTypeFilter) && (
+        <div className="flex items-center gap-2 text-sm text-on-surface-variant mb-3">
           <Icon name="filter_list" size={16} />
-          <span><strong className="text-on-surface">{displayItems.length}</strong> appartement{displayItems.length !== 1 ? 's' : ''} — statut : <strong className="text-primary">{statusFilter === 'Disponible' ? 'Libre' : statusFilter}</strong></span>
-          <button onClick={() => setStatusFilter(null)} className="ml-auto text-xs text-primary hover:underline flex items-center gap-1">
-            <Icon name="close" size={14} /> Effacer le filtre
+          <span>
+            <strong className="text-on-surface">{displayItems.length}</strong> bien{displayItems.length !== 1 ? 's' : ''}
+            {isUnitTypeFilter && <> — type : <strong className="text-primary">{filter}</strong></>}
+            {statusFilter && <> — statut : <strong className="text-primary">{statusFilter === 'Disponible' ? 'Libre' : statusFilter}</strong></>}
+          </span>
+          <button onClick={() => { setStatusFilter(null); setFilter('Tous'); }} className="ml-auto text-xs text-primary hover:underline flex items-center gap-1">
+            <Icon name="close" size={14} /> Effacer les filtres
           </button>
         </div>
       )}
