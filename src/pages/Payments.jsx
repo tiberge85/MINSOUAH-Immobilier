@@ -1703,6 +1703,13 @@ export default function Payments() {
   // Arrears = explicit unpaid records from months BEFORE the current month.
   // These are created when a month is closed (CLOSE_MONTH turns unpaid active
   // tenants into "Impayé" records) or entered manually — NOT auto-synthesized.
+  // Mois déjà clôturés → leurs impayés basculent en arriérés, même s'il s'agit
+  // du mois en cours (à la clôture, les rappels du mois deviennent des arriérés).
+  const closedMonthSet = useMemo(
+    () => new Set((monthClosures || []).map(c => c.month)),
+    [monthClosures]
+  );
+
   const arrearsList = useMemo(() => {
     const cy = now.getFullYear();
     const cm = now.getMonth();
@@ -1713,7 +1720,9 @@ export default function Payments() {
       const idx = MONTH_NAMES.indexOf(mn);
       if (idx === -1) return false;
       const y = parseInt(yr);
-      return y < cy || (y === cy && idx < cm);
+      const isPast = y < cy || (y === cy && idx < cm);
+      // Arriéré = impayé d'un mois PASSÉ, OU d'un mois déjà CLÔTURÉ (mois courant inclus)
+      return isPast || closedMonthSet.has(p.month);
     });
     // Déduplication : un même locataire + mois + propriété ne doit apparaître qu'une
     // seule fois (évite les répétitions dues à des enregistrements en double).
@@ -1726,7 +1735,7 @@ export default function Payments() {
       out.push(p);
     }
     return out;
-  }, [payments, now]);
+  }, [payments, now, closedMonthSet]);
   const arrearsTotal = arrearsList.reduce((s, p) => s + (p.amount || 0), 0);
 
   /* ── Arrears grouped by tenant ── */
