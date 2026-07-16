@@ -123,6 +123,7 @@ export default function TenantDocuments({ tenantId, tenantName, readOnly = false
   const { state, dispatch } = useApp();
   const fileRef = useRef(null);
   const [category, setCategory] = useState(DOC_CATEGORIES[0]);
+  const [customCategory, setCustomCategory] = useState('');
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(null);
   const [error, setError] = useState('');
@@ -157,6 +158,10 @@ export default function TenantDocuments({ tenantId, tenantName, readOnly = false
     setError('');
     setBusy(true);
     try {
+      // Type « Autre » → on utilise le libellé précisé par l'utilisateur
+      const effectiveCategory = (category === 'Autre' && customCategory.trim())
+        ? customCategory.trim()
+        : category;
       for (const file of files) {
         if (file.size > MAX_FILE_BYTES) {
           setError(`« ${file.name} » dépasse la limite de 7 Mo. Choisissez un fichier plus léger.`);
@@ -193,7 +198,7 @@ export default function TenantDocuments({ tenantId, tenantName, readOnly = false
             id: docId,
             tenantId, tenantName: tenantName || '',
             name: file.name, fileName: file.name,
-            category,
+            category: effectiveCategory,
             mimeType: file.type || 'application/octet-stream',
             size: file.size || 0,
             chunked: true,
@@ -233,8 +238,18 @@ export default function TenantDocuments({ tenantId, tenantName, readOnly = false
               {DOC_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </label>
+          {category === 'Autre' && (
+            <label className="flex flex-col gap-1 text-xs font-semibold text-on-surface-variant">
+              Préciser le type <span className="text-red-600">*</span>
+              <input type="text" value={customCategory} onChange={e => setCustomCategory(e.target.value)}
+                placeholder="Ex. : Reçu de caution, Assurance…"
+                className="px-3 py-2 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface min-w-[200px]" />
+            </label>
+          )}
           <input ref={fileRef} type="file" multiple accept="image/*,application/pdf,.doc,.docx" onChange={onFiles} className="hidden" />
-          <button type="button" disabled={busy} onClick={() => fileRef.current?.click()}
+          <button type="button" disabled={busy || (category === 'Autre' && !customCategory.trim())}
+            title={category === 'Autre' && !customCategory.trim() ? 'Précisez d\'abord le type de document' : undefined}
+            onClick={() => fileRef.current?.click()}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-bold hover:bg-primary/90 disabled:opacity-50">
             <Icon name={busy ? 'hourglass_empty' : 'upload_file'} size={18} />
             {busy ? (progress != null ? `Envoi… ${progress}%` : 'Ajout…') : 'Ajouter un document'}
