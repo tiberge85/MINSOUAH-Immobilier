@@ -477,7 +477,7 @@ function buildDepositsReportHTML(depositsList, totals, orgSettings) {
 }
 
 /* ── Global Report HTML ───────────────────────────────────────────────────── */
-function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], arrearsByTenant = [], advanceTenants = [], deposits = [], depositsTotals = {}, orgSettings = {} }) {
+function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], arrearsByTenant = [], advanceTenants = [], deposits = [], depositsTotals = {}, synthesis = null, orgSettings = {} }) {
   const org = orgSettings;
   const orgLogo = org.logo || '';
   const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
@@ -661,6 +661,26 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
     </div>
     <div class="rate-bar"><div class="rate-fill" style="width:${recoveryRate}%"></div></div>
   </div>
+
+  ${synthesis ? `
+  <!-- Synthèse des encaissements (caisse) -->
+  <section>
+    <h2>Synthèse des encaissements — ${currentMonth} · Montant à reverser</h2>
+    <table>
+      <tbody>
+        <tr><td style="padding:8px 10px;font-weight:700">Loyers du mois encaissés</td><td style="padding:8px 10px;text-align:right;font-weight:700;color:#15803d">${fCFA(synthesis.loyersMois)}</td></tr>
+        ${['Studio','2 Pièces','3 Pièces','Magasin'].filter(k => (synthesis.byType?.[k] || 0) > 0).map(k => `<tr><td style="padding:5px 10px 5px 26px;color:#6b7280;font-size:11px">· ${k}</td><td style="padding:5px 10px;text-align:right;color:#6b7280;font-size:11px">${fCFA(synthesis.byType[k])}</td></tr>`).join('')}
+        ${(synthesis.byType?.Autre || 0) > 0 ? `<tr><td style="padding:5px 10px 5px 26px;color:#6b7280;font-size:11px">· Autre</td><td style="padding:5px 10px;text-align:right;color:#6b7280;font-size:11px">${fCFA(synthesis.byType.Autre)}</td></tr>` : ''}
+        <tr><td style="padding:8px 10px">Arriérés recouvrés (mois antérieurs)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.arrieres)}</td></tr>
+        <tr><td style="padding:8px 10px">Loyers anticipés (mois à venir)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.anticipes)}</td></tr>
+        <tr><td style="padding:8px 10px">Cautions & avances (nouveaux locataires)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.cautionsAvances)}</td></tr>
+        <tr style="background:#f0fdf4;font-weight:800"><td style="padding:9px 10px;color:#15803d">TOTAL ENCAISSÉ EN ${currentMonth.toUpperCase()}</td><td style="padding:9px 10px;text-align:right;color:#15803d">${fCFA(synthesis.totalEncaisse)}</td></tr>
+        <tr><td style="padding:8px 10px;color:#b91c1c">(−) Charges du mois</td><td style="padding:8px 10px;text-align:right;color:#b91c1c">− ${fCFA(synthesis.charges)}</td></tr>
+        <tr style="background:#785a00;color:#fff;font-weight:900"><td style="padding:11px 10px;font-size:13px">TOTAL GÉNÉRAL À REVERSER</td><td style="padding:11px 10px;text-align:right;font-size:14px">${fCFA(synthesis.totalAReverser)}</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:9px;color:#b0a090;margin-top:6px">Encaissements réels du mois (par date de paiement) : loyers du mois + arriérés recouvrés + loyers anticipés + cautions & avances des nouveaux locataires, diminués des charges du mois.</p>
+  </section>` : ''}
 
   <!-- Current month detail -->
   <section>
@@ -2377,6 +2397,52 @@ export default function Payments() {
     if (win) { win.document.write(html); win.document.close(); }
   };
 
+  // Synthèse "caisse" du mois : tout ce qui a été ENCAISSÉ (par date de paiement)
+  // pendant le mois, ventilé, moins les charges du mois = total à reverser.
+  const buildMonthSynthesis = (monthLabel) => {
+    const target = monthLabelToDate(monthLabel);
+    if (!target) return null;
+    const inSel = (dt) => dt && !isNaN(dt.getTime()) && dt.getFullYear() === target.getFullYear() && dt.getMonth() === target.getMonth();
+    const UT = ['Studio', '2 Pièces', '3 Pièces', 'Magasin'];
+    const typeOfPayment = (p) => {
+      const pn = (p.propertyName || '').toLowerCase().trim();
+      if (!pn) return 'Autre';
+      for (const prop of (properties || [])) {
+        const name = (prop.name || '').toLowerCase().trim();
+        if (!name) continue;
+        if (prop.isBuilding && pn.startsWith(name)) {
+          const u = (prop.units || []).find(u => u.number && pn.includes(String(u.number).toLowerCase()));
+          if (u && UT.includes(u.type)) return u.type;
+        } else if (!prop.isBuilding && (pn === name || pn.startsWith(name))) {
+          if (UT.includes(prop.type)) return prop.type;
+        }
+      }
+      return 'Autre';
+    };
+    let loyersMois = 0, arrieres = 0, anticipes = 0;
+    const byType = { 'Studio': 0, '2 Pièces': 0, '3 Pièces': 0, 'Magasin': 0, 'Autre': 0 };
+    (payments || []).forEach(p => {
+      if (p.status !== 'Payé') return;
+      const paidDt = parsePaidDate(p.paidDate);
+      if (!inSel(paidDt)) return;
+      const amt = Number(p.amount) || 0;
+      const cov = monthLabelToDate(p.month);
+      if (cov && cov.getTime() < target.getTime()) arrieres += amt;
+      else if (cov && cov.getTime() > target.getTime()) anticipes += amt;
+      else { loyersMois += amt; byType[typeOfPayment(p)] += amt; }
+    });
+    let cautionsAvances = 0;
+    (tenants || []).forEach(t => {
+      const entry = t.since ? new Date(t.since) : null;
+      if (inSel(entry)) cautionsAvances += (Number(t.cautionAmount) || 0) + (Number(t.advanceAmount) || 0);
+    });
+    const totalEncaisse = loyersMois + arrieres + anticipes + cautionsAvances;
+    const charges = (transactions || [])
+      .filter(t => { const d = parseTxDate(t.date); return d && inSel(d) && !t.positive; })
+      .reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
+    return { loyersMois, byType, arrieres, anticipes, cautionsAvances, totalEncaisse, charges, totalAReverser: totalEncaisse - charges };
+  };
+
   const handlePrintGlobalReport = () => {
     const html = buildGlobalReportHTML({
       currentMonth: selectedMonth,
@@ -2386,6 +2452,7 @@ export default function Payments() {
       advanceTenants: reportAdvance,
       deposits: depositsList,
       depositsTotals,
+      synthesis: buildMonthSynthesis(selectedMonth),
       orgSettings,
     });
     const win = window.open('', '_blank', 'width=900,height=700');
