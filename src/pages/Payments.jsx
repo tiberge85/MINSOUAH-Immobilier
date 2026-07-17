@@ -1028,7 +1028,7 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
   });
   const trendData = trendMonths.map(m => {
     const ps = allPayments.filter(p => p.month === m);
-    const pA = ps.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+    const totalCollected = monthPmts.filter(p => p.status === 'Payé' && !p.avanceVerseeProprio).reduce((s, p) => s + (p.amount || 0), 0);
     const tA = ps.reduce((s, p) => s + (p.amount || 0), 0);
     return { label: m, rate: tA > 0 ? Math.round(pA / tA * 100) : null, collected: pA };
   });
