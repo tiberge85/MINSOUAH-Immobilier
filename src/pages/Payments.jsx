@@ -2438,6 +2438,9 @@ export default function Payments() {
     const anticipesByMonth = {}; // { 'Août 2026': montant, ... }
     (payments || []).forEach(p => {
       if (p.status !== 'Payé') return;
+      // Déjà versé au propriétaire → ne compte PLUS dans le « montant à reverser »
+      // du mois (loyers du mois comme anticipés) : la somme a déjà été payée.
+      if (p.avanceVerseeProprio) return;
       const amt = Number(p.amount) || 0;
       const cov = monthLabelToDate(p.month);
       const paidInSel = inSel(parsePaidDate(p.paidDate));
@@ -2454,13 +2457,15 @@ export default function Payments() {
     // dédoublonnés, réellement en retard) filtrée sur les règlements du mois —
     // pour que la synthèse colle à l'onglet « Arriérés recouvrés ».
     const arrieres = (recoveredArrears || [])
-      .filter(p => inSel(parsePaidDate(p.paidDate)))
+      .filter(p => inSel(parsePaidDate(p.paidDate)) && !p.avanceVerseeProprio)
       .reduce((s, p) => s + (Number(p.amount) || 0), 0);
-    let cautionsAvances = 0;
-    (tenants || []).forEach(t => {
-      const entry = t.since ? new Date(t.since) : null;
-      if (inSel(entry)) cautionsAvances += (Number(t.cautionAmount) || 0) + (Number(t.advanceAmount) || 0);
-    });
+    // Cautions & avances (nouveaux locataires) : on reprend EXACTEMENT l'onglet
+    // « Cautions & avances » (depositsList) pour que la synthèse affiche le même
+    // total que ce rapport — cautions détenues (hors cautions remboursées) + mois
+    // d'avance. On ne filtre plus par mois d'entrée : cela excluait à tort un
+    // locataire dont la date d'entrée n'était pas dans le mois sélectionné.
+    const cautionsAvances = (depositsList || []).reduce((s, d) =>
+      s + (d.cautionRefunded ? 0 : (Number(d.cautionAmount) || 0)) + (Number(d.advanceAmount) || 0), 0);
     const totalEncaisse = loyersMois + arrieres + anticipes + cautionsAvances;
     const charges = (transactions || [])
       .filter(t => { const d = parseTxDate(t.date); return d && inSel(d) && !t.positive; })
