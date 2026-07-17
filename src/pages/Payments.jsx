@@ -621,7 +621,7 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
     <div class="kpi">
       <div class="kpi-l">Attendu ce mois</div>
       <div class="kpi-v" style="color:#785a00">${fCFA(totalExpected)}</div>
-      <div class="kpi-s">${expectedContracts.length} contrat(s) actif(s)</div>
+      <div class="kpi-s">${activeContracts.length} contrat(s) actif(s) · ${expectedContracts.length} dû(s) ce mois</div>
     </div>
     <div class="kpi">
       <div class="kpi-l">Encaissé (brut)</div>
@@ -670,9 +670,9 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
       <tbody>
         <tr><td style="padding:8px 10px;font-weight:700">Loyers du mois encaissés</td><td style="padding:8px 10px;text-align:right;font-weight:700;color:#15803d">${fCFA(synthesis.loyersMois)}</td></tr>
         ${['Studio','2 Pièces','3 Pièces','Magasin'].filter(k => (synthesis.byType?.[k] || 0) > 0).map(k => `<tr><td style="padding:5px 10px 5px 26px;color:#6b7280;font-size:11px">· ${k}</td><td style="padding:5px 10px;text-align:right;color:#6b7280;font-size:11px">${fCFA(synthesis.byType[k])}</td></tr>`).join('')}
-        ${(synthesis.byType?.Autre || 0) > 0 ? `<tr><td style="padding:5px 10px 5px 26px;color:#6b7280;font-size:11px">· Autre</td><td style="padding:5px 10px;text-align:right;color:#6b7280;font-size:11px">${fCFA(synthesis.byType.Autre)}</td></tr>` : ''}
         <tr><td style="padding:8px 10px">Arriérés recouvrés (mois antérieurs)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.arrieres)}</td></tr>
         <tr><td style="padding:8px 10px">Loyers anticipés (mois à venir)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.anticipes)}</td></tr>
+        ${Object.keys(synthesis.anticipesByMonth || {}).sort((a,b)=>{const pa=a.split(' '),pb=b.split(' ');return (parseInt(pa[1]||0)*12+MONTH_NAMES.indexOf(pa[0]))-(parseInt(pb[1]||0)*12+MONTH_NAMES.indexOf(pb[0]));}).map(m => `<tr><td style="padding:5px 10px 5px 26px;color:#6b7280;font-size:11px">· ${m}</td><td style="padding:5px 10px;text-align:right;color:#6b7280;font-size:11px">${fCFA(synthesis.anticipesByMonth[m])}</td></tr>`).join('')}
         <tr><td style="padding:8px 10px">Cautions & avances (nouveaux locataires)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.cautionsAvances)}</td></tr>
         <tr style="background:#f0fdf4;font-weight:800"><td style="padding:9px 10px;color:#15803d">TOTAL ENCAISSÉ EN ${currentMonth.toUpperCase()}</td><td style="padding:9px 10px;text-align:right;color:#15803d">${fCFA(synthesis.totalEncaisse)}</td></tr>
         <tr><td style="padding:8px 10px;color:#b91c1c">(−) Charges du mois</td><td style="padding:8px 10px;text-align:right;color:#b91c1c">− ${fCFA(synthesis.charges)}</td></tr>
@@ -2405,13 +2405,19 @@ export default function Payments() {
     const inSel = (dt) => dt && !isNaN(dt.getTime()) && dt.getFullYear() === target.getFullYear() && dt.getMonth() === target.getMonth();
     const UT = ['Studio', '2 Pièces', '3 Pièces', 'Magasin'];
     const typeOfPayment = (p) => {
-      const pn = (p.propertyName || '').toLowerCase().trim();
+      const pnRaw = (p.propertyName || '').trim();
+      const pn = pnRaw.toLowerCase();
       if (!pn) return 'Autre';
+      // Libellé = « Immeuble — Appartement (étage) » → on isole le n° d'appartement
+      const afterDash = pnRaw.includes('—') ? pnRaw.split('—').slice(1).join('—') : pnRaw;
+      const unitLabel = afterDash.split('(')[0].trim().toLowerCase(); // ex. "s2", "app issaka"
+      const base = (pnRaw.split('—')[0] || '').trim().toLowerCase();
       for (const prop of (properties || [])) {
         const name = (prop.name || '').toLowerCase().trim();
         if (!name) continue;
-        if (prop.isBuilding && pn.startsWith(name)) {
-          const u = (prop.units || []).find(u => u.number && pn.includes(String(u.number).toLowerCase()));
+        if (prop.isBuilding && (base === name || pn.startsWith(name))) {
+          // Correspondance EXACTE du numéro d'appartement (évite S2 ↔ S21)
+          const u = (prop.units || []).find(u => String(u.number || '').trim().toLowerCase() === unitLabel);
           if (u && UT.includes(u.type)) return u.type;
         } else if (!prop.isBuilding && (pn === name || pn.startsWith(name))) {
           if (UT.includes(prop.type)) return prop.type;
@@ -2421,15 +2427,23 @@ export default function Payments() {
     };
     let loyersMois = 0, arrieres = 0, anticipes = 0;
     const byType = { 'Studio': 0, '2 Pièces': 0, '3 Pièces': 0, 'Magasin': 0, 'Autre': 0 };
+    const anticipesByMonth = {}; // { 'Août 2026': montant, ... }
     (payments || []).forEach(p => {
       if (p.status !== 'Payé') return;
-      const paidDt = parsePaidDate(p.paidDate);
-      if (!inSel(paidDt)) return;
       const amt = Number(p.amount) || 0;
       const cov = monthLabelToDate(p.month);
-      if (cov && cov.getTime() < target.getTime()) arrieres += amt;
-      else if (cov && cov.getTime() > target.getTime()) anticipes += amt;
-      else { loyersMois += amt; byType[typeOfPayment(p)] += amt; }
+      const paidInSel = inSel(parsePaidDate(p.paidDate));
+      if (cov && cov.getTime() === target.getTime()) {
+        // Loyer du MOIS : compté dès qu'il est payé (par mois de loyer), comme
+        // l'« Encaissé » du rapport — indépendant de la date de règlement.
+        loyersMois += amt; byType[typeOfPayment(p)] += amt;
+      } else if (cov && cov.getTime() < target.getTime()) {
+        // Arriéré : compté seulement s'il a été ENCAISSÉ pendant ce mois.
+        if (paidInSel) arrieres += amt;
+      } else if (cov && cov.getTime() > target.getTime()) {
+        // Loyer anticipé : compté seulement s'il a été ENCAISSÉ pendant ce mois.
+        if (paidInSel) { anticipes += amt; anticipesByMonth[p.month] = (anticipesByMonth[p.month] || 0) + amt; }
+      }
     });
     let cautionsAvances = 0;
     (tenants || []).forEach(t => {
@@ -2440,7 +2454,7 @@ export default function Payments() {
     const charges = (transactions || [])
       .filter(t => { const d = parseTxDate(t.date); return d && inSel(d) && !t.positive; })
       .reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
-    return { loyersMois, byType, arrieres, anticipes, cautionsAvances, totalEncaisse, charges, totalAReverser: totalEncaisse - charges };
+    return { loyersMois, byType, anticipesByMonth, arrieres, anticipes, cautionsAvances, totalEncaisse, charges, totalAReverser: totalEncaisse - charges };
   };
 
   const handlePrintGlobalReport = () => {
