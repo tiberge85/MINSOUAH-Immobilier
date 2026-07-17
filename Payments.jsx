@@ -2433,7 +2433,7 @@ export default function Payments() {
       if (amt >= 100000) return 'Studio';
       return 'Autre';
     };
-    let loyersMois = 0, arrieres = 0, anticipes = 0;
+    let loyersMois = 0, anticipes = 0;
     const byType = { 'Studio': 0, '2 Pièces': 0, '3 Pièces': 0, 'Magasin': 0, 'Autre': 0 };
     const anticipesByMonth = {}; // { 'Août 2026': montant, ... }
     (payments || []).forEach(p => {
@@ -2445,14 +2445,17 @@ export default function Payments() {
         // Loyer du MOIS : compté dès qu'il est payé (par mois de loyer), comme
         // l'« Encaissé » du rapport — indépendant de la date de règlement.
         loyersMois += amt; byType[typeOfPayment(p)] += amt;
-      } else if (cov && cov.getTime() < target.getTime()) {
-        // Arriéré : compté seulement s'il a été ENCAISSÉ pendant ce mois.
-        if (paidInSel) arrieres += amt;
       } else if (cov && cov.getTime() > target.getTime()) {
         // Loyer anticipé : compté seulement s'il a été ENCAISSÉ pendant ce mois.
         if (paidInSel) { anticipes += amt; anticipesByMonth[p.month] = (anticipesByMonth[p.month] || 0) + amt; }
       }
     });
+    // Arriérés RECOUVRÉS ce mois : on réutilise la liste fiable (vrais arriérés,
+    // dédoublonnés, réellement en retard) filtrée sur les règlements du mois —
+    // pour que la synthèse colle à l'onglet « Arriérés recouvrés ».
+    const arrieres = (recoveredArrears || [])
+      .filter(p => inSel(parsePaidDate(p.paidDate)))
+      .reduce((s, p) => s + (Number(p.amount) || 0), 0);
     let cautionsAvances = 0;
     (tenants || []).forEach(t => {
       const entry = t.since ? new Date(t.since) : null;
