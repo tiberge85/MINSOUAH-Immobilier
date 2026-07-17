@@ -1592,7 +1592,10 @@ export default function Payments() {
   const totalExpected = (contracts || [])
     .filter(c => c.status === 'Actif' || c.status === 'Expirant')
     .reduce((s, c) => s + (Number(c.rent) || 0), 0);
-  const totalCollected = monthPmts.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+  // « Encaissés » = loyers réglés du mois, MAIS on retire ceux déjà reversés au
+  // propriétaire (avanceVerseeProprio) : cette somme n'est plus dans la caisse à
+  // reverser, donc elle ne doit pas gonfler l'encaissé du mois en cours.
+  const totalCollected = monthPmts.filter(p => p.status === 'Payé' && !p.avanceVerseeProprio).reduce((s, p) => s + (p.amount || 0), 0);
   // Impayés du mois = enregistrements non réglés (avec repli sur le loyer du contrat
   // quand le montant est à 0) + locataires actifs SANS aucun enregistrement ce mois
   // (le mois courant ne matérialise pas les impayés : les records ne sont créés qu'à
