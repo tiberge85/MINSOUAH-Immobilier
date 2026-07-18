@@ -83,9 +83,12 @@ export default function Bordereaux() {
     try {
       if (p == null) return null;
       if (p.ownerId != null) return Number(p.ownerId);
+      // S'il n'y a qu'UN seul propriétaire enregistré, tous les biens lui
+      // reviennent : on le renvoie par défaut si le libellé n'est pas reconnu.
+      const soleOwner = (owners || []).length === 1 ? Number(owners[0].id) : null;
       // String(...) : ne jamais planter si propertyName n'est pas une chaîne.
       const raw = String(p.propertyName ?? '').toLowerCase().trim();
-      if (!raw) return null;
+      if (!raw) return soleOwner;
       // Libellé paiement = « Immeuble — Appartement (étage) » → on isole la partie
       // avant l'unité pour retrouver le bien (les biens sont enregistrés sous `name`).
       const base = raw.split('—')[0].split(' - ')[0].trim();
@@ -93,7 +96,8 @@ export default function Bordereaux() {
       const prop =
         (properties || []).find(pr => norm(pr.name || pr.propertyName) === base) ||
         (properties || []).find(pr => { const n = norm(pr.name || pr.propertyName); return n && (raw === n || raw.startsWith(n) || raw.includes(n)); });
-      return prop?.ownerId != null ? Number(prop.ownerId) : null;
+      const resolved = prop?.ownerId != null ? Number(prop.ownerId) : null;
+      return resolved != null ? resolved : soleOwner;
     } catch { return null; }
   };
 
