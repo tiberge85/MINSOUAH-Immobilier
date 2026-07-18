@@ -51,7 +51,7 @@ function Btn({ children, icon, variant = 'primary', small, onClick, disabled }) 
 export default function Bordereaux() {
   const { state, dispatch } = useApp();
   const toast = useToast();
-  const { payments = [], owners = [], properties = [], orgSettings, currentUser, bordereaux = [] } = state;
+  const { payments = [], owners = [], properties = [], orgSettings, currentUser, bordereaux = [], tenants = [], transactions = [] } = state;
 
   const canCreate = can(currentUser, 'bordereaux', 'create');
   const canEdit = can(currentUser, 'bordereaux', 'edit');
@@ -253,6 +253,7 @@ export default function Bordereaux() {
       {tab === 'create-proprio' && canCreate && (
         <CreateProprio
           owners={owners} paidPayments={paidPayments} ownerIdOfPayment={ownerIdOfPayment}
+          tenants={tenants} transactions={transactions}
           currentUser={currentUser} canValidate={canValidate}
           onDone={() => setTab('list')} dispatch={dispatch} toast={toast}
         />
@@ -581,7 +582,7 @@ function CreateCompta({ eligible, currentUser, canValidate, organizations = [], 
 }
 
 /* ════════════════════════════ CREATE — PROPRIETAIRE ════════════════════════════ */
-function CreateProprio({ owners, paidPayments, ownerIdOfPayment, currentUser, canValidate, onDone, dispatch, toast }) {
+function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], transactions = [], currentUser, canValidate, onDone, dispatch, toast }) {
   const [ownerId, setOwnerId] = useState('');
   const [monthFilter, setMonthFilter] = useState('Tous');
   const [frais, setFrais] = useState('');            // global fees for the whole remittance
@@ -592,26 +593,38 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, currentUser, ca
   const owner = owners.find(o => String(o.id) === String(ownerId));
   const rate = owner ? (Number(owner.commissionRate) || 0) : 0;
 
-  // All the owner's collected rents not yet reversed
+  // Mois = mois d'ENCAISSEMENT (date de paiement), pour inclure les arriérés
+  // reçus ce mois-ci même s'ils concernent un mois de loyer passé.
+  const MONTHS_FR = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+  const dateToMonthLabel = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) return `${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`;
+    const m = String(dateStr).match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    return m ? `${MONTHS_FR[Number(m[2]) - 1]} ${m[3]}` : '';
+  };
+  const inSelMonth = (dateStr) => monthFilter === 'Tous' ? true : dateToMonthLabel(dateStr) === monthFilter;
+
+  // Loyers encaissés du propriétaire non encore reversés (par date de paiement).
   const ownerPayments = useMemo(() => {
     if (!owner) return [];
-    // Exclude rents already reversed via a voucher OR manually flagged as
-    // "déjà versé au propriétaire" (advance payments) so they don't reappear.
+    // Exclut ce qui est déjà reversé (bordereau validé) ou marqué « versé propriétaire ».
     return paidPayments.filter(p => !p.versementProprioId && !p.avanceVerseeProprio && ownerIdOfPayment(p) === Number(owner.id));
   }, [owner, paidPayments, ownerIdOfPayment]);
 
-  // Tous les loyers encaissés rattachés à ce propriétaire (reversés ou non) —
-  // pour réconcilier avec le rapport global (qui, lui, couvre TOUS les propriétaires).
+  // Tous les paiements du propriétaire encaissés dans le mois (reversés ou non),
+  // par date de paiement — pour le compteur de réconciliation.
   const ownerAllPaid = useMemo(() => {
     if (!owner) return [];
     const all = paidPayments.filter(p => ownerIdOfPayment(p) === Number(owner.id));
-    return monthFilter === 'Tous' ? all : all.filter(p => p.month === monthFilter);
+    return monthFilter === 'Tous' ? all : all.filter(p => dateToMonthLabel(p.paidDate) === monthFilter);
   }, [owner, paidPayments, ownerIdOfPayment, monthFilter]);
   const ownerReversedCount = ownerAllPaid.filter(p => p.versementProprioId || p.avanceVerseeProprio).length;
 
-  const months = useMemo(() => [...new Set(ownerPayments.map(p => p.month).filter(Boolean))]
+  const months = useMemo(() => [...new Set(ownerPayments.map(p => dateToMonthLabel(p.paidDate)).filter(Boolean))]
     .sort((a, b) => monthKey(b) - monthKey(a)), [ownerPayments]);
-  const scope = monthFilter === 'Tous' ? ownerPayments : ownerPayments.filter(p => p.month === monthFilter);
+  // Loyers/arriérés/anticipés ENCAISSÉS dans le mois choisi (par date de paiement)
+  const scope = monthFilter === 'Tous' ? ownerPayments : ownerPayments.filter(p => dateToMonthLabel(p.paidDate) === monthFilter);
 
   // Lines use the commission FROZEN on each payment at cash-in (never recomputed).
   // Fallback to the owner's current rate only for legacy payments without a frozen value.
@@ -627,10 +640,28 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, currentUser, ca
     };
   }), [scope, rate]);
 
+  // Cautions & avances des NOUVEAUX locataires (entrés dans le mois) de ce propriétaire.
+  const ownerDeposits = useMemo(() => {
+    if (!owner) return [];
+    return (tenants || []).filter(t => {
+      const amt = (Number(t.cautionAmount) || 0) + (Number(t.advanceAmount) || 0);
+      if (amt <= 0) return false;
+      if (ownerIdOfPayment({ propertyName: t.property || '' }) !== Number(owner.id)) return false;
+      return monthFilter === 'Tous' ? true : inSelMonth(t.since);
+    });
+  }, [owner, tenants, monthFilter, ownerIdOfPayment]);
+  const totalDeposits = ownerDeposits.reduce((s, t) => s + (Number(t.cautionAmount) || 0) + (Number(t.advanceAmount) || 0), 0);
+
+  // Charges = dépenses du mois (module Finances), déduites automatiquement.
+  const totalCharges = (transactions || [])
+    .filter(t => !t.positive && (monthFilter === 'Tous' || inSelMonth(t.date)))
+    .reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
+
   const totalAmount = lines.reduce((s, l) => s + l.amount, 0);
   const totalCommission = lines.reduce((s, l) => s + l.commission, 0);
   const totalFrais = Number(frais) || 0;
-  const totalNet = totalAmount - totalCommission - totalFrais;
+  // Net à reverser = loyers/arriérés encaissés + cautions & avances − commission − charges − frais éventuels
+  const totalNet = totalAmount + totalDeposits - totalCommission - totalCharges - totalFrais;
   // Group the bilan by month for a clean recap (not per-tenant selection)
   const byMonth = useMemo(() => {
     const g = {};
@@ -644,7 +675,7 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, currentUser, ca
 
   const build = (status) => {
     if (!owner) { toast('Sélectionnez un propriétaire', 'error'); return; }
-    if (lines.length === 0) { toast('Aucun encaissement à reverser', 'error'); return; }
+    if (lines.length === 0 && totalDeposits === 0) { toast('Aucun encaissement à reverser', 'error'); return; }
     dispatch({
       type: 'ADD_BORDEREAU',
       payload: {
@@ -655,7 +686,13 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, currentUser, ca
         ownerBank: owner.bank || '', ownerAccount: owner.iban || '', commissionRate: rate,
         signatures: { directeur: sigResp.current?.getDataURL() || null, proprietaire: sigOwner.current?.getDataURL() || null },
         lines,
-        totalAmount, totalCommission, totalFrais, totalNet,
+        depositLines: ownerDeposits.map(t => ({
+          tenantName: t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim(),
+          propertyName: t.property || '',
+          caution: Number(t.cautionAmount) || 0,
+          advance: Number(t.advanceAmount) || 0,
+        })),
+        totalAmount, totalDeposits, totalCommission, totalCharges, totalFrais, totalNet,
       },
     });
     toast(status === 'Validé' ? 'Reversement créé et validé' : 'Reversement enregistré en brouillon');
@@ -699,18 +736,20 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, currentUser, ca
           {/* ── Réconciliation avec le rapport global ── */}
           <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800">
             <strong>{ownerAllPaid.length}</strong> loyer(s) encaissé(s) pour {owner.name}{monthFilter !== 'Tous' ? ` — ${monthFilter}` : ''} :
-            <strong> {ownerPayments.filter(p => monthFilter === 'Tous' || p.month === monthFilter).length}</strong> à reverser · <strong>{ownerReversedCount}</strong> déjà reversé(s).
+            <strong> {scope.length}</strong> à reverser · <strong>{ownerReversedCount}</strong> déjà reversé(s).
             <span className="block text-xs text-blue-600 mt-1">
               Le rapport global additionne les loyers de <strong>tous</strong> les propriétaires ; ce bordereau ne concerne que <strong>{owner.name}</strong>. Si un chiffre du rapport global est plus élevé, la différence correspond aux loyers d'autres propriétaires (ou déjà reversés). La somme des bordereaux de tous les propriétaires = le rapport global.
             </span>
           </div>
 
           {/* ── BILAN des encaissements ── */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {[
-              { label: 'Total encaissé', value: totalAmount, color: 'text-primary bg-primary/10', icon: 'payments' },
+              { label: 'Loyers/arriérés encaissés', value: totalAmount, color: 'text-primary bg-primary/10', icon: 'payments' },
+              { label: 'Cautions & avances', value: totalDeposits, color: 'text-blue-700 bg-blue-100', icon: 'savings' },
               { label: `Commission (${rate}%)`, value: totalCommission, color: 'text-amber-700 bg-amber-100', icon: 'percent', neg: true },
-              { label: 'Frais déduits', value: totalFrais, color: 'text-amber-700 bg-amber-100', icon: 'receipt_long', neg: true },
+              { label: 'Charges du mois', value: totalCharges, color: 'text-amber-700 bg-amber-100', icon: 'receipt_long', neg: true },
+              { label: 'Frais déduits', value: totalFrais, color: 'text-amber-700 bg-amber-100', icon: 'payments', neg: true },
               { label: 'Net à reverser', value: totalNet, color: 'text-green-700 bg-green-100', icon: 'account_balance_wallet' },
             ].map(c => (
               <div key={c.label} className="bg-surface rounded-2xl border border-outline-variant/20 p-4">
@@ -741,7 +780,7 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, currentUser, ca
                   <tbody className="divide-y divide-outline-variant/20">
                     {byMonth.map(g => (
                       <tr key={g.period}>
-                        <td className="px-3 py-2 font-semibold">{g.period}</td>
+                        <td className="px-3 py-2 font-semibold">{g.period}{monthFilter !== 'Tous' && g.period !== monthFilter ? <span className="ml-1 text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">arriéré reçu</span> : ''}</td>
                         <td className="px-3 py-2 text-on-surface-variant">{g.count}</td>
                         <td className="px-3 py-2">{fmt(g.amount)}</td>
                         <td className="px-3 py-2 text-amber-700">−{fmt(g.commission)}</td>
