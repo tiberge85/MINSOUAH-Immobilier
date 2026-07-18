@@ -80,17 +80,21 @@ export default function Bordereaux() {
 
   /* ── Owner resolution for a payment ── */
   const ownerIdOfPayment = (p) => {
-    if (p.ownerId != null) return Number(p.ownerId);
-    const raw = (p.propertyName || '').toLowerCase().trim();
-    if (!raw) return null;
-    // Libellé paiement = « Immeuble — Appartement (étage) » → on isole la partie
-    // avant l'unité pour retrouver le bien (les biens sont enregistrés sous `name`).
-    const base = raw.split('—')[0].split(' - ')[0].trim();
-    const norm = (s) => (s || '').toLowerCase().trim();
-    const prop =
-      properties.find(pr => norm(pr.name || pr.propertyName) === base) ||
-      properties.find(pr => { const n = norm(pr.name || pr.propertyName); return n && (raw === n || raw.startsWith(n) || raw.includes(n)); });
-    return prop?.ownerId != null ? Number(prop.ownerId) : null;
+    try {
+      if (p == null) return null;
+      if (p.ownerId != null) return Number(p.ownerId);
+      // String(...) : ne jamais planter si propertyName n'est pas une chaîne.
+      const raw = String(p.propertyName ?? '').toLowerCase().trim();
+      if (!raw) return null;
+      // Libellé paiement = « Immeuble — Appartement (étage) » → on isole la partie
+      // avant l'unité pour retrouver le bien (les biens sont enregistrés sous `name`).
+      const base = raw.split('—')[0].split(' - ')[0].trim();
+      const norm = (s) => String(s ?? '').toLowerCase().trim();
+      const prop =
+        (properties || []).find(pr => norm(pr.name || pr.propertyName) === base) ||
+        (properties || []).find(pr => { const n = norm(pr.name || pr.propertyName); return n && (raw === n || raw.startsWith(n) || raw.includes(n)); });
+      return prop?.ownerId != null ? Number(prop.ownerId) : null;
+    } catch { return null; }
   };
 
   const paidPayments = useMemo(() => payments.filter(p => p.status === 'Payé'), [payments]);
