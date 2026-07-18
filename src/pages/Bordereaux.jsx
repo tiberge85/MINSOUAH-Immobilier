@@ -96,7 +96,7 @@ export default function Bordereaux() {
       const prop =
         (properties || []).find(pr => norm(pr.name || pr.propertyName) === base) ||
         (properties || []).find(pr => { const n = norm(pr.name || pr.propertyName); return n && (raw === n || raw.startsWith(n) || raw.includes(n)); });
-      const resolved = prop?.ownerId != null ? Number(prop.ownerId) : null;
+      return prop?.ownerId != null ? Number(prop.ownerId) : ((owners || []).length === 1 ? Number(owners[0].id) : null);
       return resolved != null ? resolved : soleOwner;
     } catch { return null; }
   };
