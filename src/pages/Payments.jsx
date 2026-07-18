@@ -1609,10 +1609,25 @@ export default function Payments() {
 
   /* ── Stats for selected month ── */
   const monthPmts = payments.filter(p => p.month === selectedMonth);
-  // Loyers attendus = somme des loyers de TOUS les contrats actifs / expirants
-  const totalExpected = (contracts || [])
-    .filter(c => c.status === 'Actif' || c.status === 'Expirant')
-    .reduce((s, c) => s + (Number(c.rent) || 0), 0);
+  // Loyers attendus = loyers des contrats actifs/expirants DUS ce mois, en
+  // excluant les locataires encore couverts par leur avance (comme le rapport
+  // « Attendu ce mois » et comme le calcul des impayés/recouvrement) : seuls
+  // ceux qui doivent réellement payer ce mois-ci sont comptés.
+  const totalExpected = (() => {
+    const [emn, eyr] = (selectedMonth || '').split(' ');
+    const eidx = MONTH_NAMES.indexOf(emn);
+    const eDate = eidx >= 0 ? new Date(Number(eyr), eidx, 1) : null;
+    return (contracts || [])
+      .filter(c => c.status === 'Actif' || c.status === 'Expirant')
+      .filter(c => {
+        const name = (c.tenant || '').toLowerCase().trim();
+        const tenant = (tenants || []).find(t => (t.name || '').toLowerCase().trim() === name || (c.tenantId && String(t.id) === String(c.tenantId)));
+        const psDate = tenant?.paymentStartDate ? new Date(tenant.paymentStartDate) : null;
+        const psFirst = psDate && !isNaN(psDate.getTime()) ? new Date(psDate.getFullYear(), psDate.getMonth(), 1) : null;
+        return !(psFirst && eDate && eDate < psFirst); // exclure ceux encore en avance
+      })
+      .reduce((s, c) => s + (Number(c.rent) || 0), 0);
+  })();
   // « Encaissés » = loyers réglés du mois, MAIS on retire ceux déjà reversés au
   // propriétaire (avanceVerseeProprio) : cette somme n'est plus dans la caisse à
   // reverser, donc elle ne doit pas gonfler l'encaissé du mois en cours.
