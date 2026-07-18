@@ -356,6 +356,33 @@ export default function OwnerPortal() {
     if (w) { w.onload = () => { w.print(); URL.revokeObjectURL(url); }; }
   };
 
+  /* ─── 4 soldes : brut, commissions, reversé, solde restant ─────── */
+  /* IMPORTANT : ces hooks doivent être AVANT tout return conditionnel
+     (sinon React #310 : « plus de hooks qu'au rendu précédent »). */
+  const fmtCFA = (n) => `${(Number(n) || 0).toLocaleString('fr-FR')} FCFA`;
+  const commOf = (p) => p.commissionAmount != null ? p.commissionAmount : Math.round((p.amount || 0) * (Number(owner?.commissionRate) || 0) / 100);
+  const netOf = (p) => p.montantNet != null ? p.montantNet : ((p.amount || 0) - commOf(p));
+  const revenus = useMemo(() => {
+    const paid = ownerPayments.filter(p => p.status === 'Payé');
+    const brut = paid.reduce((s, p) => s + (p.amount || 0), 0);
+    const commissions = paid.reduce((s, p) => s + commOf(p), 0);
+    const reversed = paid.filter(p => p.versementProprioId || p.avanceVerseeProprio);
+    const pending = paid.filter(p => !p.versementProprioId && !p.avanceVerseeProprio);
+    return {
+      brut, commissions,
+      dejaReverse: reversed.reduce((s, p) => s + netOf(p), 0),
+      soldeRestant: pending.reduce((s, p) => s + netOf(p), 0),
+      nbPaid: paid.length,
+    };
+  }, [ownerPayments, owner]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Historique des reversements (bordereaux propriétaire validés le concernant)
+  const ownerVersements = useMemo(() =>
+    (state.bordereaux || [])
+      .filter(b => b.type === 'PROPRIETAIRE' && b.status === 'Validé' && owner && String(b.ownerId) === String(owner.id))
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
+    [state.bordereaux, owner]
+  );
+
   /* ─── Owner selector ─────────────────────────────────────────── */
   if (!selectedId) {
     return (
@@ -450,31 +477,6 @@ export default function OwnerPortal() {
     { id: 'maintenance', label: 'Maintenance', icon: 'engineering' },
     { id: 'edl', label: 'États des lieux', icon: 'home_work' },
   ];
-
-  /* ─── 4 soldes : brut, commissions, reversé, solde restant ─────── */
-  const fmtCFA = (n) => `${(Number(n) || 0).toLocaleString('fr-FR')} FCFA`;
-  const commOf = (p) => p.commissionAmount != null ? p.commissionAmount : Math.round((p.amount || 0) * (Number(owner?.commissionRate) || 0) / 100);
-  const netOf = (p) => p.montantNet != null ? p.montantNet : ((p.amount || 0) - commOf(p));
-  const revenus = useMemo(() => {
-    const paid = ownerPayments.filter(p => p.status === 'Payé');
-    const brut = paid.reduce((s, p) => s + (p.amount || 0), 0);
-    const commissions = paid.reduce((s, p) => s + commOf(p), 0);
-    const reversed = paid.filter(p => p.versementProprioId || p.avanceVerseeProprio);
-    const pending = paid.filter(p => !p.versementProprioId && !p.avanceVerseeProprio);
-    return {
-      brut, commissions,
-      dejaReverse: reversed.reduce((s, p) => s + netOf(p), 0),
-      soldeRestant: pending.reduce((s, p) => s + netOf(p), 0),
-      nbPaid: paid.length,
-    };
-  }, [ownerPayments, owner]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Historique des reversements (bordereaux propriétaire validés le concernant)
-  const ownerVersements = useMemo(() =>
-    (state.bordereaux || [])
-      .filter(b => b.type === 'PROPRIETAIRE' && b.status === 'Validé' && owner && String(b.ownerId) === String(owner.id))
-      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
-    [state.bordereaux, owner]
-  );
 
   return (
     <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl max-w-6xl mx-auto flex flex-col gap-gutter">

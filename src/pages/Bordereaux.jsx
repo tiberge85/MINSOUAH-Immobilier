@@ -80,17 +80,21 @@ export default function Bordereaux() {
 
   /* ── Owner resolution for a payment ── */
   const ownerIdOfPayment = (p) => {
-    if (p.ownerId != null) return Number(p.ownerId);
-    const raw = (p.propertyName || '').toLowerCase().trim();
-    if (!raw) return null;
-    // Libellé paiement = « Immeuble — Appartement (étage) » → on isole la partie
-    // avant l'unité pour retrouver le bien (les biens sont enregistrés sous `name`).
-    const base = raw.split('—')[0].split(' - ')[0].trim();
-    const norm = (s) => (s || '').toLowerCase().trim();
-    const prop =
-      properties.find(pr => norm(pr.name || pr.propertyName) === base) ||
-      properties.find(pr => { const n = norm(pr.name || pr.propertyName); return n && (raw === n || raw.startsWith(n) || raw.includes(n)); });
-    return prop?.ownerId != null ? Number(prop.ownerId) : null;
+    try {
+      if (p == null) return null;
+      if (p.ownerId != null) return Number(p.ownerId);
+      // String(...) : ne jamais planter si propertyName n'est pas une chaîne.
+      const raw = String(p.propertyName ?? '').toLowerCase().trim();
+      if (!raw) return null;
+      // Libellé paiement = « Immeuble — Appartement (étage) » → on isole la partie
+      // avant l'unité pour retrouver le bien (les biens sont enregistrés sous `name`).
+      const base = raw.split('—')[0].split(' - ')[0].trim();
+      const norm = (s) => String(s ?? '').toLowerCase().trim();
+      const prop =
+        (properties || []).find(pr => norm(pr.name || pr.propertyName) === base) ||
+        (properties || []).find(pr => { const n = norm(pr.name || pr.propertyName); return n && (raw === n || raw.startsWith(n) || raw.includes(n)); });
+      return prop?.ownerId != null ? Number(prop.ownerId) : null;
+    } catch { return null; }
   };
 
   const paidPayments = useMemo(() => payments.filter(p => p.status === 'Payé'), [payments]);
@@ -253,7 +257,7 @@ export default function Bordereaux() {
       {tab === 'create-proprio' && canCreate && (
         <CreateProprio
           owners={owners} paidPayments={paidPayments} ownerIdOfPayment={ownerIdOfPayment}
-          tenants={tenants} transactions={transactions}
+          tenants={tenants} transactions={transactions} properties={properties} orgSettings={orgSettings}
           currentUser={currentUser} canValidate={canValidate}
           onDone={() => setTab('list')} dispatch={dispatch} toast={toast}
         />
@@ -582,7 +586,97 @@ function CreateCompta({ eligible, currentUser, canValidate, organizations = [], 
 }
 
 /* ════════════════════════════ CREATE — PROPRIETAIRE ════════════════════════════ */
-function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], transactions = [], currentUser, canValidate, onDone, dispatch, toast }) {
+// ════════ Bordereau propriétaire DÉTAILLÉ (imprimable / PDF) ════════
+function buildOwnerStatementHTML(d) {
+  const f = (n) => (Number(n) || 0).toLocaleString('fr-FR');
+  const cur = 'FCFA';
+  const org = d.orgSettings || {};
+  const company = org.companyName || 'MINSOUAH IMMOBILIER';
+  const logo = org.logo || org.logoUrl || '';
+  const T = d.totals;
+  const rowsHtml = d.rows.length ? d.rows.map(r => `
+      <tr>
+        <td>${r.unit || '—'}</td><td>${r.tenant || '—'}${r.isNew ? ' <span class="bnew">Nouveau</span>' : ''}</td>
+        <td>${r.period || '—'}</td><td>${r.paidDate || '—'}</td><td>${r.method || '—'}</td>
+        <td class="n">${r.loyer ? f(r.loyer) : '—'}</td><td class="n">${r.arrear ? f(r.arrear) : '—'}</td>
+        <td class="n">${r.advance ? f(r.advance) : '—'}</td><td class="n">${r.caution ? f(r.caution) : '—'}</td>
+        <td class="n">${r.moisAvance || '—'}</td><td class="n">${r.charges ? f(r.charges) : '—'}</td>
+        <td class="n">${r.autres ? f(r.autres) : '—'}</td><td class="n b">${f(r.total)}</td>
+      </tr>`).join('') : `<tr><td colspan="13" style="text-align:center;color:#999;padding:14px">Aucun encaissement pour cette période</td></tr>`;
+  const dedRows = d.deductions.length ? d.deductions.map(x => `
+      <tr><td>${x.date || '—'}</td><td>${x.label || '—'}</td><td>${x.category || '—'}</td><td>${x.obs || '—'}</td><td class="n">${f(x.amount)}</td></tr>`).join('')
+    : `<tr><td colspan="5" style="text-align:center;color:#999;padding:12px">Aucune déduction</td></tr>`;
+  const aptRows = d.perApt.map(a => `
+      <tr><td>${a.unit || '—'}</td><td>${a.tenant || '—'}</td><td>${a.status}</td><td class="n">${f(a.encaisse)}</td><td class="n">${f(a.deductions)}</td><td class="n b">${f(a.net)}</td></tr>`).join('');
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Bordereau ${d.owner} — ${d.period}</title>
+  <style>
+    *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1f2937;margin:0;padding:24px;font-size:12px}
+    .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #785a00;padding-bottom:12px;margin-bottom:14px}
+    .brand{display:flex;align-items:center;gap:10px}.brand img{height:44px}.brand .co{font-size:18px;font-weight:900;color:#785a00}
+    .title{text-align:right}.title h1{margin:0;font-size:16px;color:#111}.title .sub{color:#666;font-size:11px;margin-top:2px}
+    .info{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px}
+    .info .c{background:#faf7f0;border:1px solid #ece3d2;border-radius:8px;padding:8px 10px}
+    .info .l{font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:#8a7a5c;font-weight:700}
+    .info .v{font-size:13px;font-weight:800;color:#111;margin-top:2px}
+    h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#785a00;border-bottom:1px solid #e5ddcc;padding-bottom:4px;margin:16px 0 8px}
+    table{width:100%;border-collapse:collapse;font-size:10px}
+    th{background:#f3ede0;text-align:left;padding:6px;font-size:8.5px;text-transform:uppercase;color:#6b5d3e;border-bottom:1px solid #e5ddcc}
+    td{padding:5px 6px;border-bottom:1px solid #f0ece2}
+    td.n,th.n{text-align:right}td.b{font-weight:800}
+    tfoot td{background:#faf7f0;font-weight:800;border-top:2px solid #785a00}
+    .bnew{background:#dbeafe;color:#1d4ed8;font-size:8px;font-weight:800;padding:1px 5px;border-radius:8px}
+    .net{margin-top:16px;background:#052e16;color:#fff;border-radius:12px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center}
+    .net .lbl{font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.85}.net .val{font-size:24px;font-weight:900}
+    .summary{margin-top:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px}
+    .summary .r{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed #e2e8f0}
+    .summary .r.tot{font-weight:900;color:#052e16;border-top:2px solid #cbd5e1;margin-top:4px;padding-top:6px}
+    .footer{margin-top:20px;text-align:center;color:#9ca3af;font-size:9px}
+    @media print{body{padding:0}}
+  </style></head><body>
+    <div class="head">
+      <div class="brand">${logo ? `<img src="${logo}" alt="logo">` : ''}<span class="co">${company}</span></div>
+      <div class="title"><h1>Bordereau détaillé de reversement</h1><div class="sub">N° ${d.bordNo} · Édité le ${d.genDate}</div></div>
+    </div>
+    <div class="info">
+      <div class="c"><div class="l">Propriétaire</div><div class="v">${d.owner}</div></div>
+      <div class="c"><div class="l">Période</div><div class="v">${d.period}</div></div>
+      <div class="c"><div class="l">Commission</div><div class="v">${d.rate}%</div></div>
+      <div class="c"><div class="l">Nombre de biens</div><div class="v">${d.nbBiens}</div></div>
+      <div class="c"><div class="l">Nombre de locataires</div><div class="v">${d.nbLocataires}</div></div>
+      <div class="c"><div class="l">Banque / RIB</div><div class="v" style="font-size:11px">${d.bank || '—'}</div></div>
+    </div>
+    <h2>Encaissements</h2>
+    <table>
+      <thead><tr><th>Appartement</th><th>Locataire</th><th>Période</th><th>Date pmt</th><th>Mode</th><th class="n">Loyer</th><th class="n">Arriérés</th><th class="n">Avance</th><th class="n">Caution</th><th class="n">Mois av.</th><th class="n">Charges</th><th class="n">Autres</th><th class="n">Total</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot><tr><td colspan="5">TOTAUX</td><td class="n">${f(T.loyers)}</td><td class="n">${f(T.arrieres)}</td><td class="n">${f(T.avances)}</td><td class="n">${f(T.cautions)}</td><td class="n">${T.moisAvance || '—'}</td><td class="n">${f(T.charges)}</td><td class="n">${f(T.autres)}</td><td class="n">${f(T.encaisse)}</td></tr></tfoot>
+    </table>
+    <h2>Déductions</h2>
+    <table>
+      <thead><tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Observation</th><th class="n">Montant</th></tr></thead>
+      <tbody>${dedRows}</tbody>
+      <tfoot><tr><td colspan="4">TOTAL DÉDUCTIONS</td><td class="n">${f(T.deductions)}</td></tr></tfoot>
+    </table>
+    ${d.perApt.length > 1 ? `<h2>Détail par appartement</h2>
+    <table><thead><tr><th>Appartement</th><th>Locataire</th><th>Statut</th><th class="n">Encaissé</th><th class="n">Déductions</th><th class="n">Net</th></tr></thead><tbody>${aptRows}</tbody></table>` : ''}
+    <div class="net"><div class="lbl">Net à reverser au propriétaire</div><div class="val">${f(T.net)} ${cur}</div></div>
+    <h2>Résumé financier</h2>
+    <div class="summary">
+      <div class="r"><span>Loyers encaissés</span><span>${f(T.loyers)} ${cur}</span></div>
+      <div class="r"><span>Arriérés encaissés</span><span>${f(T.arrieres)} ${cur}</span></div>
+      <div class="r"><span>Paiements d'avance</span><span>${f(T.avances)} ${cur}</span></div>
+      <div class="r"><span>Cautions</span><span>${f(T.cautions)} ${cur}</span></div>
+      <div class="r"><span>Charges / autres</span><span>${f(T.charges + T.autres)} ${cur}</span></div>
+      <div class="r"><span>Total encaissé</span><span>${f(T.encaisse)} ${cur}</span></div>
+      <div class="r"><span>Déductions</span><span>− ${f(T.deductions)} ${cur}</span></div>
+      <div class="r tot"><span>NET À REVERSER</span><span>${f(T.net)} ${cur}</span></div>
+    </div>
+    <div class="footer">Document généré par ${company} · ${d.genDate}</div>
+    <script>window.onload=()=>window.print();</script>
+  </body></html>`;
+}
+
+function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], transactions = [], properties = [], orgSettings = {}, currentUser, canValidate, onDone, dispatch, toast }) {
   const [ownerId, setOwnerId] = useState('');
   const [monthFilter, setMonthFilter] = useState('Tous');
   const [frais, setFrais] = useState('');            // global fees for the whole remittance
@@ -662,6 +756,72 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
   const totalFrais = Number(frais) || 0;
   // Net à reverser = loyers/arriérés encaissés + cautions & avances − commission − charges − frais éventuels
   const totalNet = totalAmount + totalDeposits - totalCommission - totalCharges - totalFrais;
+
+  // ── Génère le bordereau DÉTAILLÉ imprimable (PDF via impression navigateur) ──
+  const openStatement = () => {
+    if (!owner) { toast('Sélectionnez un propriétaire', 'error'); return; }
+    const company = orgSettings.companyName || 'MINSOUAH';
+    const selKey = monthFilter === 'Tous' ? null : monthKey(monthFilter);
+    const payRows = scope.map(p => {
+      const amt = Number(p.amount) || 0;
+      const pk = p.month ? monthKey(p.month) : null;
+      const isArr = selKey != null && pk != null && pk < selKey;
+      const isAdv = selKey != null && pk != null && pk > selKey;
+      return {
+        unit: p.propertyName || '', tenant: p.tenantName || '', period: p.month || '', paidDate: p.paidDate || '', method: p.method || '',
+        loyer: (!isArr && !isAdv) ? amt : 0, arrear: isArr ? amt : 0, advance: isAdv ? amt : 0,
+        caution: 0, moisAvance: '', charges: 0, autres: 0, total: amt, isNew: false,
+      };
+    });
+    const depRows = ownerDeposits.map(t => {
+      const caution = Number(t.cautionAmount) || 0; const adv = Number(t.advanceAmount) || 0;
+      return {
+        unit: t.property || '', tenant: t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim(),
+        period: dateToMonthLabel(t.since) || '—', paidDate: t.since || '—', method: 'Entrée',
+        loyer: 0, arrear: 0, advance: adv, caution, moisAvance: (Number(t.advanceMonths) || 0) ? String(t.advanceMonths) : '', charges: 0, autres: 0,
+        total: caution + adv, isNew: true,
+      };
+    });
+    const rows = [...payRows, ...depRows];
+    const deductions = (transactions || []).filter(t => !t.positive && (monthFilter === 'Tous' || inSelMonth(t.date)))
+      .map(t => ({ date: t.date || '—', label: t.description || t.label || 'Dépense', category: t.type || t.category || '—', obs: t.entity || '', amount: Math.abs(Number(t.amount) || 0) }));
+    const totExpenses = deductions.reduce((s, x) => s + x.amount, 0);
+    if (totalCommission > 0) deductions.push({ date: '—', label: `Commission de gestion (${rate}%)`, category: 'Commission', obs: company, amount: totalCommission });
+    const totLoyers = payRows.reduce((s, r) => s + r.loyer, 0);
+    const totArr = payRows.reduce((s, r) => s + r.arrear, 0);
+    const totAdv = rows.reduce((s, r) => s + r.advance, 0);
+    const totCaution = depRows.reduce((s, r) => s + r.caution, 0);
+    const totEncaisse = rows.reduce((s, r) => s + r.total, 0);
+    const totDeductions = totExpenses + totalCommission;
+    const net = totEncaisse - totDeductions;
+    const aptMap = {};
+    rows.forEach(r => { const k = r.unit || '—'; if (!aptMap[k]) aptMap[k] = { unit: k, tenant: r.tenant, encaisse: 0 }; aptMap[k].encaisse += r.total; if (r.tenant && !aptMap[k].tenant) aptMap[k].tenant = r.tenant; });
+    const perApt = Object.values(aptMap).map(a => ({ ...a, status: a.encaisse > 0 ? 'Occupé' : '—', deductions: 0, net: a.encaisse }));
+    const html = buildOwnerStatementHTML({
+      owner: owner.name, period: monthFilter === 'Tous' ? 'Toutes périodes' : monthFilter, rate,
+      bank: `${owner.bank || '—'} · ${owner.iban || 'RIB —'}`,
+      bordNo: `BRD-${(monthFilter === 'Tous' ? 'ALL' : monthFilter).replace(/\s/g, '').toUpperCase()}-${owner.id}`,
+      genDate: new Date().toLocaleDateString('fr-FR'),
+      nbBiens: new Set(rows.map(r => r.unit).filter(Boolean)).size,
+      nbLocataires: new Set(rows.map(r => r.tenant).filter(Boolean)).size,
+      rows, deductions, perApt, orgSettings,
+      totals: { loyers: totLoyers, arrieres: totArr, avances: totAdv, cautions: totCaution, moisAvance: '', charges: 0, autres: 0, encaisse: totEncaisse, deductions: totDeductions, net },
+    });
+    const win = window.open('', '_blank', 'width=1000,height=750');
+    if (win) { win.document.write(html); win.document.close(); }
+  };
+
+  const shareWhatsApp = () => {
+    if (!owner) { toast('Sélectionnez un propriétaire', 'error'); return; }
+    const msg = encodeURIComponent(`Bonjour ${owner.name},\nBordereau ${monthFilter === 'Tous' ? '' : monthFilter} — Net à reverser : ${fmt(totalNet)} FCFA.\n${orgSettings.companyName || 'MINSOUAH'}`);
+    window.open(`https://wa.me/${(owner.phone || '').replace(/[^0-9]/g, '')}?text=${msg}`, '_blank');
+  };
+  const shareEmail = () => {
+    if (!owner) { toast('Sélectionnez un propriétaire', 'error'); return; }
+    const subject = encodeURIComponent(`Bordereau de reversement ${monthFilter === 'Tous' ? '' : '— ' + monthFilter}`);
+    const body = encodeURIComponent(`Bonjour ${owner.name},\n\nVeuillez trouver le récapitulatif de reversement.\nNet à reverser : ${fmt(totalNet)} FCFA.\n\nCordialement,\n${orgSettings.companyName || 'MINSOUAH'}`);
+    window.open(`mailto:${owner.email || ''}?subject=${subject}&body=${body}`, '_blank');
+  };
   // Group the bilan by month for a clean recap (not per-tenant selection)
   const byMonth = useMemo(() => {
     const g = {};
@@ -758,6 +918,21 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
                 <p className={`text-lg font-black mt-0.5 ${c.neg ? 'text-amber-700' : 'text-on-surface'}`}>{c.neg && c.value ? '−' : ''}{fmt(c.value)}</p>
               </div>
             ))}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button onClick={openStatement}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition-opacity">
+              <Icon name="description" size={16} /> Bordereau détaillé (PDF)
+            </button>
+            <button onClick={shareWhatsApp}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-green-100 text-green-700 text-sm font-semibold hover:bg-green-200 transition-colors">
+              <Icon name="chat" size={16} /> WhatsApp
+            </button>
+            <button onClick={shareEmail}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-100 text-blue-700 text-sm font-semibold hover:bg-blue-200 transition-colors">
+              <Icon name="mail" size={16} /> E-mail
+            </button>
           </div>
 
           <div className="bg-surface rounded-2xl border border-outline-variant/20 p-4">
