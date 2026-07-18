@@ -702,7 +702,7 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
         <tr><td style="padding:8px 10px">Cautions & avances (nouveaux locataires)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.cautionsAvances)}</td></tr>
         <tr style="background:#f0fdf4;font-weight:800"><td style="padding:9px 10px;color:#15803d">TOTAL ENCAISSÉ EN ${currentMonth.toUpperCase()}</td><td style="padding:9px 10px;text-align:right;color:#15803d">${fCFA(synthesis.totalEncaisse)}</td></tr>
         <tr><td style="padding:8px 10px;color:#b91c1c">(−) Charges du mois</td><td style="padding:8px 10px;text-align:right;color:#b91c1c">− ${fCFA(synthesis.charges)}</td></tr>
-        <tr style="background:#785a00;color:#fff;font-weight:900"><td style="padding:11px 10px;font-size:13px">TOTAL GÉNÉRAL À REVERSER</td><td style="padding:11px 10px;text-align:right;font-size:14px">${fCFA(synthesis.totalAReverser)}</td></tr>
+        <tr style="background:#785a00;color:#fff;font-weight:900"><td style="padding:11px 10px;font-size:13px">NET À REVERSER AU PROPRIÉTAIRE</td><td style="padding:11px 10px;text-align:right;font-size:14px">${fCFA(synthesis.totalAReverser)}</td></tr>
       </tbody>
     </table>
     <p style="font-size:9px;color:#b0a090;margin-top:6px">Encaissements réels du mois (par date de paiement) : loyers du mois + arriérés recouvrés + loyers anticipés + cautions & avances des nouveaux locataires, diminués des charges du mois.</p>
