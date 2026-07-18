@@ -496,8 +496,13 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
   const expectedContracts = activeContracts.filter(c => !advanceNames.has((c.tenant || '').toLowerCase().trim()));
   const totalExpected = expectedContracts.reduce((s, c) => s + (c.rent || 0), 0);
   const paidMonth = curMonthPmts.filter(p => p.status === 'Payé');
-  const totalCollected = paidMonth.filter(p => !p.avanceVerseeProprio).reduce((s, p) => s + (p.amount || 0), 0);
-  const totalCommission = paidMonth.reduce((s, p) => s + (p.commissionAmount != null ? p.commissionAmount : 0), 0);
+  // Encaissé NET des montants déjà reversés au propriétaire (avanceVerseeProprio),
+  // pour rester cohérent avec le KPI « Encaissés » de la page et la synthèse.
+  // Le brut (avec les versés) sert uniquement au taux de recouvrement.
+  const paidMonthHeld = paidMonth.filter(p => !p.avanceVerseeProprio);
+  const totalCollectedGross = paidMonth.reduce((s, p) => s + (p.amount || 0), 0);
+  const totalCollected = paidMonthHeld.reduce((s, p) => s + (p.amount || 0), 0);
+  const totalCommission = paidMonthHeld.reduce((s, p) => s + (p.commissionAmount != null ? p.commissionAmount : 0), 0);
   const totalNetOwner = totalCollected - totalCommission;
   const totalArrieres = arrearsByTenant.reduce((s, g) => s + g.total, 0);
 
@@ -566,7 +571,7 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
 
   const paidCount = expectedContracts.filter(c => paidNames.has((c.tenant || '').toLowerCase().trim())).length;
   const unpaidCount = expectedContracts.length - paidCount;
-  const recoveryRate = totalExpected > 0 ? Math.round(totalCollected / totalExpected * 100) : 0;
+  const recoveryRate = totalExpected > 0 ? Math.round(totalCollectedGross / totalExpected * 100) : 0;
   // Impayé RÉEL du mois (identique à la page « Suivi des paiements ») : loyers
   // non réglés + locataires « dus ce mois » sans aucun paiement enregistré. On
   // ne fait PLUS « Attendu − Encaissé » : depuis qu'on retire de l'encaissé les
@@ -697,7 +702,7 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
         <tr><td style="padding:8px 10px">Cautions & avances (nouveaux locataires)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.cautionsAvances)}</td></tr>
         <tr style="background:#f0fdf4;font-weight:800"><td style="padding:9px 10px;color:#15803d">TOTAL ENCAISSÉ EN ${currentMonth.toUpperCase()}</td><td style="padding:9px 10px;text-align:right;color:#15803d">${fCFA(synthesis.totalEncaisse)}</td></tr>
         <tr><td style="padding:8px 10px;color:#b91c1c">(−) Charges du mois</td><td style="padding:8px 10px;text-align:right;color:#b91c1c">− ${fCFA(synthesis.charges)}</td></tr>
-        <tr style="background:#785a00;color:#fff;font-weight:900"><td style="padding:11px 10px;font-size:13px">TOTAL GÉNÉRAL À REVERSER</td><td style="padding:11px 10px;text-align:right;font-size:14px">${fCFA(synthesis.totalAReverser)}</td></tr>
+        <tr style="background:#785a00;color:#fff;font-weight:900"><td style="padding:11px 10px;font-size:13px">NET À REVERSER AU PROPRIÉTAIRE</td><td style="padding:11px 10px;text-align:right;font-size:14px">${fCFA(synthesis.totalAReverser)}</td></tr>
       </tbody>
     </table>
     <p style="font-size:9px;color:#b0a090;margin-top:6px">Encaissements réels du mois (par date de paiement) : loyers du mois + arriérés recouvrés + loyers anticipés + cautions & avances des nouveaux locataires, diminués des charges du mois.</p>

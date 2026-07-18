@@ -65,6 +65,7 @@ export default function OwnerPortal() {
     payments = [],
     tickets = [],
     inspections = [],
+    tenants = [],
     currentUser,
   } = state;
   const navigate = useNavigate();
@@ -356,14 +357,32 @@ export default function OwnerPortal() {
     if (w) { w.onload = () => { w.print(); URL.revokeObjectURL(url); }; }
   };
 
-  /* ─── 4 soldes : brut, commissions, reversé, solde restant ─────── */
-  /* IMPORTANT : ces hooks doivent être AVANT tout return conditionnel
+  /* ─── Net à reverser : sélection mois + type (loyers / nouveaux locataires) ─
+     IMPORTANT : ces hooks doivent être AVANT tout return conditionnel
      (sinon React #310 : « plus de hooks qu'au rendu précédent »). */
+  const [revMonth, setRevMonth] = useState('Tous');
+  const [revType, setRevType] = useState('encaissements'); // 'encaissements' | 'nouveaux'
+  const OP_MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+  const opMonthLabel = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) return `${OP_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+    const m = String(dateStr).match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    return m ? `${OP_MONTHS[Number(m[2]) - 1]} ${m[3]}` : '';
+  };
+  const inRevMonth = (dateStr) => revMonth === 'Tous' ? true : opMonthLabel(dateStr) === revMonth;
+  const opMonthKey = (l) => { const [mn, yr] = (l || '').split(' '); const i = OP_MONTHS.indexOf(mn); return i >= 0 ? Number(yr) * 100 + i : 0; };
+  const revMonths = useMemo(() =>
+    [...new Set(ownerPayments.map(p => opMonthLabel(p.paidDate)).filter(Boolean))].sort((a, b) => opMonthKey(b) - opMonthKey(a)),
+    [ownerPayments]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const fmtCFA = (n) => `${(Number(n) || 0).toLocaleString('fr-FR')} FCFA`;
   const commOf = (p) => p.commissionAmount != null ? p.commissionAmount : Math.round((p.amount || 0) * (Number(owner?.commissionRate) || 0) / 100);
   const netOf = (p) => p.montantNet != null ? p.montantNet : ((p.amount || 0) - commOf(p));
+
+  // Loyers encaissés (filtrés par mois d'encaissement si un mois est choisi)
   const revenus = useMemo(() => {
-    const paid = ownerPayments.filter(p => p.status === 'Payé');
+    const paid = ownerPayments.filter(p => p.status === 'Payé' && inRevMonth(p.paidDate));
     const brut = paid.reduce((s, p) => s + (p.amount || 0), 0);
     const commissions = paid.reduce((s, p) => s + commOf(p), 0);
     const reversed = paid.filter(p => p.versementProprioId || p.avanceVerseeProprio);
@@ -374,7 +393,24 @@ export default function OwnerPortal() {
       soldeRestant: pending.reduce((s, p) => s + netOf(p), 0),
       nbPaid: paid.length,
     };
-  }, [ownerPayments, owner]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ownerPayments, owner, revMonth]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cautions & avances des NOUVEAUX locataires du propriétaire (par mois d'entrée)
+  const revDeposits = useMemo(() => {
+    const propNames = new Set(ownerProperties.map(pr => norm(pr.name || pr.propertyName)).filter(Boolean));
+    const list = (tenants || []).filter(t => {
+      const amt = (Number(t.cautionAmount) || 0) + (Number(t.advanceAmount) || 0);
+      if (amt <= 0) return false;
+      const pn = norm(t.property);
+      const belongs = propNames.has(pn) || [...propNames].some(n => n && pn && (pn.includes(n) || n.includes(pn)));
+      if (!belongs) return false;
+      return revMonth === 'Tous' ? true : inRevMonth(t.since);
+    });
+    const caution = list.reduce((s, t) => s + (Number(t.cautionAmount) || 0), 0);
+    const avance = list.reduce((s, t) => s + (Number(t.advanceAmount) || 0), 0);
+    return { list, caution, avance, total: caution + avance };
+  }, [tenants, ownerProperties, owner, revMonth]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Historique des reversements (bordereaux propriétaire validés le concernant)
   const ownerVersements = useMemo(() =>
     (state.bordereaux || [])
@@ -771,24 +807,72 @@ export default function OwnerPortal() {
       {/* ── REVENUS (4 soldes) ───────────────────────────────────── */}
       {activeTab === 'revenus' && (
         <div className="px-4 sm:px-6 md:px-8 pb-8 max-w-5xl mx-auto flex flex-col gap-4">
+          {/* Sélection du mois + type de reversement */}
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={revMonth} onChange={e => setRevMonth(e.target.value)}
+              className="px-3 py-2 rounded-xl border border-outline-variant/40 bg-surface-container text-sm">
+              <option value="Tous">Tous les mois</option>
+              {revMonths.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+            <div className="inline-flex rounded-xl border border-outline-variant/40 overflow-hidden">
+              <button onClick={() => setRevType('encaissements')}
+                className={`px-3 py-2 text-sm font-semibold ${revType === 'encaissements' ? 'bg-primary text-on-primary' : 'bg-surface text-on-surface-variant'}`}>
+                Encaissements du mois
+              </button>
+              <button onClick={() => setRevType('nouveaux')}
+                className={`px-3 py-2 text-sm font-semibold ${revType === 'nouveaux' ? 'bg-primary text-on-primary' : 'bg-surface text-on-surface-variant'}`}>
+                Nouveaux locataires
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
+            {(revType === 'encaissements' ? [
               { label: 'Loyers bruts encaissés', value: revenus.brut, icon: 'payments', cls: 'text-primary bg-primary/10' },
               { label: 'Commissions Minsouah', value: revenus.commissions, icon: 'percent', cls: 'text-amber-700 bg-amber-100', neg: true },
               { label: 'Déjà reversé', value: revenus.dejaReverse, icon: 'check_circle', cls: 'text-blue-700 bg-blue-100' },
               { label: 'Solde restant à reverser', value: revenus.soldeRestant, icon: 'account_balance_wallet', cls: 'text-green-700 bg-green-100' },
-            ].map(c => (
+            ] : [
+              { label: 'Cautions reçues', value: revDeposits.caution, icon: 'savings', cls: 'text-blue-700 bg-blue-100' },
+              { label: 'Avances reçues', value: revDeposits.avance, icon: 'payments', cls: 'text-primary bg-primary/10' },
+              { label: 'Total à reverser (nouveaux)', value: revDeposits.total, icon: 'account_balance_wallet', cls: 'text-green-700 bg-green-100' },
+              { label: 'Nouveaux locataires', value: revDeposits.list.length, icon: 'group', cls: 'text-on-surface bg-surface-container-high', count: true },
+            ]).map(c => (
               <div key={c.label} className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-4 shadow-card">
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-2 ${c.cls}`}><Icon name={c.icon} size={20} /></div>
                 <p className="text-xs text-on-surface-variant">{c.label}</p>
-                <p className={`text-lg font-black mt-0.5 ${c.neg ? 'text-amber-700' : 'text-on-surface'}`}>{c.neg && c.value ? '−' : ''}{fmtCFA(c.value)}</p>
+                <p className={`text-lg font-black mt-0.5 ${c.neg ? 'text-amber-700' : 'text-on-surface'}`}>{c.neg && c.value ? '−' : ''}{c.count ? c.value : fmtCFA(c.value)}</p>
               </div>
             ))}
           </div>
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800 flex items-start gap-2">
             <Icon name="info" size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
-            <span><strong>Loyers bruts</strong> = total encaissé des locataires. <strong>Commissions</strong> = honoraires de gestion Minsouah (figés à l'encaissement). <strong>Net</strong> = brut − commissions. Le <strong>solde restant</strong> vous sera reversé.</span>
+            <span>{revType === 'encaissements'
+              ? <><strong>Loyers bruts</strong> = total encaissé{revMonth !== 'Tous' ? ` en ${revMonth}` : ''}. <strong>Commissions</strong> = honoraires Minsouah. Le <strong>solde restant</strong> est le net qui vous sera reversé.</>
+              : <>Cautions et avances des <strong>nouveaux locataires</strong>{revMonth !== 'Tous' ? ` entrés en ${revMonth}` : ''}, à reverser en plus des loyers du mois.</>}</span>
           </div>
+
+          {revType === 'nouveaux' && revDeposits.list.length > 0 && (
+            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-4 shadow-card overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-surface-container-high text-on-surface-variant">
+                  <tr>{['Locataire', 'Bien', 'Entrée', 'Caution', 'Avance', 'Total'].map(h => <th key={h} className="px-3 py-2 text-xs font-bold uppercase">{h}</th>)}</tr>
+                </thead>
+                <tbody className="divide-y divide-outline-variant/20">
+                  {revDeposits.list.map((t, i) => (
+                    <tr key={t.id || i}>
+                      <td className="px-3 py-2 font-semibold">{t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim() || '—'}</td>
+                      <td className="px-3 py-2 text-on-surface-variant">{t.property || '—'}</td>
+                      <td className="px-3 py-2 text-on-surface-variant">{t.since || '—'}</td>
+                      <td className="px-3 py-2">{fmtCFA(t.cautionAmount)}</td>
+                      <td className="px-3 py-2">{fmtCFA(t.advanceAmount)}</td>
+                      <td className="px-3 py-2 font-bold text-green-700">{fmtCFA((Number(t.cautionAmount) || 0) + (Number(t.advanceAmount) || 0))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-4 shadow-card">
             <h3 className="font-bold text-on-surface mb-3 flex items-center gap-2"><Icon name="history" size={18} /> Historique des reversements</h3>
