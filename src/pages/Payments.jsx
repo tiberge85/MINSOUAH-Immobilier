@@ -496,7 +496,7 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
   const expectedContracts = activeContracts.filter(c => !advanceNames.has((c.tenant || '').toLowerCase().trim()));
   const totalExpected = expectedContracts.reduce((s, c) => s + (c.rent || 0), 0);
   const paidMonth = curMonthPmts.filter(p => p.status === 'Payé');
-  const totalCollected = paidMonth.reduce((s, p) => s + (p.amount || 0), 0);
+  const totalCollected = paidMonth.filter(p => !p.avanceVerseeProprio).reduce((s, p) => s + (p.amount || 0), 0);
   const totalCommission = paidMonth.reduce((s, p) => s + (p.commissionAmount != null ? p.commissionAmount : 0), 0);
   const totalNetOwner = totalCollected - totalCommission;
   const totalArrieres = arrearsByTenant.reduce((s, g) => s + g.total, 0);
