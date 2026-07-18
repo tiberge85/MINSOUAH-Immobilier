@@ -567,6 +567,27 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
   const paidCount = expectedContracts.filter(c => paidNames.has((c.tenant || '').toLowerCase().trim())).length;
   const unpaidCount = expectedContracts.length - paidCount;
   const recoveryRate = totalExpected > 0 ? Math.round(totalCollected / totalExpected * 100) : 0;
+  // Impayé RÉEL du mois (identique à la page « Suivi des paiements ») : loyers
+  // non réglés + locataires « dus ce mois » sans aucun paiement enregistré. On
+  // ne fait PLUS « Attendu − Encaissé » : depuis qu'on retire de l'encaissé les
+  // paiements déjà versés au propriétaire (ou saisis à 0), cette soustraction
+  // comptait à tort ces loyers pourtant payés comme des impayés.
+  const totalUnpaid = (() => {
+    const recorded = new Set(curMonthPmts.map(p => (p.tenantName || '').toLowerCase().trim()).filter(Boolean));
+    const rentFor = (name) => {
+      const key = (name || '').toLowerCase().trim();
+      const c = (contracts || []).find(c => (c.tenant || '').toLowerCase().trim() === key && (c.status === 'Actif' || c.status === 'Expirant'));
+      return c?.rent || 0;
+    };
+    let sum = curMonthPmts.filter(p => p.status !== 'Payé' && p.status !== 'Annulé')
+      .reduce((s, p) => s + ((p.amount && p.amount > 0) ? p.amount : rentFor(p.tenantName)), 0);
+    expectedContracts.forEach(c => {
+      const name = (c.tenant || '').toLowerCase().trim();
+      if (!name || recorded.has(name)) return;
+      sum += c.rent || 0;
+    });
+    return sum;
+  })();
   const rateColor = recoveryRate >= 80 ? '#15803d' : recoveryRate >= 50 ? '#b45309' : '#b91c1c';
 
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
@@ -635,7 +656,7 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
     </div>
     <div class="kpi">
       <div class="kpi-l">Impayés (mois)</div>
-      <div class="kpi-v" style="color:#b45309">${fCFA(totalExpected - totalCollected)}</div>
+      <div class="kpi-v" style="color:#b45309">${fCFA(totalUnpaid)}</div>
       <div class="kpi-s">${unpaidCount} locataire(s)</div>
     </div>
     <div class="kpi">
@@ -1028,7 +1049,7 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
   });
   const trendData = trendMonths.map(m => {
     const ps = allPayments.filter(p => p.month === m);
-    const totalCollected = monthPmts.filter(p => p.status === 'Payé' && !p.avanceVerseeProprio).reduce((s, p) => s + (p.amount || 0), 0);
+    const pA = ps.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
     const tA = ps.reduce((s, p) => s + (p.amount || 0), 0);
     return { label: m, rate: tA > 0 ? Math.round(pA / tA * 100) : null, collected: pA };
   });
@@ -1592,7 +1613,10 @@ export default function Payments() {
   const totalExpected = (contracts || [])
     .filter(c => c.status === 'Actif' || c.status === 'Expirant')
     .reduce((s, c) => s + (Number(c.rent) || 0), 0);
-  const totalCollected = monthPmts.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+  // « Encaissés » = loyers réglés du mois, MAIS on retire ceux déjà reversés au
+  // propriétaire (avanceVerseeProprio) : cette somme n'est plus dans la caisse à
+  // reverser, donc elle ne doit pas gonfler l'encaissé du mois en cours.
+  const totalCollected = monthPmts.filter(p => p.status === 'Payé' && !p.avanceVerseeProprio).reduce((s, p) => s + (p.amount || 0), 0);
   // Impayés du mois = enregistrements non réglés (avec repli sur le loyer du contrat
   // quand le montant est à 0) + locataires actifs SANS aucun enregistrement ce mois
   // (le mois courant ne matérialise pas les impayés : les records ne sont créés qu'à
