@@ -496,8 +496,13 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
   const expectedContracts = activeContracts.filter(c => !advanceNames.has((c.tenant || '').toLowerCase().trim()));
   const totalExpected = expectedContracts.reduce((s, c) => s + (c.rent || 0), 0);
   const paidMonth = curMonthPmts.filter(p => p.status === 'Payé');
-  const totalCollected = paidMonth.reduce((s, p) => s + (p.amount || 0), 0);
-  const totalCommission = paidMonth.reduce((s, p) => s + (p.commissionAmount != null ? p.commissionAmount : 0), 0);
+  // Encaissé NET des montants déjà reversés au propriétaire (avanceVerseeProprio),
+  // pour rester cohérent avec le KPI « Encaissés » de la page et la synthèse.
+  // Le brut (avec les versés) sert uniquement au taux de recouvrement.
+  const paidMonthHeld = paidMonth.filter(p => !p.avanceVerseeProprio);
+  const totalCollectedGross = paidMonth.reduce((s, p) => s + (p.amount || 0), 0);
+  const totalCollected = paidMonthHeld.reduce((s, p) => s + (p.amount || 0), 0);
+  const totalCommission = paidMonthHeld.reduce((s, p) => s + (p.commissionAmount != null ? p.commissionAmount : 0), 0);
   const totalNetOwner = totalCollected - totalCommission;
   const totalArrieres = arrearsByTenant.reduce((s, g) => s + g.total, 0);
 
@@ -566,7 +571,7 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
 
   const paidCount = expectedContracts.filter(c => paidNames.has((c.tenant || '').toLowerCase().trim())).length;
   const unpaidCount = expectedContracts.length - paidCount;
-  const recoveryRate = totalExpected > 0 ? Math.round(totalCollected / totalExpected * 100) : 0;
+  const recoveryRate = totalExpected > 0 ? Math.round(totalCollectedGross / totalExpected * 100) : 0;
   // Impayé RÉEL du mois (identique à la page « Suivi des paiements ») : loyers
   // non réglés + locataires « dus ce mois » sans aucun paiement enregistré. On
   // ne fait PLUS « Attendu − Encaissé » : depuis qu'on retire de l'encaissé les
