@@ -593,23 +593,6 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
   const owner = owners.find(o => String(o.id) === String(ownerId));
   const rate = owner ? (Number(owner.commissionRate) || 0) : 0;
 
-  // All the owner's collected rents not yet reversed
-  const ownerPayments = useMemo(() => {
-    if (!owner) return [];
-    // Exclude rents already reversed via a voucher OR manually flagged as
-    // "déjà versé au propriétaire" (advance payments) so they don't reappear.
-    return paidPayments.filter(p => !p.versementProprioId && !p.avanceVerseeProprio && ownerIdOfPayment(p) === Number(owner.id));
-  }, [owner, paidPayments, ownerIdOfPayment]);
-
-  // Tous les loyers encaissés rattachés à ce propriétaire (reversés ou non) —
-  // pour réconcilier avec le rapport global (qui, lui, couvre TOUS les propriétaires).
-  const ownerAllPaid = useMemo(() => {
-    if (!owner) return [];
-    const all = paidPayments.filter(p => ownerIdOfPayment(p) === Number(owner.id));
-    return monthFilter === 'Tous' ? all : all.filter(p => p.month === monthFilter);
-  }, [owner, paidPayments, ownerIdOfPayment, monthFilter]);
-  const ownerReversedCount = ownerAllPaid.filter(p => p.versementProprioId || p.avanceVerseeProprio).length;
-
   // Mois = mois d'ENCAISSEMENT (date de paiement), pour inclure les arriérés
   // reçus ce mois-ci même s'ils concernent un mois de loyer passé.
   const MONTHS_FR = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
@@ -621,6 +604,22 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
     return m ? `${MONTHS_FR[Number(m[2]) - 1]} ${m[3]}` : '';
   };
   const inSelMonth = (dateStr) => monthFilter === 'Tous' ? true : dateToMonthLabel(dateStr) === monthFilter;
+
+  // Loyers encaissés du propriétaire non encore reversés (par date de paiement).
+  const ownerPayments = useMemo(() => {
+    if (!owner) return [];
+    // Exclut ce qui est déjà reversé (bordereau validé) ou marqué « versé propriétaire ».
+    return paidPayments.filter(p => !p.versementProprioId && !p.avanceVerseeProprio && ownerIdOfPayment(p) === Number(owner.id));
+  }, [owner, paidPayments, ownerIdOfPayment]);
+
+  // Tous les paiements du propriétaire encaissés dans le mois (reversés ou non),
+  // par date de paiement — pour le compteur de réconciliation.
+  const ownerAllPaid = useMemo(() => {
+    if (!owner) return [];
+    const all = paidPayments.filter(p => ownerIdOfPayment(p) === Number(owner.id));
+    return monthFilter === 'Tous' ? all : all.filter(p => dateToMonthLabel(p.paidDate) === monthFilter);
+  }, [owner, paidPayments, ownerIdOfPayment, monthFilter]);
+  const ownerReversedCount = ownerAllPaid.filter(p => p.versementProprioId || p.avanceVerseeProprio).length;
 
   const months = useMemo(() => [...new Set(ownerPayments.map(p => dateToMonthLabel(p.paidDate)).filter(Boolean))]
     .sort((a, b) => monthKey(b) - monthKey(a)), [ownerPayments]);
@@ -737,7 +736,7 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
           {/* ── Réconciliation avec le rapport global ── */}
           <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800">
             <strong>{ownerAllPaid.length}</strong> loyer(s) encaissé(s) pour {owner.name}{monthFilter !== 'Tous' ? ` — ${monthFilter}` : ''} :
-            <strong> {ownerPayments.filter(p => monthFilter === 'Tous' || p.month === monthFilter).length}</strong> à reverser · <strong>{ownerReversedCount}</strong> déjà reversé(s).
+            <strong> {scope.length}</strong> à reverser · <strong>{ownerReversedCount}</strong> déjà reversé(s).
             <span className="block text-xs text-blue-600 mt-1">
               Le rapport global additionne les loyers de <strong>tous</strong> les propriétaires ; ce bordereau ne concerne que <strong>{owner.name}</strong>. Si un chiffre du rapport global est plus élevé, la différence correspond aux loyers d'autres propriétaires (ou déjà reversés). La somme des bordereaux de tous les propriétaires = le rapport global.
             </span>
@@ -781,7 +780,7 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
                   <tbody className="divide-y divide-outline-variant/20">
                     {byMonth.map(g => (
                       <tr key={g.period}>
-                        <td className="px-3 py-2 font-semibold">{g.period}</td>
+                        <td className="px-3 py-2 font-semibold">{g.period}{monthFilter !== 'Tous' && g.period !== monthFilter ? <span className="ml-1 text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">arriéré reçu</span> : ''}</td>
                         <td className="px-3 py-2 text-on-surface-variant">{g.count}</td>
                         <td className="px-3 py-2">{fmt(g.amount)}</td>
                         <td className="px-3 py-2 text-amber-700">−{fmt(g.commission)}</td>
