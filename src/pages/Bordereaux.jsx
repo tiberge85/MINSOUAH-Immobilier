@@ -96,7 +96,7 @@ export default function Bordereaux() {
       const prop =
         (properties || []).find(pr => norm(pr.name || pr.propertyName) === base) ||
         (properties || []).find(pr => { const n = norm(pr.name || pr.propertyName); return n && (raw === n || raw.startsWith(n) || raw.includes(n)); });
-      return prop?.ownerId != null ? Number(prop.ownerId) : ((owners || []).length === 1 ? Number(owners[0].id) : null);
+      const resolved = prop?.ownerId != null ? Number(prop.ownerId) : null;
       return resolved != null ? resolved : soleOwner;
     } catch { return null; }
   };
@@ -707,21 +707,30 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
   const ownerPayments = useMemo(() => {
     if (!owner) return [];
     // Exclut ce qui est déjà reversé (bordereau validé) ou marqué « versé propriétaire ».
-   return paidPayments.filter(p => { if (p.versementProprioId || p.avanceVerseeProprio) return false; const oid = ownerIdOfPayment(p); return oid === Number(owner.id) || oid == null; }); }, [owner, paidPayments, ownerIdOfPayment]);
+    return paidPayments.filter(p => {
+      if (p.versementProprioId || p.avanceVerseeProprio) return false;
+      const oid = ownerIdOfPayment(p);
+      const known = oid != null && (owners || []).some(o => Number(o.id) === oid);
+      return oid === Number(owner.id) || !known; // non rattaché ou rattaché à une fiche inexistante → au propriétaire choisi
+    });
+  }, [owner, owners, paidPayments, ownerIdOfPayment]);
 
   // Tous les paiements du propriétaire encaissés dans le mois (reversés ou non),
   // par date de paiement — pour le compteur de réconciliation.
   const ownerAllPaid = useMemo(() => {
     if (!owner) return [];
-    const all = paidPayments.filter(p => ownerIdOfPayment(p) === Number(owner.id));
-    return monthFilter === 'Tous' ? all : all.filter(p => dateToMonthLabel(p.paidDate) === monthFilter);
-  }, [owner, paidPayments, ownerIdOfPayment, monthFilter]);
+    const all = paidPayments.filter(p => { const oid = ownerIdOfPayment(p); const known = oid != null && (owners || []).some(o => Number(o.id) === oid); return oid === Number(owner.id) || !known; });
+    return monthFilter === 'Tous' ? all : all.filter(p => p.month === monthFilter || dateToMonthLabel(p.paidDate) === monthFilter);
+  }, [owner, owners, paidPayments, ownerIdOfPayment, monthFilter]);
   const ownerReversedCount = ownerAllPaid.filter(p => p.versementProprioId || p.avanceVerseeProprio).length;
 
   const months = useMemo(() => [...new Set(ownerPayments.map(p => dateToMonthLabel(p.paidDate)).filter(Boolean))]
     .sort((a, b) => monthKey(b) - monthKey(a)), [ownerPayments]);
   // Loyers/arriérés/anticipés ENCAISSÉS dans le mois choisi (par date de paiement)
- const scope = monthFilter === 'Tous' ? ownerPayments : ownerPayments.filter(p => p.month === monthFilter || dateToMonthLabel(p.paidDate) === monthFilter);
+  // Toutes les entrées du mois = loyers DU mois (par mois de loyer) + tout ce qui
+  // a été ENCAISSÉ ce mois-ci (arriérés/anticipés reçus). Union des deux, comme le rapport.
+  const scope = monthFilter === 'Tous' ? ownerPayments : ownerPayments.filter(p => p.month === monthFilter || dateToMonthLabel(p.paidDate) === monthFilter);
+
   // Lines use the commission FROZEN on each payment at cash-in (never recomputed).
   // Fallback to the owner's current rate only for legacy payments without a frozen value.
   const lines = useMemo(() => scope.map(p => {
@@ -742,9 +751,12 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
     return (tenants || []).filter(t => {
       const amt = (Number(t.cautionAmount) || 0) + (Number(t.advanceAmount) || 0);
       if (amt <= 0) return false;
-      const _oid = ownerIdOfPayment({ propertyName: t.property || '' }); if (_oid !== Number(owner.id) && _oid != null) return false;  return monthFilter === 'Tous' ? true : inSelMonth(t.since);
+      const _oid = ownerIdOfPayment({ propertyName: t.property || '' });
+      const known = _oid != null && (owners || []).some(o => Number(o.id) === _oid);
+      if (_oid !== Number(owner.id) && known) return false; // rattaché à une autre fiche existante → exclu
+      return monthFilter === 'Tous' ? true : inSelMonth(t.since);
     });
-  }, [owner, tenants, monthFilter, ownerIdOfPayment]);
+  }, [owner, owners, tenants, monthFilter, ownerIdOfPayment]);
   const totalDeposits = ownerDeposits.reduce((s, t) => s + (Number(t.cautionAmount) || 0) + (Number(t.advanceAmount) || 0), 0);
 
   // Charges = dépenses du mois (module Finances), déduites automatiquement.

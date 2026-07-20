@@ -5,9 +5,9 @@ import Icon from '../components/Icon';
 import { can } from '../lib/permissions';
 
 // ── Constantes ────────────────────────────────────────────────────────────────
-const CATEGORIES = ['Tous', 'Immeuble', 'Studio', '2 Pièces', '3 Pièces', 'Magasin'];
-const PROPERTY_TYPES = ['Immeuble', 'Studio', '2 Pièces', '3 Pièces', 'Magasin'];
-const UNIT_TYPES = ['Studio', '2 Pièces', '3 Pièces', 'Magasin'];
+const CATEGORIES = ['Tous', 'Immeuble', 'Studio', '2 Pièces', '3 Pièces', '4 Pièces', 'Magasin'];
+const PROPERTY_TYPES = ['Immeuble', 'Studio', '2 Pièces', '3 Pièces', '4 Pièces', 'Magasin'];
+const UNIT_TYPES = ['Studio', '2 Pièces', '3 Pièces', '4 Pièces', 'Magasin'];
 const STATUS_COLORS = {
   Loué:        'bg-green-100 text-green-800',
   Disponible:  'bg-surface-container text-on-surface-variant',
@@ -212,7 +212,7 @@ export default function Assets() {
   // La somme Studio + 2 Pièces + 3 Pièces + Magasin + Autre = Total (totalUnits).
   // « Autre » = biens/unités sans type reconnu (type vide, ou « Immeuble » sur un bien simple).
   const typeCounts = useMemo(() => {
-    const c = { 'Studio': 0, '2 Pièces': 0, '3 Pièces': 0, 'Magasin': 0, 'Autre': 0 };
+    const c = { 'Studio': 0, '2 Pièces': 0, '3 Pièces': 0, '4 Pièces': 0, 'Magasin': 0, 'Autre': 0 };
     let immeubles = 0;
     const bump = (t) => { if (UNIT_TYPES.includes(t)) c[t] += 1; else c['Autre'] += 1; };
     properties.forEach(p => {

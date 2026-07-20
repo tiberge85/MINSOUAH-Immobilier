@@ -695,7 +695,7 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
     <table>
       <tbody>
         <tr><td style="padding:8px 10px;font-weight:700">Loyers du mois encaissés</td><td style="padding:8px 10px;text-align:right;font-weight:700;color:#15803d">${fCFA(synthesis.loyersMois)}</td></tr>
-        ${['Studio','2 Pièces','3 Pièces','Magasin'].filter(k => (synthesis.byType?.[k] || 0) > 0).map(k => `<tr><td style="padding:5px 10px 5px 26px;color:#6b7280;font-size:11px">· ${k}</td><td style="padding:5px 10px;text-align:right;color:#6b7280;font-size:11px">${fCFA(synthesis.byType[k])}</td></tr>`).join('')}
+        ${['Studio','2 Pièces','3 Pièces','4 Pièces','Magasin'].filter(k => (synthesis.byType?.[k] || 0) > 0).map(k => `<tr><td style="padding:5px 10px 5px 26px;color:#6b7280;font-size:11px">· ${k}</td><td style="padding:5px 10px;text-align:right;color:#6b7280;font-size:11px">${fCFA(synthesis.byType[k])}</td></tr>`).join('')}
         <tr><td style="padding:8px 10px">Arriérés recouvrés (mois antérieurs)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.arrieres)}</td></tr>
         <tr><td style="padding:8px 10px">Loyers anticipés (mois à venir)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.anticipes)}</td></tr>
         ${Object.keys(synthesis.anticipesByMonth || {}).sort((a,b)=>{const pa=a.split(' '),pb=b.split(' ');return (parseInt(pa[1]||0)*12+MONTH_NAMES.indexOf(pa[0]))-(parseInt(pb[1]||0)*12+MONTH_NAMES.indexOf(pb[0]));}).map(m => `<tr><td style="padding:5px 10px 5px 26px;color:#6b7280;font-size:11px">· ${m}</td><td style="padding:5px 10px;text-align:right;color:#6b7280;font-size:11px">${fCFA(synthesis.anticipesByMonth[m])}</td></tr>`).join('')}
@@ -1698,8 +1698,8 @@ export default function Payments() {
      Tenants still in their advance period (paymentStartDate not yet reached)
      are excluded. Mirrors the reportUnpaid / penaltyList logic. */
   const currentMonthUnpaid = useMemo(
-    () => currentMonthUnpaidList({ payments, contracts, tenants }, now),
-    [payments, contracts, tenants, now]
+    () => currentMonthUnpaidList({ payments, contracts, tenants, properties }, now),
+    [payments, contracts, tenants, properties, now]
   );
 
   /* ── Active tenants in their ADVANCE period this month (paid caution/avance,
@@ -2447,7 +2447,7 @@ export default function Payments() {
     const target = monthLabelToDate(monthLabel);
     if (!target) return null;
     const inSel = (dt) => dt && !isNaN(dt.getTime()) && dt.getFullYear() === target.getFullYear() && dt.getMonth() === target.getMonth();
-    const UT = ['Studio', '2 Pièces', '3 Pièces', 'Magasin'];
+    const UT = ['Studio', '2 Pièces', '3 Pièces', '4 Pièces', 'Magasin'];
     const typeOfPayment = (p) => {
       const pnRaw = (p.propertyName || '').trim();
       const pn = pnRaw.toLowerCase();
@@ -2472,13 +2472,14 @@ export default function Payments() {
       // classe par montant, et pour éviter la catégorie « Autre ».
       if (/\bmag\b|magasin/.test(pn)) return 'Magasin';
       const amt = Number(p.amount) || 0;
+      if (amt >= 400000) return '4 Pièces';
       if (amt >= 300000) return '3 Pièces';
       if (amt >= 200000) return '2 Pièces';
       if (amt >= 100000) return 'Studio';
       return 'Autre';
     };
     let loyersMois = 0, anticipes = 0;
-    const byType = { 'Studio': 0, '2 Pièces': 0, '3 Pièces': 0, 'Magasin': 0, 'Autre': 0 };
+    const byType = { 'Studio': 0, '2 Pièces': 0, '3 Pièces': 0, '4 Pièces': 0, 'Magasin': 0, 'Autre': 0 };
     const anticipesByMonth = {}; // { 'Août 2026': montant, ... }
     (payments || []).forEach(p => {
       if (p.status !== 'Payé') return;
