@@ -26,7 +26,6 @@ const navItems = [
   { path: '/rental',      label: 'Gestion Locative',  icon: 'contract',               mobileIcon: 'contract' },
   { path: '/finance',     label: 'Finances',          icon: 'account_balance_wallet',  mobileIcon: 'assessment' },
   { path: '/payments',    label: 'Paiements',         icon: 'payments',               mobileIcon: 'payments' },
-  { path: '/bordereaux',  label: 'Bordereaux',        icon: 'receipt_long',           mobileIcon: 'receipt_long' },
   { path: '/revenus-minsouah', label: 'Revenus Minsouah', icon: 'savings',            mobileIcon: 'savings' },
   { path: '/maintenance',  label: 'Maintenance',       icon: 'engineering',             mobileIcon: 'engineering' },
   { path: '/inspections', label: 'États des lieux',   icon: 'home_work',               mobileIcon: 'home_work' },
