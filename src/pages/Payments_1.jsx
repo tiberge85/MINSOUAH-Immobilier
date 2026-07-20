@@ -695,14 +695,14 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
     <table>
       <tbody>
         <tr><td style="padding:8px 10px;font-weight:700">Loyers du mois encaissés</td><td style="padding:8px 10px;text-align:right;font-weight:700;color:#15803d">${fCFA(synthesis.loyersMois)}</td></tr>
-        ${['Studio','2 Pièces','3 Pièces','Magasin'].filter(k => (synthesis.byType?.[k] || 0) > 0).map(k => `<tr><td style="padding:5px 10px 5px 26px;color:#6b7280;font-size:11px">· ${k}</td><td style="padding:5px 10px;text-align:right;color:#6b7280;font-size:11px">${fCFA(synthesis.byType[k])}</td></tr>`).join('')}
+        ${['Studio','2 Pièces','3 Pièces','4 Pièces','Magasin'].filter(k => (synthesis.byType?.[k] || 0) > 0).map(k => `<tr><td style="padding:5px 10px 5px 26px;color:#6b7280;font-size:11px">· ${k}</td><td style="padding:5px 10px;text-align:right;color:#6b7280;font-size:11px">${fCFA(synthesis.byType[k])}</td></tr>`).join('')}
         <tr><td style="padding:8px 10px">Arriérés recouvrés (mois antérieurs)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.arrieres)}</td></tr>
         <tr><td style="padding:8px 10px">Loyers anticipés (mois à venir)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.anticipes)}</td></tr>
         ${Object.keys(synthesis.anticipesByMonth || {}).sort((a,b)=>{const pa=a.split(' '),pb=b.split(' ');return (parseInt(pa[1]||0)*12+MONTH_NAMES.indexOf(pa[0]))-(parseInt(pb[1]||0)*12+MONTH_NAMES.indexOf(pb[0]));}).map(m => `<tr><td style="padding:5px 10px 5px 26px;color:#6b7280;font-size:11px">· ${m}</td><td style="padding:5px 10px;text-align:right;color:#6b7280;font-size:11px">${fCFA(synthesis.anticipesByMonth[m])}</td></tr>`).join('')}
         <tr><td style="padding:8px 10px">Cautions & avances (nouveaux locataires)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.cautionsAvances)}</td></tr>
         <tr style="background:#f0fdf4;font-weight:800"><td style="padding:9px 10px;color:#15803d">TOTAL ENCAISSÉ EN ${currentMonth.toUpperCase()}</td><td style="padding:9px 10px;text-align:right;color:#15803d">${fCFA(synthesis.totalEncaisse)}</td></tr>
         <tr><td style="padding:8px 10px;color:#b91c1c">(−) Charges du mois</td><td style="padding:8px 10px;text-align:right;color:#b91c1c">− ${fCFA(synthesis.charges)}</td></tr>
-        <tr style="background:#785a00;color:#fff;font-weight:900"><td style="padding:11px 10px;font-size:13px">TOTAL GÉNÉRAL À REVERSER</td><td style="padding:11px 10px;text-align:right;font-size:14px">${fCFA(synthesis.totalAReverser)}</td></tr>
+        <tr style="background:#785a00;color:#fff;font-weight:900"><td style="padding:11px 10px;font-size:13px">NET À REVERSER AU PROPRIÉTAIRE</td><td style="padding:11px 10px;text-align:right;font-size:14px">${fCFA(synthesis.totalAReverser)}</td></tr>
       </tbody>
     </table>
     <p style="font-size:9px;color:#b0a090;margin-top:6px">Encaissements réels du mois (par date de paiement) : loyers du mois + arriérés recouvrés + loyers anticipés + cautions & avances des nouveaux locataires, diminués des charges du mois.</p>
@@ -1698,8 +1698,8 @@ export default function Payments() {
      Tenants still in their advance period (paymentStartDate not yet reached)
      are excluded. Mirrors the reportUnpaid / penaltyList logic. */
   const currentMonthUnpaid = useMemo(
-    () => currentMonthUnpaidList({ payments, contracts, tenants }, now),
-    [payments, contracts, tenants, now]
+    () => currentMonthUnpaidList({ payments, contracts, tenants, properties }, now),
+    [payments, contracts, tenants, properties, now]
   );
 
   /* ── Active tenants in their ADVANCE period this month (paid caution/avance,
@@ -1999,7 +1999,11 @@ export default function Payments() {
   //          BUT exclude those still in their advance period (paymentStartDate not yet reached)
   // Advance = active-contract tenants whose paymentStartDate is after the selected month
   const { reportUnpaid, reportAdvance } = (() => {
-    const explicit = monthPmts.filter(p => p.status !== 'Payé');
+    // Un paiement ANNULÉ n'est PAS un impayé (cohérent avec le reste de l'app) :
+    // on l'exclut de la liste des impayés. Le locataire reste « déjà traité » ce
+    // mois (présent dans monthPmts) afin de ne pas être re-signalé impayé via la
+    // boucle des contrats : une ligne annulée n'apparaît ni en payé ni en impayé.
+    const explicit = monthPmts.filter(p => p.status !== 'Payé' && p.status !== 'Annulé');
     const alreadyInReport = new Set(monthPmts.map(p => (p.tenantName || '').toLowerCase().trim()));
 
     const unpaid = [...explicit];
@@ -2447,7 +2451,7 @@ export default function Payments() {
     const target = monthLabelToDate(monthLabel);
     if (!target) return null;
     const inSel = (dt) => dt && !isNaN(dt.getTime()) && dt.getFullYear() === target.getFullYear() && dt.getMonth() === target.getMonth();
-    const UT = ['Studio', '2 Pièces', '3 Pièces', 'Magasin'];
+    const UT = ['Studio', '2 Pièces', '3 Pièces', '4 Pièces', 'Magasin'];
     const typeOfPayment = (p) => {
       const pnRaw = (p.propertyName || '').trim();
       const pn = pnRaw.toLowerCase();
@@ -2472,13 +2476,14 @@ export default function Payments() {
       // classe par montant, et pour éviter la catégorie « Autre ».
       if (/\bmag\b|magasin/.test(pn)) return 'Magasin';
       const amt = Number(p.amount) || 0;
+      if (amt >= 400000) return '4 Pièces';
       if (amt >= 300000) return '3 Pièces';
       if (amt >= 200000) return '2 Pièces';
       if (amt >= 100000) return 'Studio';
       return 'Autre';
     };
     let loyersMois = 0, anticipes = 0;
-    const byType = { 'Studio': 0, '2 Pièces': 0, '3 Pièces': 0, 'Magasin': 0, 'Autre': 0 };
+    const byType = { 'Studio': 0, '2 Pièces': 0, '3 Pièces': 0, '4 Pièces': 0, 'Magasin': 0, 'Autre': 0 };
     const anticipesByMonth = {}; // { 'Août 2026': montant, ... }
     (payments || []).forEach(p => {
       if (p.status !== 'Payé') return;
