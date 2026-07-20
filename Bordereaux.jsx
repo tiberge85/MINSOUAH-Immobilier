@@ -707,14 +707,18 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
   const ownerPayments = useMemo(() => {
     if (!owner) return [];
     // Exclut ce qui est déjà reversé (bordereau validé) ou marqué « versé propriétaire ».
-    return paidPayments.filter(p => !p.versementProprioId && !p.avanceVerseeProprio && ownerIdOfPayment(p) === Number(owner.id));
+    return paidPayments.filter(p => {
+      if (p.versementProprioId || p.avanceVerseeProprio) return false;
+      const oid = ownerIdOfPayment(p);
+      return oid === Number(owner.id) || oid == null; // non rattaché → au propriétaire choisi
+    });
   }, [owner, paidPayments, ownerIdOfPayment]);
 
   // Tous les paiements du propriétaire encaissés dans le mois (reversés ou non),
   // par date de paiement — pour le compteur de réconciliation.
   const ownerAllPaid = useMemo(() => {
     if (!owner) return [];
-    const all = paidPayments.filter(p => ownerIdOfPayment(p) === Number(owner.id));
+    const all = paidPayments.filter(p => { const oid = ownerIdOfPayment(p); return oid === Number(owner.id) || oid == null; });
     return monthFilter === 'Tous' ? all : all.filter(p => dateToMonthLabel(p.paidDate) === monthFilter);
   }, [owner, paidPayments, ownerIdOfPayment, monthFilter]);
   const ownerReversedCount = ownerAllPaid.filter(p => p.versementProprioId || p.avanceVerseeProprio).length;
@@ -744,7 +748,8 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
     return (tenants || []).filter(t => {
       const amt = (Number(t.cautionAmount) || 0) + (Number(t.advanceAmount) || 0);
       if (amt <= 0) return false;
-      if (ownerIdOfPayment({ propertyName: t.property || '' }) !== Number(owner.id)) return false;
+      const _oid = ownerIdOfPayment({ propertyName: t.property || '' });
+      if (_oid !== Number(owner.id) && _oid != null) return false; // non rattaché → au propriétaire choisi
       return monthFilter === 'Tous' ? true : inSelMonth(t.since);
     });
   }, [owner, tenants, monthFilter, ownerIdOfPayment]);
