@@ -707,8 +707,7 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
   const ownerPayments = useMemo(() => {
     if (!owner) return [];
     // Exclut ce qui est déjà reversé (bordereau validé) ou marqué « versé propriétaire ».
-    return paidPayments.filter(p => !p.versementProprioId && !p.avanceVerseeProprio && ownerIdOfPayment(p) === Number(owner.id));
-  }, [owner, paidPayments, ownerIdOfPayment]);
+   return paidPayments.filter(p => { if (p.versementProprioId || p.avanceVerseeProprio) return false; const oid = ownerIdOfPayment(p); return oid === Number(owner.id) || oid == null; }); }, [owner, paidPayments, ownerIdOfPayment]);
 
   // Tous les paiements du propriétaire encaissés dans le mois (reversés ou non),
   // par date de paiement — pour le compteur de réconciliation.
@@ -722,8 +721,7 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
   const months = useMemo(() => [...new Set(ownerPayments.map(p => dateToMonthLabel(p.paidDate)).filter(Boolean))]
     .sort((a, b) => monthKey(b) - monthKey(a)), [ownerPayments]);
   // Loyers/arriérés/anticipés ENCAISSÉS dans le mois choisi (par date de paiement)
-  const scope = monthFilter === 'Tous' ? ownerPayments : ownerPayments.filter(p => dateToMonthLabel(p.paidDate) === monthFilter);
-
+ const scope = monthFilter === 'Tous' ? ownerPayments : ownerPayments.filter(p => p.month === monthFilter || dateToMonthLabel(p.paidDate) === monthFilter);
   // Lines use the commission FROZEN on each payment at cash-in (never recomputed).
   // Fallback to the owner's current rate only for legacy payments without a frozen value.
   const lines = useMemo(() => scope.map(p => {
@@ -744,8 +742,7 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
     return (tenants || []).filter(t => {
       const amt = (Number(t.cautionAmount) || 0) + (Number(t.advanceAmount) || 0);
       if (amt <= 0) return false;
-      if (ownerIdOfPayment({ propertyName: t.property || '' }) !== Number(owner.id)) return false;
-      return monthFilter === 'Tous' ? true : inSelMonth(t.since);
+      const _oid = ownerIdOfPayment({ propertyName: t.property || '' }); if (_oid !== Number(owner.id) && _oid != null) return false;  return monthFilter === 'Tous' ? true : inSelMonth(t.since);
     });
   }, [owner, tenants, monthFilter, ownerIdOfPayment]);
   const totalDeposits = ownerDeposits.reduce((s, t) => s + (Number(t.cautionAmount) || 0) + (Number(t.advanceAmount) || 0), 0);
