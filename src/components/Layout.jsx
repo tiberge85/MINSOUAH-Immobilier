@@ -81,8 +81,8 @@ export default function Layout() {
   // Badge Paiements = nombre de locataires n'ayant pas encore payé ce mois-ci
   // (diminue à chaque encaissement — même décompte que l'onglet Rappels).
   const unpaidCount = useMemo(
-    () => currentMonthUnpaidList({ payments: state.payments, contracts: state.contracts, tenants: state.tenants }).length,
-    [state.payments, state.contracts, state.tenants]
+    () => currentMonthUnpaidList({ payments: state.payments, contracts: state.contracts, tenants: state.tenants, properties: state.properties }).length,
+    [state.payments, state.contracts, state.tenants, state.properties]
   );
 
   /* ── Org switcher ── */
