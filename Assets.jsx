@@ -1,0 +1,1154 @@
+import { useState, useRef, useMemo } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+import { useApp } from '../context/AppContext';
+import Icon from '../components/Icon';
+import { can } from '../lib/permissions';
+
+// ── Constantes ────────────────────────────────────────────────────────────────
+const CATEGORIES = ['Tous', 'Immeuble', 'Studio', '2 Pièces', '3 Pièces', '4 Pièces', 'Magasin'];
+const PROPERTY_TYPES = ['Immeuble', 'Studio', '2 Pièces', '3 Pièces', '4 Pièces', 'Magasin'];
+const UNIT_TYPES = ['Studio', '2 Pièces', '3 Pièces', '4 Pièces', 'Magasin'];
+const STATUS_COLORS = {
+  Loué:        'bg-green-100 text-green-800',
+  Disponible:  'bg-surface-container text-on-surface-variant',
+  Maintenance: 'bg-error-container text-on-error-container',
+};
+const UNIT_STATUS_COLORS = {
+  Loué:        'bg-green-100 text-green-700 border-green-200',
+  Disponible:  'bg-blue-50 text-blue-700 border-blue-200',
+  Maintenance: 'bg-red-50 text-red-700 border-red-200',
+};
+const FLOOR_OPTIONS = ['RDC', '1er étage', '2ème étage', '3ème étage', '4ème étage', '5ème étage', '6ème étage+'];
+const EMPTY_UNIT = { number: '', floor: 'RDC', type: 'Studio', surface: '', rooms: '', rent: '', status: 'Disponible' };
+const PROPERTY_STATES = ['Bon état', 'À rénover', 'Neuf', 'En travaux'];
+const EMPTY_FORM = {
+  name: '', address: '', type: 'Studio', status: 'Disponible',
+  rent: '', deposit: '', surface: '', rooms: '', owner: '', ownerInitials: '', image: '',
+  propertyState: 'Bon état', description: '',
+  isBuilding: false, units: [],
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
+const buildingRevenue = (units = []) =>
+  units.filter(u => u.status === 'Loué').reduce((s, u) => s + Number(u.rent || 0), 0);
+
+// ── Sous-composants ───────────────────────────────────────────────────────────
+function UnitRow({ unit, onEdit, onDelete }) {
+  return (
+    <div className={`flex items-center gap-3 p-3 rounded-xl border ${UNIT_STATUS_COLORS[unit.status] || 'bg-surface-container border-outline-variant/20'} group`}>
+      <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+        <div>
+          <p className="font-bold text-on-surface">{unit.number}</p>
+          <p className="text-xs text-on-surface-variant">{unit.floor}{unit.type ? ` · ${unit.type}` : ''}</p>
+        </div>
+        <div>
+          <p className="text-on-surface">{unit.surface ? `${unit.surface} m²` : '—'}</p>
+          <p className="text-xs text-on-surface-variant">{unit.rooms ? `${unit.rooms} pièce(s)` : ''}</p>
+        </div>
+        <div>
+          <p className="font-bold text-primary">{fmt(unit.rent)}/mois</p>
+        </div>
+        <div>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${UNIT_STATUS_COLORS[unit.status]}`}>
+            {unit.status}
+          </span>
+        </div>
+      </div>
+      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        <button onClick={() => onEdit(unit)} className="w-7 h-7 rounded-full bg-white/80 hover:bg-white flex items-center justify-center text-primary shadow-sm">
+          <Icon name="edit" size={13} />
+        </button>
+        <button onClick={() => onDelete(unit.id)} className="w-7 h-7 rounded-full bg-white/80 hover:bg-white flex items-center justify-center text-error shadow-sm">
+          <Icon name="delete" size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function UnitForm({ unit, onChange, onSave, onCancel }) {
+  return (
+    <div className="bg-surface-container rounded-xl p-4 border border-outline-variant/30">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+        <div>
+          <label className="text-xs font-medium text-on-surface-variant mb-1 block">Numéro / Nom</label>
+          <input value={unit.number} onChange={e => onChange({ ...unit, number: e.target.value })}
+            placeholder="Ex: Appt 01" className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-on-surface-variant mb-1 block">Type</label>
+          <select value={unit.type || 'Studio'} onChange={e => onChange({ ...unit, type: e.target.value })}
+            className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm">
+            {UNIT_TYPES.map(t => <option key={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-on-surface-variant mb-1 block">Étage</label>
+          <select value={unit.floor} onChange={e => onChange({ ...unit, floor: e.target.value })}
+            className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm">
+            {FLOOR_OPTIONS.map(f => <option key={f}>{f}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-on-surface-variant mb-1 block">Statut</label>
+          <select value={unit.status} onChange={e => onChange({ ...unit, status: e.target.value })}
+            className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm">
+            {['Disponible', 'Loué', 'Maintenance'].map(s => <option key={s}>{s}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-on-surface-variant mb-1 block">Surface (m²)</label>
+          <input type="number" value={unit.surface} onChange={e => onChange({ ...unit, surface: e.target.value })}
+            placeholder="65" className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-on-surface-variant mb-1 block">Pièces</label>
+          <input type="number" value={unit.rooms} onChange={e => onChange({ ...unit, rooms: e.target.value })}
+            placeholder="2" className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-on-surface-variant mb-1 block">Loyer (FCFA)</label>
+          <input type="number" value={unit.rent} onChange={e => onChange({ ...unit, rent: e.target.value })}
+            placeholder="150000" className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm" />
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={onSave} disabled={!unit.number}
+          className="px-4 py-1.5 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-40">
+          Enregistrer l'appartement
+        </button>
+        <button onClick={onCancel} className="px-4 py-1.5 bg-surface-container-high rounded-lg text-sm text-on-surface-variant hover:text-on-surface">
+          Annuler
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Page principale ───────────────────────────────────────────────────────────
+export default function Assets() {
+  const { state, dispatch } = useApp();
+  const canCreate = can(state.currentUser, 'assets', 'create');
+  const canEdit   = can(state.currentUser, 'assets', 'edit');
+  const canDelete = can(state.currentUser, 'assets', 'delete');
+  const properties = state.properties || [];
+
+  const [filter, setFilter]         = useState('Tous');
+  const [statusFilter, setStatusFilter] = useState(null); // null | 'Loué' | 'Disponible' | 'Maintenance'
+  const [search, setSearch]         = useState('');
+  const [modal, setModal]           = useState(null); // 'add' | 'edit' | 'detail' | 'delete'
+  const [target, setTarget]         = useState(null);
+  const [form, setForm]             = useState(EMPTY_FORM);
+  const [step, setStep]             = useState(1);
+  const [editingUnit, setEditingUnit] = useState(null); // unit being edited in building form
+  const [addingUnit, setAddingUnit]  = useState(false);
+  const [newUnit, setNewUnit]        = useState(EMPTY_UNIT);
+  const [detailUnitEdit, setDetailUnitEdit] = useState(null);
+  const [addingUnitToDetail, setAddingUnitToDetail] = useState(false);
+  const [newDetailUnit, setNewDetailUnit] = useState(EMPTY_UNIT);
+  const photoInputRef = useRef();
+  const [qrModal, setQrModal] = useState(null); // property or building object
+
+  // ── Filtres ────────────────────────────────────────────────────────────────
+  // Un chip de type = un type de pièce (Studio, 2 Pièces…) ou « Autre » (non catégorisé)
+  const matchUnitType = (t, f) => f === 'Autre' ? !UNIT_TYPES.includes(t) : t === f;
+  const isTypeChip = (f) => UNIT_TYPES.includes(f) || f === 'Autre';
+
+  const filtered = properties.filter(p => {
+    const q = search.toLowerCase();
+    const matchSearch = p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q) || (p.owner || '').toLowerCase().includes(q);
+    let matchCat;
+    if (filter === 'Tous') matchCat = true;
+    else if (filter === 'Immeuble') matchCat = p.isBuilding;
+    else if (isTypeChip(filter)) {
+      // bien simple de ce type, OU immeuble contenant au moins une unité de ce type
+      matchCat = (!p.isBuilding && matchUnitType(p.type, filter)) ||
+                 (p.isBuilding && (p.units || []).some(u => matchUnitType(u.type, filter)));
+    } else matchCat = p.type === filter;
+    return matchCat && matchSearch;
+  });
+
+  // Affichage à plat (unités individuelles) quand un filtre de statut OU un filtre
+  // par type de pièce est actif — pour que le nombre affiché colle au compteur.
+  const isUnitTypeFilter = isTypeChip(filter);
+  const displayItems = useMemo(() => {
+    if (!statusFilter && !isUnitTypeFilter) return filtered.map(p => ({ _type: p.isBuilding ? 'building' : 'property', data: p }));
+    const items = [];
+    filtered.forEach(p => {
+      if (p.isBuilding) {
+        (p.units || [])
+          .filter(u => (!statusFilter || u.status === statusFilter) && (!isUnitTypeFilter || matchUnitType(u.type, filter)))
+          .forEach(u => items.push({ _type: 'unit', data: u, building: p }));
+      } else {
+        const okStatus = !statusFilter || p.status === statusFilter;
+        const okType = !isUnitTypeFilter || matchUnitType(p.type, filter);
+        if (okStatus && okType) items.push({ _type: 'property', data: p });
+      }
+    });
+    return items;
+  }, [statusFilter, filtered, isUnitTypeFilter, filter]);
+
+  // ── Stats ──────────────────────────────────────────────────────────────────
+  const totalUnits = properties.reduce((s, p) => s + (p.isBuilding ? (p.units?.length || 0) : 1), 0);
+  const loued = properties.reduce((s, p) => {
+    if (p.isBuilding) return s + (p.units?.filter(u => u.status === 'Loué').length || 0);
+    return p.status === 'Loué' ? s + 1 : s;
+  }, 0);
+  const revenue = properties.reduce((s, p) => {
+    if (p.isBuilding) return s + buildingRevenue(p.units);
+    return p.status === 'Loué' ? s + Number(p.rent || 0) : s;
+  }, 0);
+  const maintenance = properties.reduce((s, p) => {
+    if (p.isBuilding) return s + (p.units?.filter(u => u.status === 'Maintenance').length || 0);
+    return p.status === 'Maintenance' ? s + 1 : s;
+  }, 0);
+  const libres = properties.reduce((s, p) => {
+    if (p.isBuilding) return s + (p.units?.filter(u => u.status === 'Disponible').length || 0);
+    return p.status === 'Disponible' ? s + 1 : s;
+  }, 0);
+
+  // ── Répartition par type de pièce (biens simples + unités d'immeubles) ──
+  // La somme Studio + 2 Pièces + 3 Pièces + Magasin + Autre = Total (totalUnits).
+  // « Autre » = biens/unités sans type reconnu (type vide, ou « Immeuble » sur un bien simple).
+  const typeCounts = useMemo(() => {
+    const c = { 'Studio': 0, '2 Pièces': 0, '3 Pièces': 0, '4 Pièces': 0, 'Magasin': 0, 'Autre': 0 };
+    let immeubles = 0;
+    const bump = (t) => { if (UNIT_TYPES.includes(t)) c[t] += 1; else c['Autre'] += 1; };
+    properties.forEach(p => {
+      if (p.isBuilding) { immeubles += 1; (p.units || []).forEach(u => bump(u.type)); }
+      else bump(p.type);
+    });
+    return { ...c, Immeuble: immeubles };
+  }, [properties]);
+
+  // ── Gestion formulaire ─────────────────────────────────────────────────────
+  const openAdd = () => { setForm(EMPTY_FORM); setStep(1); setAddingUnit(false); setModal('add'); };
+  const openEdit = (p) => {
+    setForm({ ...p, rent: String(p.rent), deposit: String(p.deposit || ''), surface: String(p.surface), rooms: String(p.rooms), units: p.units ? [...p.units] : [] });
+    setStep(1); setAddingUnit(false); setTarget(p); setModal('edit');
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    if (name === 'type') {
+      setForm(f => ({ ...f, type: value, isBuilding: value === 'Immeuble' }));
+    } else {
+      setForm(f => ({ ...f, [name]: value }));
+    }
+  };
+
+  const handlePhotoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 800;
+        const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        setForm(f => ({ ...f, image: canvas.toDataURL('image/jpeg', 0.82) }));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Ajouter un appartement dans le formulaire
+  const addUnitToForm = () => {
+    if (!newUnit.number) return;
+    const unit = { ...newUnit, id: `u${Date.now()}`, rent: Number(newUnit.rent) || 0, surface: Number(newUnit.surface) || 0, rooms: Number(newUnit.rooms) || 0 };
+    setForm(f => ({ ...f, units: [...f.units, unit] }));
+    setNewUnit(EMPTY_UNIT);
+    setAddingUnit(false);
+  };
+
+  const removeUnitFromForm = (id) => setForm(f => ({ ...f, units: f.units.filter(u => u.id !== id) }));
+
+  const handleSave = () => {
+    const normO = s => (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const existingOwner = (state.owners || []).find(o => normO(o.name) === normO(form.owner || ''));
+    const ownerName = (form.owner || '').trim();
+    const newOwnerExists = (state.owners || []).some(o => o.name?.toLowerCase() === ownerName.toLowerCase());
+    // Pre-generate owner id so property can reference it even for brand-new owners
+    const preOwnerId = existingOwner?.id ?? (ownerName && !newOwnerExists ? Date.now() + 1 : null);
+    const payload = {
+      ...form,
+      rent: form.isBuilding ? 0 : (Number(form.rent) || 0),
+      deposit: Number(form.deposit) || 0,
+      surface: Number(form.surface) || 0,
+      rooms: Number(form.rooms) || 0,
+      ownerId: preOwnerId,
+    };
+    if (modal === 'edit') {
+      dispatch({ type: 'UPDATE_PROPERTY', payload: { ...payload, id: target.id } });
+    } else {
+      dispatch({ type: 'ADD_PROPERTY', payload });
+      // Auto-create owner if name provided and not already in owners list
+      if (ownerName && !newOwnerExists) {
+        const parts = ownerName.split(' ');
+        const initials = parts.map(p => p[0]).join('').toUpperCase().slice(0, 2);
+        const COLORS = [
+          'bg-primary-container text-on-primary-container',
+          'bg-secondary-container text-on-secondary-container',
+          'bg-tertiary-container text-on-tertiary-container',
+        ];
+        dispatch({
+          type: 'ADD_OWNER',
+          payload: {
+            id: preOwnerId,
+            name: ownerName,
+            initials: form.ownerInitials || initials,
+            email: '',
+            phone: '',
+            status: 'Actif',
+            color: COLORS[Math.floor(Math.random() * COLORS.length)],
+            revenue: Number(form.rent) || 0,
+          },
+        });
+      }
+    }
+    setModal(null); setTarget(null); setForm(EMPTY_FORM); setStep(1);
+  };
+
+  const handleDelete = () => {
+    dispatch({ type: 'DELETE_PROPERTY', payload: target.id });
+    setModal(null); setTarget(null);
+  };
+
+  // Ajouter une unité directement dans la fiche immeuble (détail)
+  const addUnitToBuilding = (building) => {
+    if (!newDetailUnit.number) return;
+    const unit = { ...newDetailUnit, id: `u${Date.now()}`, rent: Number(newDetailUnit.rent) || 0, surface: Number(newDetailUnit.surface) || 0, rooms: Number(newDetailUnit.rooms) || 0 };
+    const updated = { ...building, units: [...(building.units || []), unit] };
+    dispatch({ type: 'UPDATE_PROPERTY', payload: updated });
+    setTarget(updated);
+    setNewDetailUnit(EMPTY_UNIT); setAddingUnitToDetail(false);
+  };
+
+  const updateUnitInBuilding = (building, updatedUnit) => {
+    const updated = { ...building, units: building.units.map(u => u.id === updatedUnit.id ? updatedUnit : u) };
+    dispatch({ type: 'UPDATE_PROPERTY', payload: updated });
+    setTarget(updated); setDetailUnitEdit(null);
+  };
+
+  const deleteUnitFromBuilding = (building, unitId) => {
+    const updated = { ...building, units: building.units.filter(u => u.id !== unitId) };
+    dispatch({ type: 'UPDATE_PROPERTY', payload: updated });
+    setTarget(updated);
+  };
+
+  // Déplacer un appartement d'un type à un autre (unité d'immeuble ou bien simple)
+  const changeUnitType = (building, unit, newType) => {
+    const units = (building.units || []).map(u => u.id === unit.id ? { ...u, type: newType } : u);
+    dispatch({ type: 'UPDATE_PROPERTY', payload: { ...building, units } });
+  };
+  const changePropertyType = (p, newType) => {
+    dispatch({ type: 'UPDATE_PROPERTY', payload: { ...p, type: newType, isBuilding: false } });
+  };
+
+  // ── Rendu ──────────────────────────────────────────────────────────────────
+  return (
+    <div className="px-4 md:px-6 pt-6 pb-20 max-w-7xl mx-auto">
+
+      {/* Stats — cliquables pour filtrer */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        {[
+          { label: 'Total',       value: totalUnits,  icon: 'apartment',    color: 'text-primary',     statusVal: null },
+          { label: 'Loués',       value: loued,       icon: 'check_circle', color: 'text-green-600',   statusVal: 'Loué' },
+          { label: 'Libres',      value: libres,      icon: 'lock_open',    color: 'text-blue-600',    statusVal: 'Disponible' },
+          { label: 'Maintenance', value: maintenance, icon: 'build',        color: 'text-error',       statusVal: 'Maintenance' },
+          { label: 'Revenus/mois', value: fmt(revenue), icon: 'trending_up', color: 'text-on-primary-container', highlight: true, statusVal: '__revenue__' },
+        ].map(s => {
+          const isActive = s.statusVal !== '__revenue__' && statusFilter === s.statusVal;
+          return (
+            <button
+              key={s.label}
+              onClick={() => s.statusVal !== '__revenue__' && setStatusFilter(prev => prev === s.statusVal ? null : s.statusVal)}
+              className={`p-4 rounded-2xl border-2 flex flex-col gap-2 text-left transition-all duration-150 ${
+                s.highlight
+                  ? 'bg-primary-container border-transparent cursor-default'
+                  : isActive
+                    ? 'bg-surface border-primary shadow-md scale-[1.02]'
+                    : 'bg-surface border-outline-variant/20 hover:border-primary/40 hover:shadow-sm cursor-pointer'
+              }`}
+            >
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">{s.label}</span>
+                <Icon name={s.icon} size={20} className={s.color} />
+              </div>
+              <p className={`text-lg md:text-2xl font-black truncate ${s.highlight ? 'text-on-primary-container' : isActive ? 'text-primary' : 'text-on-surface'}`}>{s.value}</p>
+              {isActive && <span className="text-xs text-primary font-semibold">Filtre actif · Cliquer pour annuler</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Filtres + Recherche */}
+      <div className="flex flex-col md:flex-row gap-3 mb-6">
+        <div className="flex gap-2 overflow-x-auto no-scrollbar flex-1">
+          {[...CATEGORIES, ...(typeCounts.Autre > 0 ? ['Autre'] : [])].map(c => {
+            const count = c === 'Tous' ? totalUnits : c === 'Immeuble' ? typeCounts.Immeuble : (typeCounts[c] ?? 0);
+            const active = filter === c;
+            return (
+              <button key={c} onClick={() => setFilter(c)}
+                className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-2 ${active ? 'bg-primary text-on-primary' : 'bg-surface text-on-surface-variant hover:bg-surface-container-high border border-outline-variant/20'}`}>
+                {c}
+                <span className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-bold ${active ? 'bg-on-primary/20 text-on-primary' : 'bg-surface-container-high text-on-surface-variant'}`}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex gap-3">
+          <div className="relative flex-1 md:w-64">
+            <Icon name="search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-outline" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..."
+              className="w-full pl-9 pr-4 py-2 rounded-full border border-outline-variant/30 bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+          {canCreate && (
+            <button onClick={openAdd}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-full text-sm font-bold hover:bg-primary/90 transition-colors whitespace-nowrap">
+              <Icon name="add" size={18} /> Nouveau bien
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Aide : reclasser les biens « Autre » */}
+      {canCreate && typeCounts.Autre > 0 && filter !== 'Autre' && (
+        <div className="flex items-center gap-3 flex-wrap bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 mb-4">
+          <Icon name="info" size={18} className="text-amber-700 flex-shrink-0" />
+          <span className="text-sm text-amber-800 flex-1">
+            <strong>{typeCounts.Autre}</strong> bien(s) sans type reconnu. Clique sur « Autre » pour les voir, puis choisis le bon type sur chaque carte.
+          </span>
+          <button onClick={() => setFilter('Autre')}
+            className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold hover:bg-amber-700 transition-colors whitespace-nowrap">
+            Voir les « Autre »
+          </button>
+        </div>
+      )}
+
+      {/* Grille des biens */}
+      {(statusFilter || isUnitTypeFilter) && (
+        <div className="flex items-center gap-2 text-sm text-on-surface-variant mb-3">
+          <Icon name="filter_list" size={16} />
+          <span>
+            <strong className="text-on-surface">{displayItems.length}</strong> bien{displayItems.length !== 1 ? 's' : ''}
+            {isUnitTypeFilter && <> — type : <strong className="text-primary">{filter}</strong></>}
+            {statusFilter && <> — statut : <strong className="text-primary">{statusFilter === 'Disponible' ? 'Libre' : statusFilter}</strong></>}
+          </span>
+          <button onClick={() => { setStatusFilter(null); setFilter('Tous'); }} className="ml-auto text-xs text-primary hover:underline flex items-center gap-1">
+            <Icon name="close" size={14} /> Effacer les filtres
+          </button>
+        </div>
+      )}
+      {displayItems.length === 0 ? (
+        <div className="text-center py-16 text-on-surface-variant">
+          <Icon name="search_off" size={48} className="mb-4 opacity-30 mx-auto" />
+          <p>Aucun bien trouvé</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {displayItems.map((item, idx) => {
+            if (item._type === 'unit') {
+              return (
+                <UnitFlatCard
+                  key={`${item.building.id}-${item.data.id || idx}`}
+                  unit={item.data}
+                  building={item.building}
+                  canEdit={canEdit}
+                  onChangeType={(nt) => changeUnitType(item.building, item.data, nt)}
+                  onBuildingDetail={() => { setTarget(item.building); setModal('detail'); setAddingUnitToDetail(false); setDetailUnitEdit(null); }}
+                />
+              );
+            }
+            if (item._type === 'building') {
+              const p = item.data;
+              return (
+                <BuildingCard key={p.id} building={p}
+                  onDetail={() => { setTarget(p); setModal('detail'); setAddingUnitToDetail(false); setDetailUnitEdit(null); }}
+                  onEdit={() => openEdit(p)}
+                  onDelete={() => { setTarget(p); setModal('delete'); }}
+                  onQr={() => setQrModal(p)}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
+                />
+              );
+            }
+            const p = item.data;
+            return (
+              <PropertyCard key={p.id} property={p}
+                onDetail={() => { setTarget(p); setModal('detail'); }}
+                onEdit={() => openEdit(p)}
+                onDelete={() => { setTarget(p); setModal('delete'); }}
+                onQr={() => setQrModal(p)}
+                onChangeType={(nt) => changePropertyType(p, nt)}
+                canEdit={canEdit}
+                canDelete={canDelete}
+              />
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Modal Ajouter / Modifier ──────────────────────────────────────── */}
+      {(modal === 'add' || modal === 'edit') && (
+        <ModalOverlay onClose={() => { setModal(null); setTarget(null); }}>
+          <div className="bg-surface rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-surface border-b border-outline-variant/20 px-6 py-4 flex items-center justify-between rounded-t-3xl">
+              <h2 className="font-bold text-lg text-on-surface">
+                {modal === 'edit' ? `Modifier — ${target?.name}` : 'Nouveau bien'}
+              </h2>
+              <button onClick={() => { setModal(null); setTarget(null); }} className="text-on-surface-variant hover:text-on-surface">
+                <Icon name="close" size={22} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {/* Steps */}
+              <div className="flex gap-4 mb-6">
+                {[{ n: 1, l: 'Informations' }, { n: 2, l: form.isBuilding ? 'Appartements' : 'Détails' }].map((s, i) => (
+                  <div key={s.n} className="flex items-center gap-2">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step >= s.n ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'}`}>{s.n}</div>
+                    <span className={`text-sm ${step >= s.n ? 'text-primary font-semibold' : 'text-on-surface-variant'}`}>{s.l}</span>
+                    {i < 1 && <Icon name="chevron_right" size={16} className="text-outline-variant" />}
+                  </div>
+                ))}
+              </div>
+
+              {/* Step 1 — Infos générales */}
+              {step === 1 && (
+                <div className="flex flex-col gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="col-span-full sm:col-span-2">
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">Nom du bien *</label>
+                      <input name="name" value={form.name} onChange={handleChange} placeholder="Ex: Résidence Les Palmiers"
+                        className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">Type *</label>
+                      <select name="type" value={form.type} onChange={handleChange}
+                        className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30">
+                        {PROPERTY_TYPES.map(t => <option key={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    {!form.isBuilding && (
+                      <div>
+                        <label className="text-sm font-medium text-on-surface-variant mb-1 block">Statut</label>
+                        <select name="status" value={form.status} onChange={handleChange}
+                          className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30">
+                          {['Disponible', 'Loué', 'Maintenance'].map(s => <option key={s}>{s}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    <div className="col-span-full sm:col-span-2">
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">Adresse *</label>
+                      <input name="address" value={form.address} onChange={handleChange} placeholder="Abidjan, Cocody Angré"
+                        className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">Propriétaire</label>
+                      <input name="owner" value={form.owner} onChange={handleChange} placeholder="Nom complet"
+                        className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">Initiales (2 lettres)</label>
+                      <input name="ownerInitials" value={form.ownerInitials} onChange={handleChange} placeholder="JD" maxLength={2}
+                        className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    </div>
+                    {!form.isBuilding && (
+                      <>
+                        <div>
+                          <label className="text-sm font-medium text-on-surface-variant mb-1 block">Loyer mensuel (FCFA) *</label>
+                          <input name="rent" type="number" value={form.rent} onChange={handleChange} placeholder="150000"
+                            className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium text-on-surface-variant mb-1 block">Dépôt de garantie / Caution (FCFA)</label>
+                          <input name="deposit" type="number" value={form.deposit} onChange={handleChange} placeholder="300000"
+                            className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          {form.rent && !form.deposit && (
+                            <button type="button" onClick={() => setForm(f => ({ ...f, deposit: String(2 * Number(f.rent)) }))}
+                              className="mt-1 text-xs text-primary hover:underline">
+                              Suggérer 2 mois = {(2 * Number(form.rent || 0)).toLocaleString('fr-CI')} FCFA
+                            </button>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium text-on-surface-variant mb-1 block">État du bien</label>
+                          <select name="propertyState" value={form.propertyState || 'Bon état'} onChange={handleChange}
+                            className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30">
+                            {PROPERTY_STATES.map(s => <option key={s}>{s}</option>)}
+                          </select>
+                        </div>
+                      </>
+                    )}
+                    <div>
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">Photo du bien</label>
+                      <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                      {form.image ? (
+                        <div className="relative rounded-xl overflow-hidden border border-outline-variant/40 h-36">
+                          <img src={form.image} alt="aperçu" className="w-full h-full object-cover" />
+                          <button type="button" onClick={() => setForm(f => ({ ...f, image: '' }))}
+                            className="absolute top-2 right-2 bg-black/50 text-white rounded-full w-7 h-7 flex items-center justify-center hover:bg-black/70">
+                            <Icon name="close" size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button type="button" onClick={() => photoInputRef.current?.click()}
+                          className="w-full h-24 rounded-xl border-2 border-dashed border-outline-variant/40 bg-surface-container flex flex-col items-center justify-center gap-1 hover:border-primary/40 hover:bg-primary/5 transition-colors text-on-surface-variant">
+                          <Icon name="add_photo_alternate" size={24} />
+                          <span className="text-sm">Choisir une photo</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {form.isBuilding && (
+                    <div className="bg-primary-container/30 rounded-xl p-4 flex gap-3">
+                      <Icon name="info" size={18} className="text-primary flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-on-surface-variant">
+                        Un <strong className="text-on-surface">Immeuble</strong> contient plusieurs appartements.
+                        À l'étape suivante, vous pourrez ajouter chaque appartement avec son loyer et son statut individuel.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step 2 — Appartements (immeuble) ou détails (bien simple) */}
+              {step === 2 && !form.isBuilding && (
+                <div className="flex flex-col gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">Surface (m²)</label>
+                      <input name="surface" type="number" value={form.surface} onChange={handleChange} placeholder="85"
+                        className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-on-surface-variant mb-1 block">Nombre de pièces</label>
+                      <input name="rooms" type="number" value={form.rooms} onChange={handleChange} placeholder="3"
+                        className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-on-surface-variant mb-1 block">Description (optionnel)</label>
+                    <textarea name="description" value={form.description || ''} onChange={handleChange} rows={2} placeholder="Vue sur mer, parking inclus…"
+                      className="w-full px-4 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none text-sm" />
+                  </div>
+                  {form.name && (
+                    <div className="bg-surface-container rounded-xl p-4 text-sm">
+                      <p className="font-bold text-on-surface mb-1">{form.name}</p>
+                      <p className="text-on-surface-variant text-xs">{form.address}</p>
+                      <div className="flex gap-4 mt-2">
+                        <span className="text-primary font-bold">{fmt(form.rent)}/mois</span>
+                        {form.deposit && <span className="text-on-surface-variant">Caution : {fmt(form.deposit)}</span>}
+                        {form.propertyState && <span className="text-xs bg-surface-container-high px-2 py-0.5 rounded-full">{form.propertyState}</span>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {step === 2 && form.isBuilding && (
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold text-on-surface">
+                      Appartements <span className="text-primary">({form.units.length})</span>
+                    </p>
+                    {canCreate && !addingUnit && (
+                      <button onClick={() => { setNewUnit(EMPTY_UNIT); setAddingUnit(true); }}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:bg-primary/90">
+                        <Icon name="add" size={16} /> Ajouter un appartement
+                      </button>
+                    )}
+                  </div>
+
+                  {addingUnit && (
+                    <UnitForm unit={newUnit} onChange={setNewUnit} onSave={addUnitToForm} onCancel={() => setAddingUnit(false)} />
+                  )}
+
+                  {form.units.length === 0 && !addingUnit && (
+                    <div className="text-center py-8 text-on-surface-variant border-2 border-dashed border-outline-variant/30 rounded-xl">
+                      <Icon name="apartment" size={32} className="mb-2 opacity-30 mx-auto" />
+                      <p className="text-sm">Aucun appartement ajouté</p>
+                      <p className="text-xs mt-1">Cliquez sur "Ajouter un appartement" pour commencer</p>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-2 max-h-60 overflow-y-auto pr-1">
+                    {form.units.map(u => (
+                      editingUnit?.id === u.id ? (
+                        <UnitForm key={u.id} unit={editingUnit} onChange={setEditingUnit}
+                          onSave={() => { setForm(f => ({ ...f, units: f.units.map(x => x.id === editingUnit.id ? editingUnit : x) })); setEditingUnit(null); }}
+                          onCancel={() => setEditingUnit(null)} />
+                      ) : (
+                        <UnitRow key={u.id} unit={u}
+                          onEdit={u => setEditingUnit(u)}
+                          onDelete={id => removeUnitFromForm(id)} />
+                      )
+                    ))}
+                  </div>
+
+                  {form.units.length > 0 && (
+                    <div className="bg-surface-container rounded-xl p-3 flex justify-between text-sm">
+                      <span className="text-on-surface-variant">Revenu total potentiel</span>
+                      <span className="font-bold text-primary">{fmt(form.units.reduce((s, u) => s + Number(u.rent || 0), 0))}/mois</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="sticky bottom-0 bg-surface border-t border-outline-variant/20 px-6 py-4 flex justify-between rounded-b-3xl">
+              <button onClick={() => { setModal(null); setTarget(null); }}
+                className="px-4 py-2 rounded-xl text-on-surface-variant hover:bg-surface-container-high text-sm font-medium">
+                Annuler
+              </button>
+              <div className="flex gap-3">
+                {step > 1 && (
+                  <button onClick={() => setStep(1)} className="px-4 py-2 rounded-xl bg-surface-container text-on-surface text-sm font-semibold">
+                    ← Précédent
+                  </button>
+                )}
+                {step < 2 ? (
+                  <button onClick={() => setStep(2)} disabled={!form.name || !form.address}
+                    className="px-5 py-2 rounded-xl bg-primary text-on-primary text-sm font-bold hover:bg-primary/90 disabled:opacity-40">
+                    Suivant →
+                  </button>
+                ) : (
+                  <button onClick={handleSave} disabled={!form.name || (!form.isBuilding && !form.rent)}
+                    className="px-5 py-2 rounded-xl bg-primary text-on-primary text-sm font-bold hover:bg-primary/90 disabled:opacity-40 flex items-center gap-2">
+                    <Icon name="save" size={16} /> Enregistrer
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* ── Modal Détail bien simple ──────────────────────────────────────── */}
+      {modal === 'detail' && target && !target.isBuilding && (
+        <ModalOverlay onClose={() => setModal(null)}>
+          <div className="bg-surface rounded-3xl w-full max-w-md">
+            <div className="relative h-48 rounded-t-3xl overflow-hidden bg-surface-container">
+              {target.image
+                ? <img src={target.image} alt={target.name} className="w-full h-full object-cover" onError={e => e.target.style.display = 'none'} />
+                : <div className="w-full h-full flex items-center justify-center"><Icon name="apartment" size={48} className="text-outline-variant" /></div>
+              }
+              <button onClick={() => setModal(null)} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60">
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="flex justify-between items-start mb-4">
+                <h2 className="font-bold text-xl text-on-surface">{target.name}</h2>
+                <span className={`text-xs px-2 py-1 rounded-full font-semibold ${STATUS_COLORS[target.status]}`}>{target.status}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-6">
+                {[
+                  ['Adresse', target.address], ['Type', target.type],
+                  ['Loyer', fmt(target.rent) + '/mois'], ['Propriétaire', target.owner || '—'],
+                  ['Surface', target.surface ? `${target.surface} m²` : '—'], ['Pièces', target.rooms || '—'],
+                ].map(([l, v]) => (
+                  <div key={l} className="bg-surface-container rounded-xl p-3">
+                    <p className="text-xs text-on-surface-variant mb-0.5">{l}</p>
+                    <p className={`font-semibold ${l === 'Loyer' ? 'text-primary' : 'text-on-surface'}`}>{v}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-3">
+                {canDelete && (
+                  <button onClick={() => { setModal('delete'); }}
+                    className="flex-1 py-2.5 rounded-xl border border-error text-error font-semibold text-sm hover:bg-error-container/30">
+                    Supprimer
+                  </button>
+                )}
+                {canEdit && (
+                  <button onClick={() => { openEdit(target); }}
+                    className="flex-1 py-2.5 rounded-xl bg-primary text-on-primary font-semibold text-sm hover:bg-primary/90">
+                    Modifier
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* ── Modal Détail immeuble ─────────────────────────────────────────── */}
+      {modal === 'detail' && target?.isBuilding && (
+        <ModalOverlay onClose={() => setModal(null)}>
+          <div className="bg-surface rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-surface border-b border-outline-variant/20 px-6 py-4 flex items-center justify-between rounded-t-3xl">
+              <div>
+                <h2 className="font-bold text-lg text-on-surface">{target.name}</h2>
+                <p className="text-sm text-on-surface-variant flex items-center gap-1 mt-0.5">
+                  <Icon name="location_on" size={14} />{target.address}
+                </p>
+              </div>
+              <button onClick={() => setModal(null)} className="text-on-surface-variant hover:text-on-surface">
+                <Icon name="close" size={22} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {/* Stats immeuble */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                {[
+                  { l: 'Total', v: target.units?.length || 0, c: 'text-primary' },
+                  { l: 'Loués', v: target.units?.filter(u => u.status === 'Loué').length || 0, c: 'text-green-600' },
+                  { l: 'Libres', v: target.units?.filter(u => u.status === 'Disponible').length || 0, c: 'text-blue-600' },
+                  { l: 'Maintenance', v: target.units?.filter(u => u.status === 'Maintenance').length || 0, c: 'text-error' },
+                ].map(s => (
+                  <div key={s.l} className="bg-surface-container rounded-xl p-3 text-center">
+                    <p className={`text-2xl font-black ${s.c}`}>{s.v}</p>
+                    <p className="text-xs text-on-surface-variant mt-0.5">{s.l}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-primary-container/30 rounded-xl p-3 mb-6 flex justify-between items-center">
+                <span className="text-sm text-on-surface-variant font-medium">Revenu mensuel total</span>
+                <span className="font-black text-primary">{fmt(buildingRevenue(target.units))}/mois</span>
+              </div>
+
+              {/* Liste des unités */}
+              <div className="flex items-center justify-between mb-3">
+                <p className="font-semibold text-on-surface">Liste des appartements</p>
+                {canCreate && !addingUnitToDetail && (
+                  <button onClick={() => { setNewDetailUnit(EMPTY_UNIT); setAddingUnitToDetail(true); setDetailUnitEdit(null); }}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:bg-primary/90">
+                    <Icon name="add" size={16} /> Ajouter
+                  </button>
+                )}
+              </div>
+
+              {addingUnitToDetail && (
+                <div className="mb-3">
+                  <UnitForm unit={newDetailUnit} onChange={setNewDetailUnit}
+                    onSave={() => addUnitToBuilding(target)}
+                    onCancel={() => setAddingUnitToDetail(false)} />
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2">
+                {(target.units || []).map(u => (
+                  detailUnitEdit?.id === u.id ? (
+                    <UnitForm key={u.id} unit={detailUnitEdit} onChange={setDetailUnitEdit}
+                      onSave={() => updateUnitInBuilding(target, detailUnitEdit)}
+                      onCancel={() => setDetailUnitEdit(null)} />
+                  ) : (
+                    <UnitRow key={u.id} unit={u}
+                      onEdit={u => { setDetailUnitEdit(u); setAddingUnitToDetail(false); }}
+                      onDelete={id => deleteUnitFromBuilding(target, id)} />
+                  )
+                ))}
+                {(target.units || []).length === 0 && !addingUnitToDetail && (
+                  <div className="text-center py-8 text-on-surface-variant border-2 border-dashed border-outline-variant/30 rounded-xl">
+                    <p className="text-sm">Aucun appartement enregistré</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-surface border-t border-outline-variant/20 px-6 py-4 flex gap-3 rounded-b-3xl">
+              {canDelete && (
+                <button onClick={() => { setModal('delete'); }}
+                  className="px-4 py-2 rounded-xl border border-error text-error font-semibold text-sm hover:bg-error-container/30">
+                  Supprimer l'immeuble
+                </button>
+              )}
+              {canEdit && (
+                <button onClick={() => openEdit(target)}
+                  className="flex-1 py-2 rounded-xl bg-primary text-on-primary font-semibold text-sm hover:bg-primary/90">
+                  Modifier les infos
+                </button>
+              )}
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* ── Modal QR Code ────────────────────────────────────────────────── */}
+      {qrModal && (
+        <ModalOverlay onClose={() => setQrModal(null)}>
+          <div className="bg-surface rounded-3xl w-full max-w-xs p-6 text-center">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg text-on-surface">{qrModal.name}</h3>
+              <button onClick={() => setQrModal(null)} className="text-on-surface-variant hover:text-on-surface">
+                <Icon name="close" size={20} />
+              </button>
+            </div>
+            <p className="text-xs text-on-surface-variant mb-4">{qrModal.address}</p>
+            <div className="flex justify-center p-4 bg-white rounded-2xl border border-outline-variant/20 mb-3">
+              <QRCodeSVG
+                value={[
+                  `MINSOUAH IMMOBILIER`,
+                  `Bien: ${qrModal.name}`,
+                  `Adresse: ${qrModal.address || '—'}`,
+                  `Type: ${qrModal.type || (qrModal.isBuilding ? 'Immeuble' : '—')}`,
+                  qrModal.owner ? `Propriétaire: ${qrModal.owner}` : null,
+                  !qrModal.isBuilding && qrModal.rent ? `Loyer: ${Number(qrModal.rent).toLocaleString('fr-CI')} FCFA/mois` : null,
+                  `Statut: ${qrModal.status || '—'}`,
+                  `Ref: MINS-${qrModal.id}`,
+                ].filter(Boolean).join('\n')}
+                size={200}
+                level="M"
+                includeMargin={true}
+              />
+            </div>
+            <div className="text-left bg-surface-container rounded-xl p-3 mb-3 text-xs space-y-1">
+              {qrModal.owner && <p><span className="text-on-surface-variant">Propriétaire :</span> <strong className="text-on-surface">{qrModal.owner}</strong></p>}
+              {!qrModal.isBuilding && qrModal.rent > 0 && <p><span className="text-on-surface-variant">Loyer :</span> <strong className="text-primary">{fmt(qrModal.rent)}/mois</strong></p>}
+              <p><span className="text-on-surface-variant">Statut :</span> <strong className="text-on-surface">{qrModal.status || '—'}</strong></p>
+              <p className="text-on-surface-variant">Réf : MINS-{qrModal.id}</p>
+            </div>
+            <p className="text-xs text-on-surface-variant">Scannez pour identifier ce bien</p>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* ── Modal Confirmation suppression ───────────────────────────────── */}
+      {modal === 'delete' && target && (
+        <ModalOverlay onClose={() => setModal(null)}>
+          <div className="bg-surface rounded-3xl w-full max-w-sm p-6 text-center">
+            <div className="w-16 h-16 rounded-full bg-error-container flex items-center justify-center mx-auto mb-4">
+              <Icon name="warning" size={32} className="text-error" />
+            </div>
+            <h3 className="font-bold text-lg text-on-surface mb-2">Supprimer ce bien ?</h3>
+            <p className="text-sm text-on-surface-variant mb-2">
+              <strong className="text-on-surface">"{target.name}"</strong>
+            </p>
+            <p className="text-xs text-on-surface-variant mb-6">Cette action est irréversible.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setModal(null)}
+                className="flex-1 py-2.5 rounded-xl bg-surface-container text-on-surface font-semibold text-sm">
+                Annuler
+              </button>
+              <button onClick={handleDelete}
+                className="flex-1 py-2.5 rounded-xl bg-error text-on-error font-bold text-sm">
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+    </div>
+  );
+}
+
+// ── Cartes ────────────────────────────────────────────────────────────────────
+function UnitFlatCard({ unit, building, onBuildingDetail, onChangeType, canEdit }) {
+  const statusColor = {
+    'Loué':        'bg-green-100 text-green-800 border-green-200',
+    'Disponible':  'bg-blue-50 text-blue-700 border-blue-200',
+    'Maintenance': 'bg-red-50 text-red-700 border-red-200',
+  }[unit.status] || 'bg-surface-container text-on-surface border-outline-variant/20';
+
+  return (
+    <div onClick={onBuildingDetail} className="bg-surface rounded-2xl overflow-hidden border border-outline-variant/20 shadow-sm hover:shadow-md transition-shadow cursor-pointer group">
+      <div className="relative h-36 overflow-hidden bg-surface-container">
+        {building.image
+          ? <img src={building.image} alt={building.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" onError={e => e.target.style.display = 'none'} />
+          : <div className="w-full h-full flex items-center justify-center"><Icon name="apartment" size={44} className="text-outline-variant" /></div>
+        }
+        <div className="absolute top-3 left-3">
+          <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${statusColor}`}>{unit.status}</span>
+        </div>
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-3 py-2">
+          <p className="text-white text-xs font-semibold truncate">{building.name}</p>
+        </div>
+      </div>
+      <div className="p-4">
+        <h3 className="font-bold text-on-surface mb-0.5">{unit.number}</h3>
+        <p className="text-xs text-on-surface-variant flex items-center gap-1 mb-3">
+          <Icon name="location_on" size={12} />{building.address}
+        </p>
+        <div className="flex flex-wrap gap-2 text-xs text-on-surface-variant mb-3">
+          <span className="flex items-center gap-1"><Icon name="layers" size={12} />{unit.floor}</span>
+          <span className="flex items-center gap-1"><Icon name="category" size={12} />{unit.type}</span>
+          {unit.surface > 0 && <span className="flex items-center gap-1"><Icon name="straighten" size={12} />{unit.surface} m²</span>}
+          {unit.rooms > 0 && <span className="flex items-center gap-1"><Icon name="door_open" size={12} />{unit.rooms} p.</span>}
+        </div>
+        <div className="flex items-center justify-between pt-3 border-t border-outline-variant/10">
+          <span className="text-xs text-on-surface-variant flex items-center gap-1">
+            <Icon name="person" size={12} />{building.owner || '—'}
+          </span>
+          <span className="font-bold text-primary text-sm">{fmt(unit.rent)}/mois</span>
+        </div>
+        {canEdit && onChangeType && (
+          <div className="mt-3 pt-3 border-t border-outline-variant/10" onClick={e => e.stopPropagation()}>
+            <label className="text-[10px] uppercase tracking-wide text-on-surface-variant font-semibold flex items-center gap-1">
+              <Icon name="swap_horiz" size={12} /> Déplacer vers le type
+            </label>
+            <select value={UNIT_TYPES.includes(unit.type) ? unit.type : 'Studio'} onChange={e => onChangeType(e.target.value)}
+              className="w-full mt-1 px-2 py-1.5 rounded-lg border border-outline-variant/40 bg-surface-container text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
+              {UNIT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BuildingCard({ building, onDetail, onEdit, onDelete, onQr, canEdit, canDelete }) {
+  const units = building.units || [];
+  const loued = units.filter(u => u.status === 'Loué').length;
+  const libres = units.filter(u => u.status === 'Disponible').length;
+  const maint = units.filter(u => u.status === 'Maintenance').length;
+  const revenue = buildingRevenue(units);
+  const rate = units.length > 0 ? Math.round((loued / units.length) * 100) : 0;
+
+  return (
+    <div onClick={onDetail} className="bg-surface rounded-2xl overflow-hidden border border-outline-variant/20 shadow-sm hover:shadow-md transition-shadow cursor-pointer group">
+      <div className="relative h-44 overflow-hidden bg-surface-container">
+        {building.image
+          ? <img src={building.image} alt={building.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" onError={e => e.target.style.display = 'none'} />
+          : <div className="w-full h-full flex items-center justify-center"><Icon name="domain" size={48} className="text-outline-variant" /></div>
+        }
+        <div className="absolute top-3 left-3">
+          <span className="bg-primary text-on-primary text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1">
+            <Icon name="domain" size={12} /> Immeuble · {units.length} appts
+          </span>
+        </div>
+        <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={e => { e.stopPropagation(); onQr(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-on-surface shadow hover:bg-white">
+            <Icon name="qr_code" size={14} />
+          </button>
+          {canEdit && (
+            <button onClick={e => { e.stopPropagation(); onEdit(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-primary shadow hover:bg-white">
+              <Icon name="edit" size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button onClick={e => { e.stopPropagation(); onDelete(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-error shadow hover:bg-white">
+              <Icon name="delete" size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="p-4">
+        <h3 className="font-bold text-on-surface mb-1">{building.name}</h3>
+        <p className="text-xs text-on-surface-variant flex items-center gap-1 mb-3">
+          <Icon name="location_on" size={12} />{building.address}
+        </p>
+
+        {/* Barre de taux */}
+        <div className="mb-3">
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-on-surface-variant">Occupation</span>
+            <span className="font-bold text-green-600">{rate}%</span>
+          </div>
+          <div className="h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+            <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${rate}%` }} />
+          </div>
+        </div>
+
+        {/* Stats unités */}
+        <div className="flex gap-2 mb-3">
+          {[
+            { v: loued,  l: 'Loués',  c: 'bg-green-100 text-green-700' },
+            { v: libres, l: 'Libres', c: 'bg-blue-50 text-blue-700' },
+            { v: maint,  l: 'Maint.', c: 'bg-red-50 text-red-700' },
+          ].map(s => (
+            <div key={s.l} className={`flex-1 text-center py-1 rounded-lg text-xs font-semibold ${s.c}`}>
+              <p className="font-black text-base leading-tight">{s.v}</p>
+              <p>{s.l}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between pt-3 border-t border-outline-variant/10">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container text-xs font-bold">
+              {building.ownerInitials || '?'}
+            </div>
+            <span className="text-xs text-on-surface-variant">{building.owner}</span>
+          </div>
+          <span className="font-bold text-primary text-sm">{fmt(revenue)}/mois</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PropertyCard({ property, onDetail, onEdit, onDelete, onQr, onChangeType, canEdit, canDelete }) {
+  return (
+    <div onClick={onDetail} className="bg-surface rounded-2xl overflow-hidden border border-outline-variant/20 shadow-sm hover:shadow-md transition-shadow cursor-pointer group">
+      <div className="relative h-44 overflow-hidden bg-surface-container">
+        {property.image
+          ? <img src={property.image} alt={property.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" onError={e => e.target.style.display = 'none'} />
+          : <div className="w-full h-full flex items-center justify-center"><Icon name="apartment" size={48} className="text-outline-variant" /></div>
+        }
+        <div className="absolute top-3 left-3">
+          <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${STATUS_COLORS[property.status] || 'bg-surface-container text-on-surface'}`}>{property.status}</span>
+        </div>
+        <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={e => { e.stopPropagation(); onQr(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-on-surface shadow hover:bg-white">
+            <Icon name="qr_code" size={14} />
+          </button>
+          {canEdit && (
+            <button onClick={e => { e.stopPropagation(); onEdit(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-primary shadow hover:bg-white">
+              <Icon name="edit" size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button onClick={e => { e.stopPropagation(); onDelete(); }} className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-error shadow hover:bg-white">
+              <Icon name="delete" size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="p-4">
+        <h3 className="font-bold text-on-surface mb-1">{property.name}</h3>
+        <p className="text-xs text-on-surface-variant flex items-center gap-1 mb-3">
+          <Icon name="location_on" size={12} />{property.address}
+        </p>
+        {(property.surface > 0 || property.rooms > 0) && (
+          <div className="flex gap-3 text-xs text-on-surface-variant mb-3">
+            {property.surface > 0 && <span className="flex items-center gap-1"><Icon name="straighten" size={12} />{property.surface} m²</span>}
+            {property.rooms > 0 && <span className="flex items-center gap-1"><Icon name="door_open" size={12} />{property.rooms} pièces</span>}
+          </div>
+        )}
+        <div className="flex items-center justify-between pt-3 border-t border-outline-variant/10">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container text-xs font-bold">
+              {property.ownerInitials || '?'}
+            </div>
+            <span className="text-xs text-on-surface-variant">{property.owner}</span>
+          </div>
+          <span className="font-bold text-primary text-sm">{fmt(property.rent)}/mois</span>
+        </div>
+        {canEdit && onChangeType && !property.isBuilding && (
+          <div className="mt-3 pt-3 border-t border-outline-variant/10" onClick={e => e.stopPropagation()}>
+            <label className="text-[10px] uppercase tracking-wide text-on-surface-variant font-semibold flex items-center gap-1">
+              <Icon name="swap_horiz" size={12} /> Déplacer vers le type
+            </label>
+            <select value={UNIT_TYPES.includes(property.type) ? property.type : 'Studio'} onChange={e => onChangeType(e.target.value)}
+              className="w-full mt-1 px-2 py-1.5 rounded-lg border border-outline-variant/40 bg-surface-container text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
+              {UNIT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ModalOverlay({ children, onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+      {children}
+    </div>
+  );
+}
