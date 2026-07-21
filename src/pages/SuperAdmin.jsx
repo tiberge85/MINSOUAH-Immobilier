@@ -70,6 +70,9 @@ export default function SuperAdmin() {
   const [extendDays, setExtendDays] = useState(365);
   const [newLicensePlan, setNewLicensePlan] = useState('pro');
   const [orgDeleteConfirm, setOrgDeleteConfirm] = useState(null);
+  const [finResetConfirm, setFinResetConfirm] = useState(null);
+  const [finResetText, setFinResetText] = useState('');
+  const [finResetBusy, setFinResetBusy] = useState(false);
   const [toast, setToast] = useState('');
   const [licSearch, setLicSearch] = useState('');
   const [orgSearch, setOrgSearch] = useState('');
@@ -334,6 +337,19 @@ export default function SuperAdmin() {
     await logSec({ action: SEC.LIC_CONVERTED, userId: state.currentUser?.id, userEmail: state.currentUser?.email, role: 'SUPER_ADMIN', target: license.key, details: `Plan: ${convertPlan} — ${convertDuration}j` });
     showToast(`Essai converti en ${getPlan(convertPlan).name} (${convertDuration}j)`);
     setConvertModal(null);
+  };
+
+  const handleResetFinances = async () => {
+    if (!finResetConfirm || finResetBusy) return;
+    setFinResetBusy(true);
+    try {
+      await dispatch({ type: 'SA_RESET_ORG_FINANCES', payload: finResetConfirm.id });
+      await logSec({ action: 'ORG_FINANCES_RESET', userId: state.currentUser?.id, userEmail: state.currentUser?.email, role: 'SUPER_ADMIN', target: finResetConfirm.name });
+    } finally {
+      setFinResetBusy(false);
+      setFinResetConfirm(null);
+      setFinResetText('');
+    }
   };
 
   const handleDeleteOrg = async () => {
@@ -866,6 +882,7 @@ export default function SuperAdmin() {
                           {o.license && <button onClick={() => setLicenseModal({ license: o.license, action: 'extend' })} className="flex items-center gap-1.5 text-xs bg-primary/10 text-primary hover:bg-primary/20 px-3 py-2 rounded-xl font-semibold transition-colors"><Icon name="update" size={13} />Prolonger licence</button>}
                           <button onClick={() => { setChangePlanValue(o.license?.plan || o.plan || 'pro'); setChangePlanModal({ org: o, license: o.license }); }} className="flex items-center gap-1.5 text-xs bg-indigo-100 text-indigo-700 hover:bg-indigo-200 px-3 py-2 rounded-xl font-semibold transition-colors"><Icon name="swap_horiz" size={13} />Changer le plan</button>
                           <button onClick={() => setLicenseModal({ license: { orgId: o.id }, action: 'new' })} className="flex items-center gap-1.5 text-xs bg-surface-container text-on-surface-variant hover:text-on-surface px-3 py-2 rounded-xl font-semibold transition-colors border border-outline-variant/30"><Icon name="add_card" size={13} />Nouvelle licence</button>
+                          <button onClick={() => { setFinResetText(''); setFinResetConfirm(o); }} className="flex items-center gap-1.5 text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 px-3 py-2 rounded-xl font-semibold transition-colors"><Icon name="restart_alt" size={13} />Finances à zéro</button>
                           {o.id !== 'default' && (
                             <>
                               <button
@@ -1460,6 +1477,39 @@ export default function SuperAdmin() {
               <button onClick={() => setChangePlanModal(null)} className="flex-1 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors">Annuler</button>
               <button onClick={handleExecuteChangePlan} className="flex-1 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2">
                 <Icon name="check_circle" size={16} /> Appliquer — {getPlan(changePlanValue).name}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Remise à zéro des finances ── */}
+      {finResetConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center mb-4"><Icon name="restart_alt" size={24} className="text-orange-700" /></div>
+            <h3 className="font-bold text-lg text-on-surface mb-2">Remettre les finances à zéro ?</h3>
+            <p className="text-sm text-on-surface-variant mb-3">
+              Toutes les données financières de <strong>{finResetConfirm.name}</strong> seront supprimées <strong>définitivement</strong> :
+              paiements, dépenses &amp; recettes, clôtures mensuelles et bordereaux.
+            </p>
+            <p className="text-xs text-on-surface-variant mb-3">
+              Les biens, contrats et locataires <strong>ne sont pas touchés</strong>. Cette action est irréversible.
+            </p>
+            <label className="block text-xs font-semibold text-on-surface-variant mb-1">Pour confirmer, tape le nom exact de l'organisation :</label>
+            <input
+              value={finResetText}
+              onChange={e => setFinResetText(e.target.value)}
+              placeholder={finResetConfirm.name}
+              className="w-full border border-outline-variant rounded-xl px-3 py-2 text-sm mb-4 focus:outline-none focus:border-orange-500"
+            />
+            <div className="flex gap-3">
+              <button onClick={() => { setFinResetConfirm(null); setFinResetText(''); }} className="flex-1 py-2.5 bg-surface-container text-on-surface-variant rounded-xl text-sm font-semibold">Annuler</button>
+              <button
+                onClick={handleResetFinances}
+                disabled={finResetText.trim() !== finResetConfirm.name.trim() || finResetBusy}
+                className="flex-1 py-2.5 bg-orange-600 text-white rounded-xl text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed">
+                {finResetBusy ? 'Suppression…' : 'Tout remettre à zéro'}
               </button>
             </div>
           </div>
