@@ -798,6 +798,28 @@ export function AppProvider({ children }) {
           await deleteDoc(wsDoc('transactions', payload));
           break;
 
+        // ── SUPER ADMIN : remise à zéro des finances d'une organisation ────────
+        // Supprime DÉFINITIVEMENT toutes les données financières de l'org ciblée
+        // (paiements, dépenses/recettes, clôtures mensuelles, bordereaux). Ne
+        // touche PAS aux biens, contrats ni locataires. payload = orgId cible.
+        case 'SA_RESET_ORG_FINANCES': {
+          const targetOrg = payload;
+          if (!targetOrg) break;
+          const COLS = ['payments', 'transactions', 'monthClosures', 'bordereaux', 'bordereauVerify', 'versements'];
+          for (const col of COLS) {
+            let snap;
+            try { snap = await getDocs(query(wsCol(col), where('orgId', '==', targetOrg))); }
+            catch { continue; } // collection absente / non indexée → on ignore
+            let batch = writeBatch(db); let n = 0;
+            for (const d of snap.docs) {
+              batch.delete(d.ref); n++;
+              if (n % 400 === 0) { await batch.commit(); batch = writeBatch(db); }
+            }
+            if (n % 400 !== 0) await batch.commit();
+          }
+          break;
+        }
+
         // ── PAYMENTS ──────────────────────────────────────────────────────────
         case 'ADD_PAYMENT': {
           const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
