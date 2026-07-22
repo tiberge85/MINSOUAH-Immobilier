@@ -8,7 +8,7 @@ import { useToast } from '../context/ToastContext';
 import Icon from '../components/Icon';
 import SearchSelect from '../components/SearchSelect';
 import SignaturePad from '../components/SignaturePad';
-import { can } from '../lib/permissions';
+import { can, FULL_ACCESS_ROLES } from '../lib/permissions';
 import { openBordereauPrint } from '../lib/bordereauReport';
 
 const PAYMENT_MODES = ['Espèces', 'Chèque', 'Virement', 'Mobile Money', 'Mixte'];
@@ -57,7 +57,9 @@ export default function Bordereaux() {
   const canCreate = can(currentUser, 'bordereaux', 'create');
   const canEdit = can(currentUser, 'bordereaux', 'edit');
   const canDelete = can(currentUser, 'bordereaux', 'delete');
-  const canValidate = can(currentUser, 'bordereaux', 'validate');
+  // La VALIDATION d'un bordereau est réservée à l'admin de l'organisation :
+  // un agent crée et soumet, l'admin valide.
+  const canValidate = FULL_ACCESS_ROLES.includes(currentUser?.role);
 
   const [tab, setTab] = useState('dashboard');
   // Ouverture d'un sous-onglet précis depuis les onglets Finances
@@ -593,7 +595,9 @@ function CreateCompta({ eligible, currentUser, canValidate, organizations = [], 
 
       <div className="flex justify-end gap-2">
         <Btn variant="secondary" icon="save" onClick={() => build('Brouillon')} disabled={selected.length === 0}>Enregistrer brouillon</Btn>
-        {canValidate && <Btn variant="green" icon="verified" onClick={() => build('Validé')} disabled={selected.length === 0}>Créer et valider</Btn>}
+        {canValidate
+          ? <Btn variant="green" icon="verified" onClick={() => build('Validé')} disabled={selected.length === 0}>Créer et valider</Btn>
+          : <Btn variant="green" icon="send" onClick={() => build('En attente de validation')} disabled={selected.length === 0}>Soumettre pour validation</Btn>}
       </div>
     </div>
   );
@@ -743,10 +747,18 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
   const ownerReversedCount = ownerAllPaid.filter(p => p.versementProprioId || p.avanceVerseeProprio).length;
 
   // Mois proposés = mois de LOYER (libellé propre, ex. « Juillet 2026 ») + mois
-  // d'encaissement (pour les arriérés reçus un autre mois). Jamais vide si des
-  // paiements existent, contrairement au seul paidDate (format court illisible).
-  const months = useMemo(() => [...new Set(ownerPayments.flatMap(p => [p.month, dateToMonthLabel(p.paidDate)]).filter(Boolean))]
-    .sort((a, b) => monthKey(b) - monthKey(a)), [ownerPayments]);
+  // d'encaissement, à partir de TOUS les loyers encaissés du propriétaire (même
+  // déjà reversés) → la liste n'est jamais vide dès qu'il a des paiements.
+  const months = useMemo(() => {
+    if (!owner) return [];
+    const all = paidPayments.filter(p => {
+      const oid = ownerIdOfPayment(p);
+      const known = oid != null && (owners || []).some(o => Number(o.id) === oid);
+      return oid === Number(owner.id) || !known;
+    });
+    return [...new Set(all.flatMap(p => [p.month, dateToMonthLabel(p.paidDate)]).filter(Boolean))]
+      .sort((a, b) => monthKey(b) - monthKey(a));
+  }, [owner, owners, paidPayments, ownerIdOfPayment]);
   // Loyers/arriérés/anticipés ENCAISSÉS dans le mois choisi (par date de paiement)
   // Toutes les entrées du mois = loyers DU mois (par mois de loyer) + tout ce qui
   // a été ENCAISSÉ ce mois-ci (arriérés/anticipés reçus). Union des deux, comme le rapport.
@@ -1030,8 +1042,10 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
           </div>
 
           <div className="flex justify-end gap-2">
-            <Btn variant="secondary" icon="save" onClick={() => build('Brouillon')} disabled={lines.length === 0}>Enregistrer brouillon</Btn>
-            {canValidate && <Btn variant="green" icon="verified" onClick={() => build('Validé')} disabled={lines.length === 0}>Créer et valider</Btn>}
+            <Btn variant="secondary" icon="save" onClick={() => build('Brouillon')} disabled={lines.length === 0 && totalDeposits === 0}>Enregistrer brouillon</Btn>
+            {canValidate
+              ? <Btn variant="green" icon="verified" onClick={() => build('Validé')} disabled={lines.length === 0 && totalDeposits === 0}>Créer et valider</Btn>
+              : <Btn variant="green" icon="send" onClick={() => build('En attente de validation')} disabled={lines.length === 0 && totalDeposits === 0}>Soumettre pour validation</Btn>}
           </div>
         </>
       )}
