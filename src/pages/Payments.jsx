@@ -2502,31 +2502,42 @@ export default function Payments() {
   // enregistré (Payé / Impayé / Aucun) → pour repérer les paiements manquants.
   const handleExportReconciliation = () => {
     const norm = s => (s || '').toLowerCase().trim();
+    const selStart = new Date(selMonthDate.getFullYear(), selMonthDate.getMonth(), 1);
     const active = (contracts || []).filter(c => c.status === 'Actif' || c.status === 'Expirant');
     const rows = active
       .map(c => {
         const name = norm(c.tenant);
+        const tenant = (tenants || []).find(t => norm(t.name) === name || (c.tenantId && String(t.id) === String(c.tenantId)));
+        const psDate = tenant?.paymentStartDate ? new Date(tenant.paymentStartDate) : null;
+        const psStart = (psDate && !isNaN(psDate.getTime())) ? new Date(psDate.getFullYear(), psDate.getMonth(), 1) : null;
+        const notYetDue = psStart && selStart < psStart; // 1er loyer après le mois → pas encore dû
+        const psLabel = psStart ? `${MONTH_NAMES[psStart.getMonth()]} ${psStart.getFullYear()}` : '';
         const recs = monthPmts.filter(p => norm(p.tenantName) === name);
         const paid = recs.find(p => p.status === 'Payé');
         const other = recs.find(p => p.status !== 'Payé' && p.status !== 'Annulé');
-        const statut = paid ? 'Payé' : (other ? (other.status || 'Impayé') : 'AUCUN ENREGISTREMENT');
         const rent = Number(c.rent) || 0;
         const montant = paid ? (Number(paid.amount) || 0) : 0;
+        const statut = notYetDue
+          ? `Pas encore dû (1er loyer : ${psLabel})`
+          : (paid ? 'Payé' : (other ? (other.status || 'Impayé') : 'AUCUN ENREGISTREMENT'));
         return {
           'Locataire': c.tenant || '',
           'Propriété': c.propertyName || '',
-          'Loyer attendu (FCFA)': rent,
+          '1er loyer': psLabel,
+          'Loyer attendu (FCFA)': notYetDue ? 0 : rent,
           'Statut enregistré': statut,
           'Montant encaissé (FCFA)': montant,
           'Réglé le': paid?.paidDate || '',
           'Mode': paid?.method || '',
-          'Écart (FCFA)': paid ? (montant - rent) : -rent,
+          'Écart (FCFA)': notYetDue ? 0 : (paid ? (montant - rent) : -rent),
+          '_ord': notYetDue ? 2 : (paid ? 1 : 0), // trie : manquants en haut, pas-encore-dû en bas
         };
       })
-      .sort((a, b) => (a['Statut enregistré'] === 'Payé' ? 1 : 0) - (b['Statut enregistré'] === 'Payé' ? 1 : 0));
+      .sort((a, b) => a._ord - b._ord)
+      .map(r => { const { _ord, ...rest } = r; return rest; });
     const totalAttendu = rows.reduce((s, r) => s + (r['Loyer attendu (FCFA)'] || 0), 0);
     const totalEncaisse = rows.reduce((s, r) => s + (r['Montant encaissé (FCFA)'] || 0), 0);
-    rows.push({ 'Locataire': 'TOTAL', 'Propriété': '', 'Loyer attendu (FCFA)': totalAttendu, 'Statut enregistré': '', 'Montant encaissé (FCFA)': totalEncaisse, 'Réglé le': '', 'Mode': '', 'Écart (FCFA)': totalEncaisse - totalAttendu });
+    rows.push({ 'Locataire': 'TOTAL (dus ce mois)', 'Propriété': '', '1er loyer': '', 'Loyer attendu (FCFA)': totalAttendu, 'Statut enregistré': '', 'Montant encaissé (FCFA)': totalEncaisse, 'Réglé le': '', 'Mode': '', 'Écart (FCFA)': totalEncaisse - totalAttendu });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Réconciliation');
     XLSX.writeFile(wb, `Reconciliation_${selectedMonth.replace(/\s/g, '_')}.xlsx`);
