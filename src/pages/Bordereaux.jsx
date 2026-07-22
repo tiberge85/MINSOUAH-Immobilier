@@ -704,12 +704,20 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
   // Mois = mois d'ENCAISSEMENT (date de paiement), pour inclure les arriérés
   // reçus ce mois-ci même s'ils concernent un mois de loyer passé.
   const MONTHS_FR = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+  // Abréviations françaises produites par toLocaleDateString('fr-FR', {month:'short'})
+  const FR_SHORT = { 'janv': 0, 'févr': 1, 'fevr': 1, 'mars': 2, 'avr': 3, 'mai': 4, 'juin': 5, 'juil': 6, 'août': 7, 'aout': 7, 'sept': 8, 'oct': 9, 'nov': 10, 'déc': 11, 'dec': 11 };
   const dateToMonthLabel = (dateStr) => {
     if (!dateStr) return '';
     const d = new Date(dateStr);
     if (!isNaN(d.getTime())) return `${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`;
-    const m = String(dateStr).match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-    return m ? `${MONTHS_FR[Number(m[2]) - 1]} ${m[3]}` : '';
+    const s = String(dateStr);
+    // jj/mm/aaaa
+    let m = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (m) return `${MONTHS_FR[Number(m[2]) - 1]} ${m[3]}`;
+    // « 20 juil. 2026 » (format français court)
+    m = s.match(/(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\.?\s+(\d{4})/);
+    if (m) { const idx = FR_SHORT[m[2].toLowerCase().replace('.', '')]; if (idx != null) return `${MONTHS_FR[idx]} ${m[3]}`; }
+    return '';
   };
   const inSelMonth = (dateStr) => monthFilter === 'Tous' ? true : dateToMonthLabel(dateStr) === monthFilter;
 
@@ -734,7 +742,10 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
   }, [owner, owners, paidPayments, ownerIdOfPayment, monthFilter]);
   const ownerReversedCount = ownerAllPaid.filter(p => p.versementProprioId || p.avanceVerseeProprio).length;
 
-  const months = useMemo(() => [...new Set(ownerPayments.map(p => dateToMonthLabel(p.paidDate)).filter(Boolean))]
+  // Mois proposés = mois de LOYER (libellé propre, ex. « Juillet 2026 ») + mois
+  // d'encaissement (pour les arriérés reçus un autre mois). Jamais vide si des
+  // paiements existent, contrairement au seul paidDate (format court illisible).
+  const months = useMemo(() => [...new Set(ownerPayments.flatMap(p => [p.month, dateToMonthLabel(p.paidDate)]).filter(Boolean))]
     .sort((a, b) => monthKey(b) - monthKey(a)), [ownerPayments]);
   // Loyers/arriérés/anticipés ENCAISSÉS dans le mois choisi (par date de paiement)
   // Toutes les entrées du mois = loyers DU mois (par mois de loyer) + tout ce qui
@@ -759,6 +770,7 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
   const ownerDeposits = useMemo(() => {
     if (!owner) return [];
     return (tenants || []).filter(t => {
+      if (t.depositVerseProprio) return false; // déjà versé au propriétaire → hors net
       const amt = (Number(t.cautionAmount) || 0) + (Number(t.advanceAmount) || 0);
       if (amt <= 0) return false;
       const _oid = ownerIdOfPayment({ propertyName: t.property || '' });
