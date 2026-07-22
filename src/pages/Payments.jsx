@@ -680,6 +680,11 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
       <div class="kpi-v" style="color:#0369a1">${fCFA(depAdvance)}</div>
       <div class="kpi-s">Total des mois d'avance encaissés</div>
     </div>
+    <div class="kpi" style="background:#785a00;border-color:#785a00;grid-column:span 2">
+      <div class="kpi-l" style="color:#f5e9c8">Net à reverser au propriétaire</div>
+      <div class="kpi-v" style="color:#fff">${fCFA(synthesis ? synthesis.totalAReverser : (totalNetOwner + depCaution + depAdvance))}</div>
+      <div class="kpi-s" style="color:#f5e9c8">Total encaissé du mois − charges</div>
+    </div>
   </div>
 
   <div style="margin-bottom:16px">
