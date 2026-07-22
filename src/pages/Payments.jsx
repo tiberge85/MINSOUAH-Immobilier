@@ -2003,6 +2003,25 @@ export default function Payments() {
     grandTotal:      depositsList.reduce((s, d) => s + d.cautionAmount + d.advanceAmount, 0),
   }), [depositsList]);
 
+  // Vue « cautions & avances DU MOIS » : une caution/avance ne figure que pour son
+  // mois d'encaissement (mois d'entrée du locataire). Passé ce mois, elle n'apparaît
+  // plus dans l'onglet ni dans le badge pour les autres mois.
+  const depMonthLabel = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? '' : `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+  };
+  const depositsThisMonth = useMemo(
+    () => depositsList.filter(d => depMonthLabel(d.entryDate) === selectedMonth),
+    [depositsList, selectedMonth]   // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const depositsTotalsMonth = useMemo(() => ({
+    cautionHeld:     depositsThisMonth.filter(d => !d.cautionRefunded).reduce((s, d) => s + d.cautionAmount, 0),
+    cautionRefunded: depositsThisMonth.filter(d => d.cautionRefunded).reduce((s, d) => s + d.cautionAmount, 0),
+    advanceTotal:    depositsThisMonth.reduce((s, d) => s + d.advanceAmount, 0),
+    grandTotal:      depositsThisMonth.reduce((s, d) => s + d.cautionAmount + d.advanceAmount, 0),
+  }), [depositsThisMonth]);
+
   const toggleCautionRefund = (d) => {
     const tenant = (tenants || []).find(t => String(t.id) === String(d.tenantId));
     if (!tenant) return;
@@ -2711,7 +2730,7 @@ export default function Payments() {
     { id: 'reminders', label: 'Rappels du mois', icon: 'notifications_active', badge: currentMonthUnpaid.length },
     { id: 'penalties', label: 'Pénalités 10%', icon: 'gavel', badge: isAfterDeadline ? penaltyList.length : 0 },
     { id: 'arrears', label: 'Arriérés', icon: 'history', badge: arrearsList.length },
-    { id: 'deposits', label: 'Cautions & avances', icon: 'savings', badge: depositsList.length },
+    { id: 'deposits', label: 'Cautions & avances', icon: 'savings', badge: depositsThisMonth.length },
     { id: 'report', label: 'Rapport mensuel', icon: 'bar_chart' },
   ];
 
@@ -3403,22 +3422,22 @@ export default function Payments() {
         <div className="flex flex-col gap-md">
           <div className="flex items-center justify-between flex-wrap gap-sm">
             <div>
-              <h3 className="font-bold text-on-surface text-base">Cautions & avances</h3>
+              <h3 className="font-bold text-on-surface text-base">Cautions & avances — {selectedMonth}</h3>
               <p className="text-sm text-on-surface-variant mt-0.5">
-                {depositsList.length} locataire(s) · Total encaissé : <span className="font-bold text-primary">{fmt(depositsTotals.grandTotal)}</span>
+                {depositsThisMonth.length} locataire(s) entré(s) ce mois · Total encaissé : <span className="font-bold text-primary">{fmt(depositsTotalsMonth.grandTotal)}</span>
               </p>
             </div>
-            {depositsList.length > 0 && (
+            {depositsThisMonth.length > 0 && (
               <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintDeposits}>Exporter PDF</Btn>
             )}
           </div>
 
           <section className="grid grid-cols-2 lg:grid-cols-4 gap-md">
             {[
-              { label: 'Cautions détenues', value: fmt(depositsTotals.cautionHeld), icon: 'shield', cls: 'bg-primary/10 text-primary' },
-              { label: 'Avances encaissées', value: fmt(depositsTotals.advanceTotal), icon: 'event_available', cls: 'bg-blue-100 text-blue-700' },
-              { label: 'Cautions restituées', value: fmt(depositsTotals.cautionRefunded), icon: 'undo', cls: 'bg-green-100 text-green-700' },
-              { label: 'Total encaissé', value: fmt(depositsTotals.grandTotal), icon: 'savings', cls: 'bg-amber-100 text-amber-700' },
+              { label: 'Cautions détenues', value: fmt(depositsTotalsMonth.cautionHeld), icon: 'shield', cls: 'bg-primary/10 text-primary' },
+              { label: 'Avances encaissées', value: fmt(depositsTotalsMonth.advanceTotal), icon: 'event_available', cls: 'bg-blue-100 text-blue-700' },
+              { label: 'Cautions restituées', value: fmt(depositsTotalsMonth.cautionRefunded), icon: 'undo', cls: 'bg-green-100 text-green-700' },
+              { label: 'Total encaissé', value: fmt(depositsTotalsMonth.grandTotal), icon: 'savings', cls: 'bg-amber-100 text-amber-700' },
             ].map(s => (
               <div key={s.label} className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-center gap-md">
                 <div className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 ${s.cls}`}><Icon name={s.icon} size={20} /></div>
@@ -3430,7 +3449,7 @@ export default function Payments() {
             ))}
           </section>
 
-          {depositsList.length > 0 && renderListSearch()}
+          {depositsThisMonth.length > 0 && renderListSearch()}
 
           <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
             <div className="overflow-x-auto">
@@ -3443,13 +3462,13 @@ export default function Payments() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/20">
-                  {depositsList.length === 0 && (
+                  {depositsThisMonth.length === 0 && (
                     <tr><td colSpan={8} className="text-center py-12 text-on-surface-variant">
-                      <Icon name="savings" size={36} className="opacity-30 mb-2" /><p>Aucune caution ni avance enregistrée</p>
-                      <p className="text-xs mt-1">Renseignez-les à la création d'un locataire (onglet Location).</p>
+                      <Icon name="savings" size={36} className="opacity-30 mb-2" /><p>Aucune caution ni avance encaissée en {selectedMonth}</p>
+                      <p className="text-xs mt-1">Les cautions/avances apparaissent le mois d'entrée du locataire.</p>
                     </td></tr>
                   )}
-                  {depositsList.filter(d => matchLS(d.tenantName, d.propertyName)).map(d => (
+                  {depositsThisMonth.filter(d => matchLS(d.tenantName, d.propertyName)).map(d => (
                     <tr key={d.tenantId} className="hover:bg-surface-container-low transition-colors">
                       <td className="px-4 py-3.5">
                         <p className="font-semibold text-sm text-on-surface">{d.tenantName}</p>
