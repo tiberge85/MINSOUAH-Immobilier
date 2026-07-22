@@ -1727,9 +1727,15 @@ export default function Payments() {
     return (i >= 0 && yr) ? new Date(Number(yr), i, 1) : now;
   }, [selectedMonth, now]);
 
+  // Un mois CLÔTURÉ n'a plus de « rappels » : ses impayés sont devenus des arriérés.
+  const isSelMonthClosed = useMemo(
+    () => (monthClosures || []).some(c => c.month === selectedMonth),
+    [monthClosures, selectedMonth]
+  );
+
   const currentMonthUnpaid = useMemo(
-    () => currentMonthUnpaidList({ payments, contracts, tenants, properties }, selMonthDate),
-    [payments, contracts, tenants, properties, selMonthDate]
+    () => isSelMonthClosed ? [] : currentMonthUnpaidList({ payments, contracts, tenants, properties }, selMonthDate),
+    [payments, contracts, tenants, properties, selMonthDate, isSelMonthClosed]
   );
 
   /* ── Active tenants in their ADVANCE period this month (paid caution/avance,
@@ -1759,6 +1765,7 @@ export default function Payments() {
 
   /* ── Penalty list: active tenants who haven't paid for current month ── */
   const penaltyList = useMemo(() => {
+    if (isSelMonthClosed) return []; // mois clôturé → plus de pénalités, ce sont des arriérés
     const currentDate = new Date(selMonthDate.getFullYear(), selMonthDate.getMonth(), 1);
     const paidThisMonth = new Set(
       (payments || [])
@@ -1796,7 +1803,7 @@ export default function Payments() {
           total: rent + penalty,
         };
       });
-  }, [contracts, payments, selectedMonth, tenants, selMonthDate]);
+  }, [contracts, payments, selectedMonth, tenants, selMonthDate, isSelMonthClosed]);
 
   /* ── Arrears: unpaid payments from months BEFORE the current month ── */
   // Arrears = explicit unpaid records from months BEFORE the current month.
@@ -4170,12 +4177,15 @@ export default function Payments() {
 
           <Field label="Mois d'arriérés (plusieurs choix possibles)" required>
             {(() => {
+              // Mois éligibles : mois strictement passés + tout mois CLÔTURÉ (y compris
+              // le mois en cours une fois clôturé, pour y enregistrer un arriéré).
               const pastMonths = allMonths.filter(m => {
                 const [mn, yr] = m.split(' ');
                 const idx = MONTH_NAMES.indexOf(mn);
                 const y = parseInt(yr);
                 const cy = now.getFullYear(), cm = now.getMonth();
-                return y < cy || (y === cy && idx < cm);
+                const isPast = y < cy || (y === cy && idx < cm);
+                return isPast || closedMonthSet.has(m);
               }).reverse();
               return (
                 <div className="border border-outline-variant rounded-xl overflow-hidden max-h-44 overflow-y-auto">
@@ -4194,6 +4204,7 @@ export default function Payments() {
                           className="w-4 h-4 accent-primary"
                         />
                         <span className="text-sm font-medium">{m}</span>
+                        {m === currentMonthLabel && <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">mois en cours{closedMonthSet.has(m) ? ' · clôturé' : ''}</span>}
                         {checked && <span className="ml-auto text-xs text-primary font-bold">✓</span>}
                       </label>
                     );
