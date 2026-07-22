@@ -106,6 +106,27 @@ const TABS = [
 
 const PIE_COLORS = ['#785a00', '#0f766e', '#b45309', '#0369a1', '#7c3aed', '#65a30d', '#9ca3af'];
 
+const PAY_METHODS = ['Espèces', 'Mobile Money', 'Virement', 'Chèque', 'Autre'];
+function methodBucket(m) {
+  const s = (m || '').toLowerCase();
+  if (/esp|cash|liquide/.test(s)) return 'Espèces';
+  if (/mobile|momo|orange|mtn|moov|wave/.test(s)) return 'Mobile Money';
+  if (/vir/.test(s)) return 'Virement';
+  if (/ch[èe]q|check/.test(s)) return 'Chèque';
+  return 'Autre';
+}
+// Nature d'un encaissement : loyer du mois / arriéré / avance (mois de loyer vs mois de règlement).
+function natureOf(p) {
+  const rm = monthLabelToDate(p.month);
+  const pd = parseAnyDate(p.paidDate);
+  if (rm && pd) {
+    const pm = new Date(pd.getFullYear(), pd.getMonth(), 1);
+    if (rm.getTime() < pm.getTime()) return 'Arriéré';
+    if (rm.getTime() > pm.getTime()) return 'Avance';
+  }
+  return 'Loyer';
+}
+
 export default function Finance() {
   const { state, dispatch } = useApp();
   const navigate = useNavigate();
@@ -123,6 +144,7 @@ export default function Finance() {
   const owners       = useMemo(() => scope(state.owners),       [state.owners, myOrgId]);           // eslint-disable-line react-hooks/exhaustive-deps
 
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [finMonth, setFinMonth] = useState(() => { const n = new Date(); return `${MONTHS_FR[n.getMonth()]} ${n.getFullYear()}`; });
   const [chartType, setChartType] = useState('area');
   const [chartPeriod, setChartPeriod] = useState('12 Mois');
   const [typeFilter, setTypeFilter] = useState('Tous');
@@ -242,6 +264,63 @@ export default function Finance() {
       aReverser, dejaReverse, resteReverser,
     };
   }, [payments, tenants, transactions, owners]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Mois disponibles (pour le sélecteur des onglets Caisse / Reversement / Bordereaux)
+  const finMonthsOpts = useMemo(() => {
+    const set = new Set([finMonth]);
+    payments.forEach(p => { const d = parseAnyDate(p.paidDate); if (d) set.add(`${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`); });
+    return ['Tous', ...[...set].filter(m => m && m !== 'Tous').sort((a, b) => {
+      const [ma, ya] = a.split(' '), [mb, yb] = b.split(' ');
+      return (Number(yb) - Number(ya)) || (MONTHS_FR.indexOf(mb) - MONTHS_FR.indexOf(ma));
+    })];
+  }, [payments, finMonth]);
+
+  const inFinMonth = (dateStr) => {
+    if (finMonth === 'Tous') return true;
+    const d = parseAnyDate(dateStr);
+    return d && `${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}` === finMonth;
+  };
+
+  // Données des onglets Caisse / Reversement / Bordereaux
+  const ledger = useMemo(() => {
+    const paid = payments.filter(p => p.status === 'Payé');
+    const ownerRate = Number((owners[0] || {}).commissionRate) || 0;
+    const commOf = (p) => (p.commissionAmount != null && Number(p.commissionAmount) > 0)
+      ? Number(p.commissionAmount)
+      : Math.round((Number(p.amount) || 0) * ownerRate / 100);
+
+    // ── Caisse : encaissements réels du mois (par date de règlement) ──
+    const caisse = paid.filter(p => inFinMonth(p.paidDate))
+      .sort((a, b) => (parseAnyDate(b.paidDate)?.getTime() || 0) - (parseAnyDate(a.paidDate)?.getTime() || 0));
+    const recon = { 'Espèces': 0, 'Mobile Money': 0, 'Virement': 0, 'Chèque': 0, 'Autre': 0 };
+    caisse.forEach(p => { recon[methodBucket(p.method)] += Number(p.amount) || 0; });
+    const caisseTotal = caisse.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+
+    // ── Reversements propriétaire (paiements marqués « versé ») ──
+    const reversements = paid.filter(p => p.avanceVerseeProprio && (inFinMonth(p.avanceVerseeAt) || inFinMonth(p.paidDate)))
+      .sort((a, b) => (parseAnyDate(b.avanceVerseeAt || b.paidDate)?.getTime() || 0) - (parseAnyDate(a.avanceVerseeAt || a.paidDate)?.getTime() || 0));
+    const reverseTotal = reversements.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+
+    // ── Bordereaux par propriétaire (net à reverser du mois) ──
+    // Encaissé détenu du mois (hors versés) par date de règlement.
+    const held = paid.filter(p => !p.avanceVerseeProprio && inFinMonth(p.paidDate));
+    const charges = transactions.filter(t => !t.positive && inFinMonth(t.date))
+      .reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
+    const cautions = tenants.reduce((s, t) => s + (t.cautionRefunded ? 0 : (Number(t.cautionAmount) || 0)) + (Number(t.advanceAmount) || 0), 0);
+    const soleOwner = owners.length === 1;
+    const bordereaux = (owners.length ? owners : [{ id: '—', name: 'Propriétaire' }]).map(o => {
+      // Un seul propriétaire → tout lui revient ; sinon rattachement par ownerId du paiement.
+      const mine = soleOwner ? held : held.filter(p => String(p.ownerId ?? '') === String(o.id));
+      const encaisse = mine.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      const commission = mine.reduce((s, p) => s + commOf(p), 0);
+      const oCautions = soleOwner ? cautions : 0;
+      const oCharges = soleOwner ? charges : 0;
+      const net = Math.max(0, encaisse + oCautions - commission - oCharges);
+      return { owner: o, encaisse, commission, cautions: oCautions, charges: oCharges, net, count: mine.length };
+    });
+
+    return { caisse, recon, caisseTotal, reversements, reverseTotal, bordereaux };
+  }, [payments, owners, tenants, transactions, finMonth]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // Répartition des encaissements du mois (camembert)
   const encaissePie = useMemo(() => ([
@@ -639,29 +718,118 @@ export default function Finance() {
       )}
 
       {activeTab !== 'dashboard' && (
-        <div className="bg-surface-container-lowest rounded-xl p-xl shadow-card border border-outline-variant/20 flex flex-col items-center text-center gap-3 mt-4">
-          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-            <Icon name={TABS.find(t => t.id === activeTab)?.icon || 'build'} size={30} className="text-primary" />
+        <div className="flex flex-col gap-gutter">
+          {/* En-tête + sélecteur de mois */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h2 className="text-h3 font-h3 text-on-surface">{TABS.find(t => t.id === activeTab)?.label}</h2>
+              <p className="text-body-sm text-on-surface-variant">{finMonth === 'Tous' ? 'Toutes périodes' : finMonth}</p>
+            </div>
+            <select value={finMonth} onChange={e => setFinMonth(e.target.value)} className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest focus:outline-none focus:border-primary">
+              {finMonthsOpts.map(m => <option key={m} value={m}>{m === 'Tous' ? 'Toutes périodes' : m}</option>)}
+            </select>
           </div>
-          <h3 className="text-h3 font-h3 text-on-surface">{TABS.find(t => t.id === activeTab)?.label}</h3>
-          {activeTab === 'bordereaux' && (
-            <p className="text-body-sm text-on-surface-variant max-w-lg">
-              Bordereau mensuel détaillé par propriétaire : appartement, locataire, loyer, arriérés, avances, cautions, charges puis déductions (commission, travaux, eau, électricité, gardiennage, taxes…) et <strong>NET À REVERSER</strong> automatique, avec états Brouillon → Vérifié → Validé → Reversé.
-            </p>
-          )}
+
+          {/* ══════════ VERSEMENT COMPTABILITÉ (caisse) ══════════ */}
           {activeTab === 'caisse' && (
-            <p className="text-body-sm text-on-surface-variant max-w-lg">
-              Registre des sommes réellement encaissées (date, référence, locataire, appartement, nature, mode de paiement, utilisateur) avec <strong>rapprochement de caisse</strong> automatique : totaux Espèces / Mobile Money / Virement / Chèque et validation de la caisse du jour par le comptable.
-            </p>
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {PAY_METHODS.map(m => (
+                  <StatCard key={m} label={m} value={fmt(ledger.recon[m])} icon={m === 'Espèces' ? 'payments' : m === 'Mobile Money' ? 'smartphone' : m === 'Virement' ? 'account_balance' : m === 'Chèque' ? 'receipt_long' : 'more_horiz'} tone={m === 'Espèces' ? 'green' : m === 'Mobile Money' ? 'blue' : m === 'Virement' ? 'primary' : 'neutral'} />
+                ))}
+              </div>
+              <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
+                <div className="p-md border-b border-outline-variant/20 flex items-center justify-between">
+                  <h3 className="font-h3 text-h3 text-on-surface">Encaissements — rapprochement de caisse</h3>
+                  <span className="text-sm font-bold text-primary">Total : {fmt(ledger.caisseTotal)}</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-secondary text-on-primary">
+                      <tr>{['Date', 'Réf.', 'Locataire', 'Bien', 'Nature', 'Mode', 'Montant'].map((h, i) => <th key={h} className={`px-3 py-3 text-xs uppercase tracking-wider ${i === 6 ? 'text-right' : ''}`}>{h}</th>)}</tr>
+                    </thead>
+                    <tbody className="divide-y divide-outline-variant/20">
+                      {ledger.caisse.map(p => (
+                        <tr key={p.id} className="hover:bg-surface-container-low">
+                          <td className="px-3 py-2.5 whitespace-nowrap">{p.paidDate || '—'}</td>
+                          <td className="px-3 py-2.5 text-on-surface-variant">{p.reference || String(p.id).slice(0, 6)}</td>
+                          <td className="px-3 py-2.5 font-medium">{p.tenantName || '—'}</td>
+                          <td className="px-3 py-2.5 text-on-surface-variant">{p.propertyName || '—'}</td>
+                          <td className="px-3 py-2.5"><span className="text-xs px-2 py-0.5 rounded-full bg-surface-container">{natureOf(p)}</span></td>
+                          <td className="px-3 py-2.5">{methodBucket(p.method)}</td>
+                          <td className="px-3 py-2.5 text-right font-semibold text-green-700">{fmt(p.amount)}</td>
+                        </tr>
+                      ))}
+                      {ledger.caisse.length === 0 && <tr><td colSpan={7} className="text-center py-xl text-on-surface-variant">Aucun encaissement sur cette période</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="px-md py-3 bg-surface-container-low border-t border-outline-variant/20 text-body-sm text-on-surface-variant">
+                  {ledger.caisse.length} encaissement(s) · Espèces {fmt(ledger.recon['Espèces'])} · Mobile Money {fmt(ledger.recon['Mobile Money'])} · Virement {fmt(ledger.recon['Virement'])} · Chèque {fmt(ledger.recon['Chèque'])}
+                </div>
+              </div>
+            </>
           )}
+
+          {/* ══════════ BORDEREAUX (net à reverser par propriétaire) ══════════ */}
+          {activeTab === 'bordereaux' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-gutter">
+              {ledger.bordereaux.map((b, i) => (
+                <div key={b.owner.id || i} className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 p-md flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-on-surface text-base">{b.owner.name || 'Propriétaire'}</h3>
+                      <p className="text-xs text-on-surface-variant">{finMonth === 'Tous' ? 'Toutes périodes' : finMonth} · {b.count} encaissement(s)</p>
+                    </div>
+                    <Icon name="real_estate_agent" size={22} className="text-primary" />
+                  </div>
+                  <div className="flex flex-col gap-1.5 text-sm">
+                    <div className="flex justify-between"><span className="text-on-surface-variant">Loyers / arriérés encaissés</span><span className="font-semibold">{fmt(b.encaisse)}</span></div>
+                    <div className="flex justify-between"><span className="text-on-surface-variant">Cautions & avances</span><span className="font-semibold">{fmt(b.cautions)}</span></div>
+                    <div className="flex justify-between text-red-700"><span>− Commission MINSOUAH</span><span className="font-semibold">{fmt(b.commission)}</span></div>
+                    <div className="flex justify-between text-red-700"><span>− Charges / dépenses</span><span className="font-semibold">{fmt(b.charges)}</span></div>
+                  </div>
+                  <div className="flex items-center justify-between bg-primary text-on-primary rounded-xl px-4 py-3">
+                    <span className="text-sm font-semibold">NET À REVERSER</span>
+                    <span className="text-lg font-bold">{fmt(b.net)}</span>
+                  </div>
+                </div>
+              ))}
+              {ledger.bordereaux.length === 0 && <p className="text-on-surface-variant text-sm">Aucun propriétaire enregistré.</p>}
+            </div>
+          )}
+
+          {/* ══════════ REVERSEMENT PROPRIÉTAIRE (déjà versés) ══════════ */}
           {activeTab === 'reversement' && (
-            <p className="text-body-sm text-on-surface-variant max-w-lg">
-              Suivi de tous les reversements propriétaires (période, total encaissé, déductions, net reversé, mode, référence bancaire, statut À préparer → Validé → Payé) avec génération automatique du reçu, du bordereau PDF, et envoi e-mail / WhatsApp.
-            </p>
+            <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
+              <div className="p-md border-b border-outline-variant/20 flex items-center justify-between">
+                <h3 className="font-h3 text-h3 text-on-surface">Reversements effectués</h3>
+                <span className="text-sm font-bold text-green-700">Total reversé : {fmt(ledger.reverseTotal)}</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-secondary text-on-primary">
+                    <tr>{['Date', 'Propriétaire', 'Locataire', 'Bien', 'Période', 'Mode', 'Montant', 'Statut'].map((h, i) => <th key={h} className={`px-3 py-3 text-xs uppercase tracking-wider ${i === 6 ? 'text-right' : ''}`}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/20">
+                    {ledger.reversements.map(p => (
+                      <tr key={p.id} className="hover:bg-surface-container-low">
+                        <td className="px-3 py-2.5 whitespace-nowrap">{p.avanceVerseeAt ? new Date(p.avanceVerseeAt).toLocaleDateString('fr-FR') : (p.paidDate || '—')}</td>
+                        <td className="px-3 py-2.5">{p.ownerName || (owners[0]?.name) || '—'}</td>
+                        <td className="px-3 py-2.5 font-medium">{p.tenantName || '—'}</td>
+                        <td className="px-3 py-2.5 text-on-surface-variant">{p.propertyName || '—'}</td>
+                        <td className="px-3 py-2.5">{p.month || '—'}</td>
+                        <td className="px-3 py-2.5">{methodBucket(p.method)}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold text-green-700">{fmt(p.amount)}</td>
+                        <td className="px-3 py-2.5"><span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold">Reversé</span></td>
+                      </tr>
+                    ))}
+                    {ledger.reversements.length === 0 && <tr><td colSpan={8} className="text-center py-xl text-on-surface-variant">Aucun reversement sur cette période. Marque un paiement « Versé propriétaire » dans Paiements pour qu'il apparaisse ici.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1">
-            <Icon name="engineering" size={14} /> En cours de construction — livré à la prochaine étape
-          </span>
         </div>
       )}
 
