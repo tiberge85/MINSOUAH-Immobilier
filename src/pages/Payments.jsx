@@ -2498,6 +2498,40 @@ export default function Payments() {
     if (win) { win.document.write(html); win.document.close(); }
   };
 
+  // Réconciliation du mois : tous les contrats actifs vs ce qui est réellement
+  // enregistré (Payé / Impayé / Aucun) → pour repérer les paiements manquants.
+  const handleExportReconciliation = () => {
+    const norm = s => (s || '').toLowerCase().trim();
+    const active = (contracts || []).filter(c => c.status === 'Actif' || c.status === 'Expirant');
+    const rows = active
+      .map(c => {
+        const name = norm(c.tenant);
+        const recs = monthPmts.filter(p => norm(p.tenantName) === name);
+        const paid = recs.find(p => p.status === 'Payé');
+        const other = recs.find(p => p.status !== 'Payé' && p.status !== 'Annulé');
+        const statut = paid ? 'Payé' : (other ? (other.status || 'Impayé') : 'AUCUN ENREGISTREMENT');
+        const rent = Number(c.rent) || 0;
+        const montant = paid ? (Number(paid.amount) || 0) : 0;
+        return {
+          'Locataire': c.tenant || '',
+          'Propriété': c.propertyName || '',
+          'Loyer attendu (FCFA)': rent,
+          'Statut enregistré': statut,
+          'Montant encaissé (FCFA)': montant,
+          'Réglé le': paid?.paidDate || '',
+          'Mode': paid?.method || '',
+          'Écart (FCFA)': paid ? (montant - rent) : -rent,
+        };
+      })
+      .sort((a, b) => (a['Statut enregistré'] === 'Payé' ? 1 : 0) - (b['Statut enregistré'] === 'Payé' ? 1 : 0));
+    const totalAttendu = rows.reduce((s, r) => s + (r['Loyer attendu (FCFA)'] || 0), 0);
+    const totalEncaisse = rows.reduce((s, r) => s + (r['Montant encaissé (FCFA)'] || 0), 0);
+    rows.push({ 'Locataire': 'TOTAL', 'Propriété': '', 'Loyer attendu (FCFA)': totalAttendu, 'Statut enregistré': '', 'Montant encaissé (FCFA)': totalEncaisse, 'Réglé le': '', 'Mode': '', 'Écart (FCFA)': totalEncaisse - totalAttendu });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Réconciliation');
+    XLSX.writeFile(wb, `Reconciliation_${selectedMonth.replace(/\s/g, '_')}.xlsx`);
+  };
+
   const handleExportExcel = () => {
     const monthData = payments
       .filter(p => p.month === selectedMonth)
@@ -3565,6 +3599,7 @@ export default function Payments() {
               <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintReport}>Rapport mensuel</Btn>
               <Btn icon="analytics" variant="primary" onClick={handlePrintGlobalReport}>Rapport global</Btn>
               <Btn icon="download" variant="secondary" onClick={handleExportExcel}>Export Excel</Btn>
+              <Btn icon="fact_check" variant="secondary" onClick={handleExportReconciliation}>Réconciliation (Excel)</Btn>
               {isClosed(selectedMonth) ? (
                 <>
                   <span className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-800 text-xs font-bold rounded-xl border border-green-200">
