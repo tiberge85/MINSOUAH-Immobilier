@@ -1719,17 +1719,25 @@ export default function Payments() {
      when a payment is entered, so unpaid tenants have no record at all).
      Tenants still in their advance period (paymentStartDate not yet reached)
      are excluded. Mirrors the reportUnpaid / penaltyList logic. */
+  // Date (1er du mois) correspondant au MOIS SÉLECTIONNÉ — les compteurs Rappels /
+  // Pénalités / « en avance » suivent ce mois, pas forcément le mois courant.
+  const selMonthDate = useMemo(() => {
+    const [mn, yr] = (selectedMonth || '').split(' ');
+    const i = MONTH_NAMES.indexOf(mn);
+    return (i >= 0 && yr) ? new Date(Number(yr), i, 1) : now;
+  }, [selectedMonth, now]);
+
   const currentMonthUnpaid = useMemo(
-    () => currentMonthUnpaidList({ payments, contracts, tenants, properties }, now),
-    [payments, contracts, tenants, properties, now]
+    () => currentMonthUnpaidList({ payments, contracts, tenants, properties }, selMonthDate),
+    [payments, contracts, tenants, properties, selMonthDate]
   );
 
   /* ── Active tenants in their ADVANCE period this month (paid caution/avance,
         payment starts a later month) → not due this month, shown for clarity ── */
   const currentMonthAdvance = useMemo(() => {
-    const currentDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currentDate = new Date(selMonthDate.getFullYear(), selMonthDate.getMonth(), 1);
     const alreadyInMonth = new Set(
-      (payments || []).filter(p => p.month === currentMonthLabel)
+      (payments || []).filter(p => p.month === selectedMonth)
         .map(p => (p.tenantName || '').toLowerCase().trim()).filter(Boolean)
     );
     const out = [];
@@ -1747,14 +1755,14 @@ export default function Payments() {
         }
       });
     return out;
-  }, [payments, currentMonthLabel, contracts, tenants, now]);
+  }, [payments, selectedMonth, contracts, tenants, selMonthDate]);
 
   /* ── Penalty list: active tenants who haven't paid for current month ── */
   const penaltyList = useMemo(() => {
-    const currentDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currentDate = new Date(selMonthDate.getFullYear(), selMonthDate.getMonth(), 1);
     const paidThisMonth = new Set(
       (payments || [])
-        .filter(p => p.month === currentMonthLabel && p.status === 'Payé')
+        .filter(p => p.month === selectedMonth && p.status === 'Payé')
         .map(p => (p.tenantName || '').toLowerCase().trim())
         .filter(Boolean)
     );
@@ -1788,7 +1796,7 @@ export default function Payments() {
           total: rent + penalty,
         };
       });
-  }, [contracts, payments, currentMonthLabel, tenants, now]);
+  }, [contracts, payments, selectedMonth, tenants, selMonthDate]);
 
   /* ── Arrears: unpaid payments from months BEFORE the current month ── */
   // Arrears = explicit unpaid records from months BEFORE the current month.
@@ -2978,7 +2986,7 @@ export default function Payments() {
           )}
           <div className="flex items-center justify-between flex-wrap gap-sm">
             <div>
-              <h3 className="font-bold text-on-surface text-base">Rappels — {currentMonthLabel}</h3>
+              <h3 className="font-bold text-on-surface text-base">Rappels — {selectedMonth}</h3>
               <p className="text-sm text-on-surface-variant mt-0.5">
                 <span className="font-semibold text-red-700">{currentMonthUnpaid.length}</span> à relancer
                 {currentMonthAdvance.length > 0 && <> · <span className="font-semibold text-blue-700">{currentMonthAdvance.length}</span> en avance</>}
@@ -3005,8 +3013,8 @@ export default function Payments() {
               <p className="font-semibold text-green-800">Aucun loyer en attente ce mois-ci</p>
               <p className="text-sm text-green-600 mt-1">
                 {currentMonthAdvance.length > 0
-                  ? `Les loyers dus pour ${currentMonthLabel} sont réglés. ${currentMonthAdvance.length} locataire(s) sont en période d'avance (voir ci-dessous).`
-                  : `Aucun rappel à envoyer pour ${currentMonthLabel}.`}
+                  ? `Les loyers dus pour ${selectedMonth} sont réglés. ${currentMonthAdvance.length} locataire(s) sont en période d'avance (voir ci-dessous).`
+                  : `Aucun rappel à envoyer pour ${selectedMonth}.`}
               </p>
             </div>
           ) : (
@@ -3131,7 +3139,7 @@ export default function Payments() {
 
           <div className="flex items-center justify-between flex-wrap gap-sm">
             <div>
-              <h3 className="font-bold text-on-surface text-base">Liste des pénalités — {currentMonthLabel}</h3>
+              <h3 className="font-bold text-on-surface text-base">Liste des pénalités — {selectedMonth}</h3>
               <p className="text-sm text-on-surface-variant mt-0.5">{penaltyList.length} dossier(s) concerné(s)</p>
             </div>
             <div className="flex gap-sm flex-wrap">
@@ -3147,7 +3155,7 @@ export default function Payments() {
           {penaltyList.length === 0 ? (
             <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
               <Icon name="check_circle" size={40} className="text-green-600 mb-3" />
-              <p className="font-semibold text-green-800">Aucune pénalité pour {currentMonthLabel}</p>
+              <p className="font-semibold text-green-800">Aucune pénalité pour {selectedMonth}</p>
               <p className="text-sm text-green-600 mt-1">Tous les locataires ont réglé leur loyer.</p>
             </div>
           ) : (
