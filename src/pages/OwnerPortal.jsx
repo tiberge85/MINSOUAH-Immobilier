@@ -265,13 +265,21 @@ export default function OwnerPortal() {
     ].filter(d => d.value > 0);
   }, [ownerProperties, ownerContracts]);
 
-  // Collected: filtered by period when set
-  const collectedTotal = periodPayments.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
-  const pendingAmount  = periodPayments.filter(p => p.status !== 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+  // Encaissé / Impayés : par MOIS (mois en cours) par défaut, cohérent avec « Loyer/mois ».
+  // Si une période est filtrée (dates en haut), on affiche la période choisie.
+  const OP_MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  const _nowOP = new Date();
+  const curMonthLbl = `${OP_MONTHS_FR[_nowOP.getMonth()]} ${_nowOP.getFullYear()}`;
+  const collectedTotal = hasPeriod
+    ? periodPayments.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0)
+    : ownerPayments.filter(p => p.month === curMonthLbl && p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+  const pendingAmount  = hasPeriod
+    ? periodPayments.filter(p => p.status !== 'Payé' && p.status !== 'Annulé').reduce((s, p) => s + (p.amount || 0), 0)
+    : Math.max(0, expectedMonthly - collectedTotal); // reste à encaisser ce mois
   const openTickets    = ownerTickets.filter(t => t.status !== 'Résolu').length;
 
-  // Taux de recouvrement: collected / (collected + pending) * 100
-  const totalBilled = collectedTotal + pendingAmount;
+  // Taux de recouvrement : encaissé / attendu (mois) — ou encaissé / facturé (période).
+  const totalBilled = hasPeriod ? (collectedTotal + pendingAmount) : expectedMonthly;
   const recoveryRate = totalBilled > 0 ? Math.round((collectedTotal / totalBilled) * 100) : null;
 
   // For chart: show expected revenue as a baseline when no payment records
@@ -579,8 +587,8 @@ export default function OwnerPortal() {
         <KpiCard label="Biens" value={ownerProperties.length} sub={`${occupiedCount} occ · ${freeCount} libre`} icon="apartment" color="bg-primary/10 text-primary" />
         <KpiCard label="Occupation" value={`${occupancyRate}%`} sub={`${activeContractsCount} contrat(s)`} icon="donut_large" color={occupancyRate >= 80 ? 'bg-green-100 text-green-700' : occupancyRate >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-error/10 text-error'} />
         <KpiCard label="Loyer/mois" value={fmtK(expectedMonthly)+' FCFA'} sub={`An: ${fmtK(expectedAnnual)} FCFA`} icon="trending_up" color="bg-green-100 text-green-700" />
-        <KpiCard label="Encaissé" value={fmtK(collectedTotal)+' FCFA'} sub={`${periodPayments.filter(p=>p.status==='Payé').length} paiem.`} icon="check_circle" color="bg-primary/10 text-primary" />
-        <KpiCard label="Impayés" value={fmtK(pendingAmount)+' FCFA'} sub={pendingAmount > 0 ? `${periodPayments.filter(p=>p.status!=='Payé').length} en att.` : 'À jour'} icon="warning" color={pendingAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700'} />
+        <KpiCard label="Encaissé" value={fmtK(collectedTotal)+' FCFA'} sub={hasPeriod ? `${periodPayments.filter(p=>p.status==='Payé').length} paiem.` : `${curMonthLbl}`} icon="check_circle" color="bg-primary/10 text-primary" />
+        <KpiCard label="Impayés" value={fmtK(pendingAmount)+' FCFA'} sub={hasPeriod ? (pendingAmount > 0 ? `${periodPayments.filter(p=>p.status!=='Payé'&&p.status!=='Annulé').length} en att.` : 'À jour') : (pendingAmount > 0 ? `reste ${curMonthLbl}` : 'À jour')} icon="warning" color={pendingAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700'} />
         <KpiCard
           label="Recouvrement"
           value={recoveryRate !== null ? `${recoveryRate}%` : '—'}
