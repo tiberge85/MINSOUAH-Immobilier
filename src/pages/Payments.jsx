@@ -269,15 +269,14 @@ function buildArrearsReportHTML(arrearsByMonth, arrearsTotal, orgSettings) {
    Rapport des arriérés RÉGLÉS (recouvrés) : loyers de mois passés finalement
    encaissés. Vert = recouvrement (positif), par opposition au rapport des
    arriérés restant dus (ambre/rouge). */
-function buildArrearsRecoveredReportHTML(recoveredByMonth, recoveredTotal, orgSettings) {
+function buildArrearsRecoveredReportHTML(recoveredByTenant, recoveredTotal, orgSettings) {
   const org = orgSettings || {};
   const orgLogo  = org.logo  || '';
   const orgStamp = org.stamp || '';
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
   const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
-  const totalMonths = recoveredByMonth.length;
-  const totalSettlements = recoveredByMonth.reduce((s, g) => s + g.payments.length, 0);
-  const tenantSet = new Set(recoveredByMonth.flatMap(g => g.payments.map(p => (p.tenantName || '').toLowerCase())));
+  const tenantCount = recoveredByTenant.length;
+  const totalSettlements = recoveredByTenant.reduce((s, g) => s + g.payments.length, 0);
   const fmtPaid = (p) => {
     if (p.paidDate && /^\d{4}-\d{2}-\d{2}/.test(p.paidDate)) {
       const dt = new Date(p.paidDate);
@@ -286,13 +285,13 @@ function buildArrearsRecoveredReportHTML(recoveredByMonth, recoveredTotal, orgSe
     return p.paidDate || '—';
   };
 
-  /* Sections par mois — chacune avec sous-total, + cumul général croissant */
+  /* Sections par LOCATAIRE — chacune avec sous-total, + cumul général croissant */
   let cumul = 0;
-  const monthSections = recoveredByMonth.map(g => {
+  const monthSections = recoveredByTenant.map(g => {
     cumul += g.total;
     const rows = g.payments.map((p, idx) => `
       <tr style="${idx % 2 === 0 ? '' : 'background:#f0fdf4'}">
-        <td style="padding:8px 12px;font-weight:600">${p.tenantName || '—'}</td>
+        <td style="padding:8px 12px;font-weight:600">${p.month || '—'}</td>
         <td style="padding:8px 12px;color:#555">${p.propertyName || '—'}</td>
         <td style="padding:8px 12px;text-align:right;font-weight:700;color:#15803d">${fCFA(p.amount)}</td>
         <td style="padding:8px 12px;text-align:center;color:#166534;font-weight:600">${fmtPaid(p)}</td>
@@ -302,14 +301,14 @@ function buildArrearsRecoveredReportHTML(recoveredByMonth, recoveredTotal, orgSe
       <div style="margin-bottom:20px;border:1px solid #86efac;border-radius:10px;overflow:hidden">
         <div style="background:#dcfce7;padding:10px 16px;display:flex;justify-content:space-between;align-items:center">
           <div>
-            <span style="font-size:14px;font-weight:800;color:#14532d">${g.month}</span>
-            <span style="font-size:11px;color:#15803d;margin-left:10px">${g.payments.length} règlement(s)</span>
+            <span style="font-size:14px;font-weight:800;color:#14532d">${g.tenantName}</span>
+            <span style="font-size:11px;color:#15803d;margin-left:10px">${g.payments.length} règlement(s)${g.tenantPhone ? ` · ${g.tenantPhone}` : ''}</span>
           </div>
           <span style="font-weight:900;color:#14532d;background:#bbf7d0;padding:4px 12px;border-radius:8px;font-size:13px">${fCFA(g.total)}</span>
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead><tr style="background:#16a34a;color:#fff">
-            <th style="padding:7px 12px;text-align:left">Locataire</th>
+            <th style="padding:7px 12px;text-align:left">Mois concerné</th>
             <th style="padding:7px 12px;text-align:left">Propriété</th>
             <th style="padding:7px 12px;text-align:right">Montant</th>
             <th style="padding:7px 12px;text-align:center">Réglé le</th>
@@ -318,7 +317,7 @@ function buildArrearsRecoveredReportHTML(recoveredByMonth, recoveredTotal, orgSe
           <tbody>${rows}</tbody>
           <tfoot>
             <tr style="background:#bbf7d0;font-weight:800">
-              <td colspan="2" style="padding:7px 12px;color:#14532d">Sous-total ${g.month}</td>
+              <td colspan="2" style="padding:7px 12px;color:#14532d">Sous-total ${g.tenantName}</td>
               <td style="padding:7px 12px;text-align:right;color:#14532d">${fCFA(g.total)}</td>
               <td colspan="2" style="padding:7px 12px;text-align:right;color:#166534;font-size:11px">Cumul : ${fCFA(cumul)}</td>
             </tr>
@@ -360,15 +359,14 @@ function buildArrearsRecoveredReportHTML(recoveredByMonth, recoveredTotal, orgSe
   </div>
 
   <div class="kpis">
-    <div class="kpi"><div class="kpi-val">${totalMonths}</div><div class="kpi-lbl">Mois concernés</div></div>
+    <div class="kpi"><div class="kpi-val">${tenantCount}</div><div class="kpi-lbl">Locataires</div></div>
     <div class="kpi"><div class="kpi-val">${totalSettlements}</div><div class="kpi-lbl">Arriérés recouvrés</div></div>
-    <div class="kpi"><div class="kpi-val">${tenantSet.size}</div><div class="kpi-lbl">Locataires</div></div>
     <div class="kpi" style="background:#ecfdf5;border-color:#a7f3d0"><div class="kpi-val" style="color:#059669">${fCFA(recoveredTotal)}</div><div class="kpi-lbl">Total recouvré</div></div>
   </div>
 
   ${totalSettlements === 0
     ? `<div style="text-align:center;padding:40px;color:#9ca3af;font-style:italic">Aucun arriéré recouvré à ce jour.</div>`
-    : `<h2>Détail par mois concerné</h2>
+    : `<h2>Détail par locataire</h2>
   ${monthSections}`}
 
   <div class="footer">${org.companyName || 'Minsouah Immobilier'} · Document généré automatiquement · ${today}</div>
@@ -2470,9 +2468,31 @@ export default function Payments() {
   };
 
   const handlePrintArrearsRecovered = () => {
-    const html = buildArrearsRecoveredReportHTML(recoveredByMonth, recoveredTotal, orgSettings);
+    const html = buildArrearsRecoveredReportHTML(recoveredByTenant, recoveredTotal, orgSettings);
     const win = window.open('', '_blank', 'width=900,height=700');
     if (win) { win.document.write(html); win.document.close(); }
+  };
+
+  // Export Excel des arriérés recouvrés, regroupés par locataire.
+  const handleExportArrearsRecoveredExcel = () => {
+    const rows = [];
+    recoveredByTenant.forEach(g => {
+      g.payments.forEach(p => {
+        rows.push({
+          'Locataire': g.tenantName || '',
+          'Téléphone': g.tenantPhone || '',
+          'Mois concerné': p.month || '',
+          'Propriété': p.propertyName || '',
+          'Montant (FCFA)': Number(p.amount) || 0,
+          'Réglé le': p.paidDate || '',
+          'Retard (mois)': p.monthsLate != null ? p.monthsLate : '',
+        });
+      });
+      rows.push({ 'Locataire': `Sous-total ${g.tenantName}`, 'Téléphone': '', 'Mois concerné': '', 'Propriété': '', 'Montant (FCFA)': g.total, 'Réglé le': '', 'Retard (mois)': '' });
+    });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Arriérés recouvrés');
+    XLSX.writeFile(wb, 'Arrieres_recouvres_par_locataire.xlsx');
   };
 
   const handlePrintDeposits = () => {
@@ -3273,6 +3293,9 @@ export default function Payments() {
               )}
               {recoveredByTenant.length > 0 && (
                 <Btn icon="task_alt" variant="secondary" onClick={handlePrintArrearsRecovered}>Recouvrés (PDF)</Btn>
+              )}
+              {recoveredByTenant.length > 0 && (
+                <Btn icon="download" variant="secondary" onClick={handleExportArrearsRecoveredExcel}>Recouvrés (Excel)</Btn>
               )}
               <Btn icon="add_circle" onClick={() => { setArrearsAddForm({ tenantId: '', months: [], amountPerMonth: '', status: 'Impayé', propertyName: '' }); setArrearsAddModal(true); }}>
                 Ajouter un arriéré
