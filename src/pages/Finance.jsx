@@ -725,9 +725,29 @@ export default function Finance() {
               <h2 className="text-h3 font-h3 text-on-surface">{TABS.find(t => t.id === activeTab)?.label}</h2>
               <p className="text-body-sm text-on-surface-variant">{finMonth === 'Tous' ? 'Toutes périodes' : finMonth}</p>
             </div>
-            <select value={finMonth} onChange={e => setFinMonth(e.target.value)} className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest focus:outline-none focus:border-primary">
-              {finMonthsOpts.map(m => <option key={m} value={m}>{m === 'Tous' ? 'Toutes périodes' : m}</option>)}
-            </select>
+            <div className="flex items-center gap-2 flex-wrap">
+              {activeTab === 'bordereaux' && (
+                <>
+                  <Button icon="add_circle" size="sm" onClick={() => navigate('/bordereaux', { state: { tab: 'create-proprio' } })}>Nouveau reversement</Button>
+                  <Button icon="list" variant="secondary" size="sm" onClick={() => navigate('/bordereaux', { state: { tab: 'list', type: 'PROPRIETAIRE' } })}>Gérer les bordereaux</Button>
+                </>
+              )}
+              {activeTab === 'caisse' && (
+                <>
+                  <Button icon="add_circle" size="sm" onClick={() => navigate('/bordereaux', { state: { tab: 'create-compta' } })}>Nouveau versement</Button>
+                  <Button icon="list" variant="secondary" size="sm" onClick={() => navigate('/bordereaux', { state: { tab: 'list', type: 'COMPTA' } })}>Bordereaux compta</Button>
+                </>
+              )}
+              {activeTab === 'reversement' && (
+                <>
+                  <Button icon="add_circle" size="sm" onClick={() => navigate('/bordereaux', { state: { tab: 'create-proprio' } })}>Nouveau reversement</Button>
+                  <Button icon="list" variant="secondary" size="sm" onClick={() => navigate('/bordereaux', { state: { tab: 'list', type: 'PROPRIETAIRE' } })}>Historique</Button>
+                </>
+              )}
+              <select value={finMonth} onChange={e => setFinMonth(e.target.value)} className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest focus:outline-none focus:border-primary">
+                {finMonthsOpts.map(m => <option key={m} value={m}>{m === 'Tous' ? 'Toutes périodes' : m}</option>)}
+              </select>
+            </div>
           </div>
 
           {/* ══════════ VERSEMENT COMPTABILITÉ (caisse) ══════════ */}
