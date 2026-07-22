@@ -222,6 +222,7 @@ export default function Finance() {
     //    non remboursées + tous les mois d'avance), sans filtre sur le mois d'entrée.
     let encCautions = 0, encAvanceDepot = 0;
     tenants.forEach(t => {
+      if (t.depositVerseProprio) return; // déjà versé au propriétaire → hors net
       if (!t.cautionRefunded) encCautions += Number(t.cautionAmount) || 0;
       encAvanceDepot += Number(t.advanceAmount) || 0;
     });
@@ -306,7 +307,7 @@ export default function Finance() {
     const held = paid.filter(p => !p.avanceVerseeProprio && inFinMonth(p.paidDate));
     const charges = transactions.filter(t => !t.positive && inFinMonth(t.date))
       .reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
-    const cautions = tenants.reduce((s, t) => s + (t.cautionRefunded ? 0 : (Number(t.cautionAmount) || 0)) + (Number(t.advanceAmount) || 0), 0);
+    const cautions = tenants.reduce((s, t) => t.depositVerseProprio ? s : s + (t.cautionRefunded ? 0 : (Number(t.cautionAmount) || 0)) + (Number(t.advanceAmount) || 0), 0);
     const soleOwner = owners.length === 1;
     const bordereaux = (owners.length ? owners : [{ id: '—', name: 'Propriétaire' }]).map(o => {
       // Un seul propriétaire → tout lui revient ; sinon rattachement par ownerId du paiement.
