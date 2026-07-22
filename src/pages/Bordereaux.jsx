@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { QRCodeCanvas } from 'qrcode.react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
@@ -59,6 +60,15 @@ export default function Bordereaux() {
   const canValidate = can(currentUser, 'bordereaux', 'validate');
 
   const [tab, setTab] = useState('dashboard');
+  // Ouverture d'un sous-onglet précis depuis les onglets Finances
+  // (navigate('/bordereaux', { state: { tab: 'create-compta' } })).
+  const location = useLocation();
+  useEffect(() => {
+    const st = location.state || {};
+    if (st.tab) setTab(st.tab);
+    if (st.type !== undefined) setFType(st.type);
+    if (st.status !== undefined) setFStatus(st.status);
+  }, [location.state]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [detail, setDetail] = useState(null);      // bordereau being viewed
   const [printTarget, setPrintTarget] = useState(null);
   const qrRef = useRef(null);
