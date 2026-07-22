@@ -550,12 +550,15 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
       }).join('')
     : '<tr><td colspan="4" style="padding:12px;text-align:center;color:#bbb;font-style:italic">Aucun locataire en avance</td></tr>';
 
-  // Cautions & avances (encaissements à l'entrée)
-  const depCaution = deposits.reduce((s, d) => s + (Number(d.cautionAmount) || 0), 0);
-  const depAdvance = deposits.reduce((s, d) => s + (Number(d.advanceAmount) || 0), 0);
+  // Cautions & avances (encaissements à l'entrée). Une caution/avance déjà
+  // VERSÉE au propriétaire ne figure plus dans le rapport global (ni ce mois,
+  // ni les mois à venir).
+  const heldDeposits = (deposits || []).filter(d => !d.depositVerseProprio);
+  const depCaution = heldDeposits.reduce((s, d) => s + (Number(d.cautionAmount) || 0), 0);
+  const depAdvance = heldDeposits.reduce((s, d) => s + (Number(d.advanceAmount) || 0), 0);
   const depTotal = depCaution + depAdvance;
-  const depositRows = deposits.length > 0
-    ? deposits.map(d => {
+  const depositRows = heldDeposits.length > 0
+    ? heldDeposits.map(d => {
         const statut = (Number(d.cautionAmount) || 0) > 0
           ? (d.cautionRefunded ? '<span style="color:#15803d;font-weight:700">Restituée</span>' : '<span style="color:#b45309;font-weight:700">Détenue</span>')
           : '—';
