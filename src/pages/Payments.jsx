@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
@@ -760,6 +761,11 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
   const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
 
+  // Un loyer déjà VERSÉ au propriétaire ne compte pas dans l'encaissé du mois
+  // (règle métier) : on l'exclut de tout le rapport (encaissé, total, taux) afin
+  // que chaque ligne reste cohérente : Encaissé + Impayé = Total.
+  paid = (paid || []).filter(p => !p.avanceVerseeProprio);
+
   /* ── Category detection ── */
   const STORE_ICONS = ['store', 'storefront', 'local_grocery_store', 'shopping_bag', 'warehouse'];
   function getCategory(entry) {
@@ -1419,6 +1425,14 @@ export default function Payments() {
   const isAfterDeadline = todayDay > 10;
 
   const [tab, setTab] = useState('payments');
+  // Ouverture d'un onglet précis depuis une autre page (ex. cartes du tableau de
+  // bord Finances : navigate('/payments', { state: { tab: 'deposits' } })).
+  const location = useLocation();
+  useEffect(() => {
+    const t = location.state?.tab;
+    if (t) setTab(t);
+    if (location.state?.statusFilter) setStatusFilter(location.state.statusFilter);
+  }, [location.state]);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthLabel);
   const [statusFilter, setStatusFilter] = useState('Tous');
   const [search, setSearch] = useState('');
@@ -1958,6 +1972,8 @@ export default function Payments() {
           nextPaymentDate,
           cautionRefunded: !!t.cautionRefunded,
           cautionRefundDate: t.cautionRefundDate || '',
+          depositVerseProprio: !!t.depositVerseProprio,
+          depositVerseDate: t.depositVerseDate || '',
         };
       })
       .filter(Boolean)
@@ -1986,6 +2002,21 @@ export default function Payments() {
     });
   };
 
+  // Marque la caution & avance d'un locataire comme déjà VERSÉE au propriétaire.
+  const toggleDepositVerse = (d) => {
+    const tenant = (tenants || []).find(t => String(t.id) === String(d.tenantId));
+    if (!tenant) return;
+    const next = !d.depositVerseProprio;
+    dispatch({
+      type: 'UPDATE_TENANT',
+      payload: {
+        ...tenant,
+        depositVerseProprio: next,
+        depositVerseDate: next ? new Date().toISOString().split('T')[0] : '',
+      },
+    });
+  };
+
   // A payment is "anticipé" (advance) when it was settled BEFORE the month it covers
   // (e.g. a tenant paying several months upfront → one 'Payé' record per month).
   const isAdvancePayment = (p) => {
@@ -1999,7 +2030,11 @@ export default function Payments() {
   //          BUT exclude those still in their advance period (paymentStartDate not yet reached)
   // Advance = active-contract tenants whose paymentStartDate is after the selected month
   const { reportUnpaid, reportAdvance } = (() => {
-    const explicit = monthPmts.filter(p => p.status !== 'Payé');
+    // Un paiement ANNULÉ n'est PAS un impayé (cohérent avec le reste de l'app) :
+    // on l'exclut de la liste des impayés. Le locataire reste « déjà traité » ce
+    // mois (présent dans monthPmts) afin de ne pas être re-signalé impayé via la
+    // boucle des contrats : une ligne annulée n'apparaît ni en payé ni en impayé.
+    const explicit = monthPmts.filter(p => p.status !== 'Payé' && p.status !== 'Annulé');
     const alreadyInReport = new Set(monthPmts.map(p => (p.tenantName || '').toLowerCase().trim()));
 
     const unpaid = [...explicit];
@@ -3413,19 +3448,32 @@ export default function Payments() {
                       </td>
                       <td className="px-4 py-3.5 text-sm font-semibold text-teal-700">{d.nextPaymentDate ? new Date(d.nextPaymentDate).toLocaleDateString('fr-CI') : '—'}</td>
                       <td className="px-4 py-3.5">
-                        {d.cautionAmount > 0 ? (
-                          d.cautionRefunded
-                            ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700"><Icon name="check_circle" size={13} /> Restituée{d.cautionRefundDate ? ` · ${new Date(d.cautionRefundDate).toLocaleDateString('fr-CI')}` : ''}</span>
-                            : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700"><Icon name="lock" size={13} /> Détenue</span>
-                        ) : <span className="text-on-surface-variant text-xs">—</span>}
+                        <div className="flex flex-col gap-1">
+                          {d.cautionAmount > 0 ? (
+                            d.cautionRefunded
+                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 w-fit"><Icon name="check_circle" size={13} /> Restituée{d.cautionRefundDate ? ` · ${new Date(d.cautionRefundDate).toLocaleDateString('fr-CI')}` : ''}</span>
+                              : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 w-fit"><Icon name="lock" size={13} /> Détenue</span>
+                          ) : <span className="text-on-surface-variant text-xs">—</span>}
+                          {d.depositVerseProprio && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 w-fit"><Icon name="real_estate_agent" size={13} /> Versé propriétaire{d.depositVerseDate ? ` · ${new Date(d.depositVerseDate).toLocaleDateString('fr-CI')}` : ''}</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3.5">
-                        {d.cautionAmount > 0 && (
-                          <button onClick={() => toggleCautionRefund(d)}
-                            className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors whitespace-nowrap ${d.cautionRefunded ? 'border-outline-variant text-on-surface-variant hover:bg-surface-container-high' : 'border-green-600/30 text-green-700 hover:bg-green-50'}`}>
-                            {d.cautionRefunded ? 'Annuler' : 'Marquer restituée'}
-                          </button>
-                        )}
+                        <div className="flex flex-col gap-1.5 items-start">
+                          {d.cautionAmount > 0 && (
+                            <button onClick={() => toggleCautionRefund(d)}
+                              className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors whitespace-nowrap ${d.cautionRefunded ? 'border-outline-variant text-on-surface-variant hover:bg-surface-container-high' : 'border-green-600/30 text-green-700 hover:bg-green-50'}`}>
+                              {d.cautionRefunded ? 'Annuler restitution' : 'Marquer restituée'}
+                            </button>
+                          )}
+                          {(d.cautionAmount > 0 || d.advanceAmount > 0) && (
+                            <button onClick={() => toggleDepositVerse(d)}
+                              className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors whitespace-nowrap ${d.depositVerseProprio ? 'border-outline-variant text-on-surface-variant hover:bg-surface-container-high' : 'border-blue-600/30 text-blue-700 hover:bg-blue-50'}`}>
+                              {d.depositVerseProprio ? 'Annuler versé' : 'Versé propriétaire'}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
