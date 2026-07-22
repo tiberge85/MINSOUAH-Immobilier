@@ -580,20 +580,17 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
   // paiements déjà versés au propriétaire (ou saisis à 0), cette soustraction
   // comptait à tort ces loyers pourtant payés comme des impayés.
   const totalUnpaid = (() => {
-    const recorded = new Set(curMonthPmts.map(p => (p.tenantName || '').toLowerCase().trim()).filter(Boolean));
-    const rentFor = (name) => {
-      const key = (name || '').toLowerCase().trim();
-      const c = (contracts || []).find(c => (c.tenant || '').toLowerCase().trim() === key && (c.status === 'Actif' || c.status === 'Expirant'));
-      return c?.rent || 0;
-    };
-    let sum = curMonthPmts.filter(p => p.status !== 'Payé' && p.status !== 'Annulé')
-      .reduce((s, p) => s + ((p.amount && p.amount > 0) ? p.amount : rentFor(p.tenantName)), 0);
-    expectedContracts.forEach(c => {
-      const name = (c.tenant || '').toLowerCase().trim();
-      if (!name || recorded.has(name)) return;
-      sum += c.rent || 0;
-    });
-    return sum;
+    // On ne parcourt QUE les locataires réellement dus ce mois (contrats attendus,
+    // hors période d'avance) → un impayé ne peut jamais dépasser l'attendu, et on
+    // ne compte pas deux fois le même locataire.
+    const norm = (s) => (s || '').toLowerCase().trim();
+    const paidSet = new Set(curMonthPmts.filter(p => p.status === 'Payé').map(p => norm(p.tenantName)).filter(Boolean));
+    return expectedContracts.reduce((s, c) => {
+      const name = norm(c.tenant);
+      if (!name || paidSet.has(name)) return s; // déjà payé ce mois
+      const rec = curMonthPmts.find(p => norm(p.tenantName) === name && p.status !== 'Payé' && p.status !== 'Annulé');
+      return s + ((rec && rec.amount > 0) ? rec.amount : (c.rent || 0));
+    }, 0);
   })();
   const rateColor = recoveryRate >= 80 ? '#15803d' : recoveryRate >= 50 ? '#b45309' : '#b91c1c';
 
@@ -3291,12 +3288,8 @@ export default function Payments() {
               {arrearsByTenant.length > 0 && (
                 <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintArrears}>Restant dû (PDF)</Btn>
               )}
-              {recoveredByTenant.length > 0 && (
-                <Btn icon="task_alt" variant="secondary" onClick={handlePrintArrearsRecovered}>Recouvrés (PDF)</Btn>
-              )}
-              {recoveredByTenant.length > 0 && (
-                <Btn icon="download" variant="secondary" onClick={handleExportArrearsRecoveredExcel}>Recouvrés (Excel)</Btn>
-              )}
+              <Btn icon="task_alt" variant="secondary" onClick={handlePrintArrearsRecovered} disabled={recoveredByTenant.length === 0}>Recouvrés (PDF)</Btn>
+              <Btn icon="download" variant="secondary" onClick={handleExportArrearsRecoveredExcel} disabled={recoveredByTenant.length === 0}>Recouvrés (Excel)</Btn>
               <Btn icon="add_circle" onClick={() => { setArrearsAddForm({ tenantId: '', months: [], amountPerMonth: '', status: 'Impayé', propertyName: '' }); setArrearsAddModal(true); }}>
                 Ajouter un arriéré
               </Btn>
