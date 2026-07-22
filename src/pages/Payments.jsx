@@ -2544,8 +2544,9 @@ export default function Payments() {
     // total que ce rapport — cautions détenues (hors cautions remboursées) + mois
     // d'avance. On ne filtre plus par mois d'entrée : cela excluait à tort un
     // locataire dont la date d'entrée n'était pas dans le mois sélectionné.
+    // Une caution/avance déjà VERSÉE au propriétaire ne compte plus dans le net.
     const cautionsAvances = (depositsList || []).reduce((s, d) =>
-      s + (d.cautionRefunded ? 0 : (Number(d.cautionAmount) || 0)) + (Number(d.advanceAmount) || 0), 0);
+      d.depositVerseProprio ? s : s + (d.cautionRefunded ? 0 : (Number(d.cautionAmount) || 0)) + (Number(d.advanceAmount) || 0), 0);
     const totalEncaisse = loyersMois + arrieres + anticipes + cautionsAvances;
     const charges = (transactions || [])
       .filter(t => { const d = parseTxDate(t.date); return d && inSel(d) && !t.positive; })
