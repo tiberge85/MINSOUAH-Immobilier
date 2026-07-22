@@ -368,9 +368,11 @@ export default function OwnerPortal() {
   /* ─── Net à reverser : sélection mois + type (loyers / nouveaux locataires) ─
      IMPORTANT : ces hooks doivent être AVANT tout return conditionnel
      (sinon React #310 : « plus de hooks qu'au rendu précédent »). */
-  const [revMonth, setRevMonth] = useState('Tous');
-  const [revType, setRevType] = useState('encaissements'); // 'encaissements' | 'nouveaux'
   const OP_MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+  const _revNow = new Date();
+  const OP_CUR_MONTH = `${OP_MONTHS[_revNow.getMonth()]} ${_revNow.getFullYear()}`;
+  const [revMonth, setRevMonth] = useState(OP_CUR_MONTH); // par défaut : mois en cours
+  const [revType, setRevType] = useState('encaissements'); // 'encaissements' | 'nouveaux'
   const opMonthLabel = (dateStr) => {
     if (!dateStr) return '';
     const d = new Date(dateStr);
@@ -381,7 +383,7 @@ export default function OwnerPortal() {
   const inRevMonth = (dateStr) => revMonth === 'Tous' ? true : opMonthLabel(dateStr) === revMonth;
   const opMonthKey = (l) => { const [mn, yr] = (l || '').split(' '); const i = OP_MONTHS.indexOf(mn); return i >= 0 ? Number(yr) * 100 + i : 0; };
   const revMonths = useMemo(() =>
-    [...new Set(ownerPayments.map(p => opMonthLabel(p.paidDate)).filter(Boolean))].sort((a, b) => opMonthKey(b) - opMonthKey(a)),
+    [...new Set([OP_CUR_MONTH, ...ownerPayments.map(p => opMonthLabel(p.paidDate)).filter(Boolean)])].sort((a, b) => opMonthKey(b) - opMonthKey(a)),
     [ownerPayments]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fmtCFA = (n) => `${(Number(n) || 0).toLocaleString('fr-FR')} FCFA`;
@@ -732,11 +734,11 @@ export default function OwnerPortal() {
                   <span className="font-bold text-on-surface">{fmt(expectedMonthly)}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-body-sm text-on-surface-variant">Encaissé (total)</span>
+                  <span className="text-body-sm text-on-surface-variant">Encaissé ({hasPeriod ? 'période' : curMonthLbl})</span>
                   <span className="font-bold text-green-700">{fmt(collectedTotal)}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-body-sm text-on-surface-variant">Impayés</span>
+                  <span className="text-body-sm text-on-surface-variant">Impayés ({hasPeriod ? 'période' : curMonthLbl})</span>
                   <span className={`font-bold ${pendingAmount > 0 ? 'text-error' : 'text-green-700'}`}>{fmt(pendingAmount)}</span>
                 </div>
                 <div className="border-t border-outline-variant/20 pt-2 flex justify-between items-center">
