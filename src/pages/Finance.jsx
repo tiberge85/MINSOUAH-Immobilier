@@ -4,6 +4,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Legend, PieChart, Pie, Cell,
 } from 'recharts';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
@@ -59,8 +60,8 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-/* ── Carte statistique compacte ──────────────────────────────────────────── */
-function StatCard({ label, value, icon, tone = 'neutral', sub }) {
+/* ── Carte statistique compacte (cliquable si onClick fourni) ─────────────── */
+function StatCard({ label, value, icon, tone = 'neutral', sub, onClick }) {
   const tones = {
     neutral:  'bg-surface-container-lowest text-on-surface',
     green:    'bg-green-50 text-green-800 border-green-200',
@@ -77,8 +78,15 @@ function StatCard({ label, value, icon, tone = 'neutral', sub }) {
     amber:   'bg-amber-100 text-amber-700',
     primary: 'bg-white/20 text-white',
   };
+  const clickable = typeof onClick === 'function';
   return (
-    <div className={`p-md rounded-xl shadow-card border border-outline-variant/20 flex flex-col gap-1 ${tones[tone]}`}>
+    <div
+      onClick={onClick}
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      className={`p-md rounded-xl shadow-card border border-outline-variant/20 flex flex-col gap-1 ${tones[tone]} ${clickable ? 'cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/40' : ''}`}
+    >
       <div className="flex items-center justify-between">
         <span className={`text-[11px] uppercase tracking-wider font-semibold ${tone === 'primary' ? 'text-white/80' : 'opacity-70'}`}>{label}</span>
         {icon && <span className={`p-1.5 rounded-lg ${iconTones[tone]}`}><Icon name={icon} size={16} /></span>}
@@ -100,6 +108,10 @@ const PIE_COLORS = ['#785a00', '#0f766e', '#b45309', '#0369a1', '#7c3aed', '#65a
 
 export default function Finance() {
   const { state, dispatch } = useApp();
+  const navigate = useNavigate();
+  // Renvoie vers la page/onglet concerné quand on clique une carte.
+  const goPayments = (tab, statusFilter) => navigate('/payments', { state: { tab, statusFilter } });
+  const goTx = () => document.getElementById('finance-transactions')?.scrollIntoView({ behavior: 'smooth' });
   const canCreate = can(state.currentUser, 'finance', 'create');
   const canDelete = can(state.currentUser, 'finance', 'delete');
   // Isolation stricte par organisation.
@@ -108,6 +120,7 @@ export default function Finance() {
   const transactions = useMemo(() => scope(state.transactions), [state.transactions, myOrgId]);   // eslint-disable-line react-hooks/exhaustive-deps
   const payments     = useMemo(() => scope(state.payments),     [state.payments, myOrgId]);         // eslint-disable-line react-hooks/exhaustive-deps
   const tenants      = useMemo(() => scope(state.tenants),      [state.tenants, myOrgId]);          // eslint-disable-line react-hooks/exhaustive-deps
+  const owners       = useMemo(() => scope(state.owners),       [state.owners, myOrgId]);           // eslint-disable-line react-hooks/exhaustive-deps
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [chartType, setChartType] = useState('area');
@@ -133,40 +146,64 @@ export default function Finance() {
      ───────────────────────────────────────────────────────────────────────── */
   const dash = useMemo(() => {
     const paid = payments.filter(p => p.status === 'Payé');
+    // Taux du propriétaire (repli lorsque la commission n'a pas été figée sur
+    // d'anciens paiements) — même logique que le bordereau.
+    const ownerRate = Number((owners[0] || {}).commissionRate) || 0;
+    const commOf = (p) => (p.commissionAmount != null && Number(p.commissionAmount) > 0)
+      ? Number(p.commissionAmount)
+      : Math.round((Number(p.amount) || 0) * ownerRate / 100);
 
-    // Encaissements du mois (par date de règlement)
-    let encLoyerMois = 0, encArrieres = 0, encAvanceRent = 0, encToday = 0;
-    let commissionMois = 0, heldEncaisse = 0, dejaReverse = 0;
-
+    // ── Loyers du MOIS & loyers ANTICIPÉS (même base que le rapport mensuel) ──
+    // Loyer du mois : compté par MOIS DE LOYER (indépendant de la date de règlement),
+    // hors sommes déjà reversées au propriétaire. Anticipé : mois de loyer futur,
+    // encaissé pendant le mois courant.
+    let encLoyerMois = 0, encAnticipes = 0, encToday = 0, commissionMois = 0, dejaReverse = 0;
     paid.forEach(p => {
       const pd = parseAnyDate(p.paidDate);
       const amt = Number(p.amount) || 0;
-      const rm = monthLabelToDate(p.month);
       if (isToday(pd)) encToday += amt;
-      if (!sameMonth(pd)) return;
-
-      if (p.avanceVerseeProprio) {
-        // Déjà reversé au propriétaire ce mois → sort de la trésorerie « à reverser ».
-        dejaReverse += amt;
-      } else {
-        heldEncaisse += amt;
+      if (p.avanceVerseeProprio) { if (sameMonth(pd)) dejaReverse += amt; return; }
+      const rm = monthLabelToDate(p.month);
+      if (rm && rm.getTime() === curMonthStart.getTime()) {
+        encLoyerMois += amt;
+        commissionMois += commOf(p);
+      } else if (rm && rm.getTime() > curMonthStart.getTime()) {
+        if (sameMonth(pd)) { encAnticipes += amt; commissionMois += commOf(p); }
       }
-      commissionMois += Number(p.commissionAmount) || 0;
-
-      if (rm && rm.getTime() < curMonthStart.getTime()) encArrieres += amt;
-      else if (rm && rm.getTime() > curMonthStart.getTime()) encAvanceRent += amt;
-      else encLoyerMois += amt;
     });
 
-    // Cautions & mois d'avance des NOUVEAUX locataires entrés ce mois
+    // ── Arriérés RECOUVRÉS ce mois (réplique exacte de l'onglet « Arriérés recouvrés »)
+    const seen = new Set();
+    let encArrieres = 0;
+    paid.forEach(p => {
+      if (!(p.isArrear || p.autoGenerated || p.postCloture)) return;
+      if (p.avanceVerseeProprio) return;
+      const rm = monthLabelToDate(p.month);
+      if (!rm) return;
+      const isPast = rm.getFullYear() < curYear || (rm.getFullYear() === curYear && rm.getMonth() < curMonth);
+      if (!isPast) return;
+      const amt = Number(p.amount) || 0;
+      if (amt <= 0) return;
+      const pd = parseAnyDate(p.paidDate);
+      if (!pd) return;
+      const monthsLate = (pd.getFullYear() - rm.getFullYear()) * 12 + (pd.getMonth() - rm.getMonth());
+      if (monthsLate < 1) return;
+      if (!sameMonth(pd)) return; // recouvré CE mois-ci
+      const key = `${(p.tenantName||'').toLowerCase().trim()}|${(p.month||'').toLowerCase().trim()}|${(p.propertyName||'').toLowerCase().trim()}|${amt}|${p.paidDate||''}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      encArrieres += amt;
+      commissionMois += commOf(p);
+    });
+
+    // ── Cautions & avances : total DÉTENU (comme le rapport mensuel — cautions
+    //    non remboursées + tous les mois d'avance), sans filtre sur le mois d'entrée.
     let encCautions = 0, encAvanceDepot = 0;
     tenants.forEach(t => {
-      const entry = parseAnyDate(t.since);
-      if (!sameMonth(entry)) return;
       if (!t.cautionRefunded) encCautions += Number(t.cautionAmount) || 0;
       encAvanceDepot += Number(t.advanceAmount) || 0;
     });
-    const encAvance = encAvanceRent + encAvanceDepot; // « Mois d'avance encaissés »
+    const encAvance = encAnticipes + encAvanceDepot; // « Mois d'avance encaissés »
 
     // Recettes diverses & charges refacturées (transactions positives du mois)
     const posTx = transactions.filter(t => t.positive && sameMonth(parseAnyDate(t.date)));
@@ -187,12 +224,15 @@ export default function Finance() {
     });
     const totalDepenses = dec.travaux + dec.reparations + dec.eau + dec.electricite + dec.autres;
 
-    const totalEncaisse = encLoyerMois + encArrieres + encAvance + encCautions + encChargesRecues + encAutres;
+    // Total encaissé (identique au rapport) = loyers + arriérés + anticipés + cautions&avances
+    //  + charges reçues + autres recettes.
+    const totalEncaisse = encLoyerMois + encArrieres + encAnticipes + encCautions + encAvanceDepot + encChargesRecues + encAutres;
     const soldeDispo = totalEncaisse - totalDepenses;
 
-    // Montant à reverser aux propriétaires = encaissements détenus (hors déjà versé)
-    //  − commission MINSOUAH − charges (dépenses) du mois.
-    const aReverser = Math.max(0, heldEncaisse + encCautions - commissionMois - totalDepenses);
+    // À reverser aux propriétaires = encaissements revenant au propriétaire
+    //  (loyers + arriérés + anticipés + cautions & avances) − commission − charges.
+    const ownerEncaisse = encLoyerMois + encArrieres + encAnticipes + encCautions + encAvanceDepot;
+    const aReverser = Math.max(0, ownerEncaisse - commissionMois - totalDepenses);
     const resteReverser = Math.max(0, aReverser - dejaReverse);
 
     return {
@@ -201,7 +241,7 @@ export default function Finance() {
       dec, totalDepenses, totalEncaisse, soldeDispo,
       aReverser, dejaReverse, resteReverser,
     };
-  }, [payments, tenants, transactions]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [payments, tenants, transactions, owners]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // Répartition des encaissements du mois (camembert)
   const encaissePie = useMemo(() => ([
@@ -389,13 +429,13 @@ export default function Finance() {
               <Icon name="south_west" size={16} className="text-green-600" /> Encaissements
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              <StatCard label="Loyers aujourd'hui" value={fmt(dash.encToday)} icon="today" tone="green" />
-              <StatCard label="Loyers du mois" value={fmt(dash.encLoyerMois)} icon="payments" tone="green" />
-              <StatCard label="Arriérés encaissés" value={fmt(dash.encArrieres)} icon="history" tone="amber" />
-              <StatCard label="Cautions encaissées" value={fmt(dash.encCautions)} icon="savings" tone="blue" />
-              <StatCard label="Mois d'avance encaissés" value={fmt(dash.encAvance)} icon="event_available" tone="blue" />
-              <StatCard label="Charges encaissées" value={fmt(dash.encChargesRecues)} icon="receipt" tone="neutral" />
-              <StatCard label="Autres recettes" value={fmt(dash.encAutres)} icon="add_circle" tone="neutral" />
+              <StatCard label="Loyers aujourd'hui" value={fmt(dash.encToday)} icon="today" tone="green" onClick={() => goPayments('payments', 'Payé')} />
+              <StatCard label="Loyers du mois" value={fmt(dash.encLoyerMois)} icon="payments" tone="green" onClick={() => goPayments('payments', 'Payé')} />
+              <StatCard label="Arriérés encaissés" value={fmt(dash.encArrieres)} icon="history" tone="amber" onClick={() => goPayments('arrears')} />
+              <StatCard label="Cautions encaissées" value={fmt(dash.encCautions)} icon="savings" tone="blue" onClick={() => goPayments('deposits')} />
+              <StatCard label="Mois d'avance encaissés" value={fmt(dash.encAvance)} icon="event_available" tone="blue" onClick={() => goPayments('deposits')} />
+              <StatCard label="Charges encaissées" value={fmt(dash.encChargesRecues)} icon="receipt" tone="neutral" onClick={goTx} />
+              <StatCard label="Autres recettes" value={fmt(dash.encAutres)} icon="add_circle" tone="neutral" onClick={goTx} />
             </div>
           </section>
 
@@ -405,12 +445,12 @@ export default function Finance() {
               <Icon name="north_east" size={16} className="text-red-600" /> Décaissements
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              <StatCard label="Travaux" value={fmt(dash.dec.travaux)} icon="construction" tone="red" />
-              <StatCard label="Réparations" value={fmt(dash.dec.reparations)} icon="build" tone="red" />
-              <StatCard label="Eau" value={fmt(dash.dec.eau)} icon="water_drop" tone="red" />
-              <StatCard label="Électricité" value={fmt(dash.dec.electricite)} icon="bolt" tone="red" />
-              <StatCard label="Commission MINSOUAH" value={fmt(dash.commissionMois)} icon="percent" tone="primary" />
-              <StatCard label="Autres dépenses" value={fmt(dash.dec.autres)} icon="remove_circle" tone="red" />
+              <StatCard label="Travaux" value={fmt(dash.dec.travaux)} icon="construction" tone="red" onClick={goTx} />
+              <StatCard label="Réparations" value={fmt(dash.dec.reparations)} icon="build" tone="red" onClick={goTx} />
+              <StatCard label="Eau" value={fmt(dash.dec.eau)} icon="water_drop" tone="red" onClick={goTx} />
+              <StatCard label="Électricité" value={fmt(dash.dec.electricite)} icon="bolt" tone="red" onClick={goTx} />
+              <StatCard label="Commission MINSOUAH" value={fmt(dash.commissionMois)} icon="percent" tone="primary" onClick={() => goPayments('report')} />
+              <StatCard label="Autres dépenses" value={fmt(dash.dec.autres)} icon="remove_circle" tone="red" onClick={goTx} />
             </div>
           </section>
 
@@ -420,12 +460,12 @@ export default function Finance() {
               <Icon name="account_balance" size={16} className="text-primary" /> Situation financière
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <StatCard label="Total encaissé" value={fmt(dash.totalEncaisse)} icon="account_balance_wallet" tone="green" />
-              <StatCard label="Total des dépenses" value={fmt(dash.totalDepenses)} icon="money_off" tone="red" />
-              <StatCard label="Solde disponible" value={fmt(dash.soldeDispo)} icon="savings" tone="primary" />
-              <StatCard label="À reverser aux propriétaires" value={fmt(dash.aReverser)} icon="real_estate_agent" tone="amber" />
-              <StatCard label="Déjà reversé" value={fmt(dash.dejaReverse)} icon="task_alt" tone="green" />
-              <StatCard label="Reste à reverser" value={fmt(dash.resteReverser)} icon="pending_actions" tone="blue" />
+              <StatCard label="Total encaissé" value={fmt(dash.totalEncaisse)} icon="account_balance_wallet" tone="green" onClick={() => goPayments('report')} />
+              <StatCard label="Total des dépenses" value={fmt(dash.totalDepenses)} icon="money_off" tone="red" onClick={goTx} />
+              <StatCard label="Solde disponible" value={fmt(dash.soldeDispo)} icon="savings" tone="primary" onClick={() => goPayments('report')} />
+              <StatCard label="À reverser aux propriétaires" value={fmt(dash.aReverser)} icon="real_estate_agent" tone="amber" onClick={() => goPayments('report')} />
+              <StatCard label="Déjà reversé" value={fmt(dash.dejaReverse)} icon="task_alt" tone="green" onClick={() => goPayments('payments', 'Payé')} />
+              <StatCard label="Reste à reverser" value={fmt(dash.resteReverser)} icon="pending_actions" tone="blue" onClick={() => goPayments('report')} />
             </div>
           </section>
 

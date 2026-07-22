@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
@@ -760,6 +761,11 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
   const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
 
+  // Un loyer déjà VERSÉ au propriétaire ne compte pas dans l'encaissé du mois
+  // (règle métier) : on l'exclut de tout le rapport (encaissé, total, taux) afin
+  // que chaque ligne reste cohérente : Encaissé + Impayé = Total.
+  paid = (paid || []).filter(p => !p.avanceVerseeProprio);
+
   /* ── Category detection ── */
   const STORE_ICONS = ['store', 'storefront', 'local_grocery_store', 'shopping_bag', 'warehouse'];
   function getCategory(entry) {
@@ -1419,6 +1425,14 @@ export default function Payments() {
   const isAfterDeadline = todayDay > 10;
 
   const [tab, setTab] = useState('payments');
+  // Ouverture d'un onglet précis depuis une autre page (ex. cartes du tableau de
+  // bord Finances : navigate('/payments', { state: { tab: 'deposits' } })).
+  const location = useLocation();
+  useEffect(() => {
+    const t = location.state?.tab;
+    if (t) setTab(t);
+    if (location.state?.statusFilter) setStatusFilter(location.state.statusFilter);
+  }, [location.state]);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthLabel);
   const [statusFilter, setStatusFilter] = useState('Tous');
   const [search, setSearch] = useState('');
