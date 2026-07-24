@@ -1892,17 +1892,19 @@ export default function Payments() {
       .map(p => {
         const monthStart = monthLabelToDate(p.month);
         if (!monthStart) return null; // mois invalide (ex. « s2 ») → ignoré
-        // Le mois couvert doit être STRICTEMENT antérieur au mois courant
+        // Le mois couvert doit être STRICTEMENT antérieur au mois courant,
+        // OU être un mois déjà CLÔTURÉ (le mois en cours devient arriéré une fois clôturé).
         const isPast = monthStart.getFullYear() < cy || (monthStart.getFullYear() === cy && monthStart.getMonth() < cm);
-        if (!isPast) return null;
+        const isClosedMonth = closedMonthSet.has(p.month);
+        if (!isPast && !isClosedMonth) return null;
         const amount = Number(p.amount) || 0;
         if (amount <= 0) return null; // pas de montant réel → ignoré
         const paid = parsePaidDate(p.paidDate);
         if (!paid || isNaN(paid.getTime())) return null;
         const monthsLate = (paid.getFullYear() - monthStart.getFullYear()) * 12 + (paid.getMonth() - monthStart.getMonth());
-        // Un arriéré RECOUVRÉ doit avoir été réglé au moins 1 mois APRÈS son mois
-        // (payé dans son propre mois = à l'heure, pas un arriéré).
-        if (monthsLate < 1) return null;
+        // Réglé au moins 1 mois APRÈS son mois — sauf pour un mois clôturé, où un
+        // arriéré recouvré dans le mois même compte quand même.
+        if (monthsLate < 1 && !isClosedMonth) return null;
         return { ...p, amount, monthsLate };
       })
       .filter(Boolean)
@@ -1912,7 +1914,7 @@ export default function Payments() {
         const key = (x) => `${(x.tenantName||'').toLowerCase().trim()}|${(x.month||'').toLowerCase().trim()}|${(x.propertyName||'').toLowerCase().trim()}|${x.amount}|${x.paidDate||''}`;
         return arr.findIndex(x => key(x) === key(p)) === i;
       });
-  }, [payments, now]);
+  }, [payments, now, closedMonthSet]);
 
   const recoveredByTenant = useMemo(() => {
     const groups = {};
