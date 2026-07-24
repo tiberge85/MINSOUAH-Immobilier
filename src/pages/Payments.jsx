@@ -1902,9 +1902,10 @@ export default function Payments() {
         const paid = parsePaidDate(p.paidDate);
         if (!paid || isNaN(paid.getTime())) return null;
         const monthsLate = (paid.getFullYear() - monthStart.getFullYear()) * 12 + (paid.getMonth() - monthStart.getMonth());
-        // Réglé au moins 1 mois APRÈS son mois — sauf pour un mois clôturé, où un
-        // arriéré recouvré dans le mois même compte quand même.
-        if (monthsLate < 1 && !isClosedMonth) return null;
+        // Un arriéré RECOUVRÉ doit avoir été réglé au moins 1 mois APRÈS son mois.
+        // Un loyer payé DANS son propre mois (retard = 0) est un paiement normal,
+        // pas un arriéré recouvré — même si le mois est clôturé (post-clôture).
+        if (monthsLate < 1) return null;
         return { ...p, amount, monthsLate };
       })
       .filter(Boolean)
