@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import { verifyPwd } from '../lib/auth';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, setDoc, getDocFromServer } from 'firebase/firestore';
+import { doc, setDoc, getDocFromServer, collection, getDocs } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { sendOTP, verifyOTP } from '../lib/otp';
 import { logSec, SEC } from '../lib/securityLog';
@@ -209,7 +209,20 @@ export default function Login() {
 
     try {
       const emailLow = email.trim().toLowerCase();
-      const user = users.find((u) => (u.email || '').toLowerCase() === emailLow);
+      let user = users.find((u) => (u.email || '').toLowerCase() === emailLow);
+
+      // Repli : si la liste locale n'est pas encore chargée (ou incomplète),
+      // on interroge Firebase DIRECTEMENT avant de dire « aucun compte ».
+      // Évite l'erreur « Aucun compte trouvé » quand on valide trop tôt.
+      if (!user) {
+        try {
+          const snap = await getDocs(collection(db, 'workspaces', WS, 'users'));
+          const all = snap.docs.map(d => d.data());
+          user = all.find(u => (u.email || '').toLowerCase() === emailLow);
+        } catch (fetchErr) {
+          console.warn('[Login] repli Firestore users échoué', fetchErr);
+        }
+      }
 
       if (!user) { setError('Aucun compte trouvé avec cet email.'); return; }
       if (user.suspended) { setError("Ce compte a été suspendu. Contactez l'administrateur."); return; }
