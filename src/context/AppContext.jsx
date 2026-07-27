@@ -505,8 +505,12 @@ export function AppProvider({ children }) {
     const cu = state.currentUser;
     if (!cu) return;
     if (cu.role === 'SUPER_ADMIN') return; // SUPER_ADMIN is never auto-logged out
-    // If the logged-in user no longer exists in Firestore → force logout immediately
-    const fresh = (state.users || []).find(u => String(u.id) === String(cu.id));
+    // If the logged-in user no longer exists in Firestore → force logout.
+    // IMPORTANT : ne rien faire tant que la liste des utilisateurs n'est pas
+    // chargée (vide au démarrage) — sinon on déconnecte à tort et on boucle
+    // sur la page de connexion (« ça charge puis revient au login »).
+    if (!Array.isArray(state.users) || state.users.length === 0) return;
+    const fresh = state.users.find(u => String(u.id) === String(cu.id));
     if (!fresh) {
       localStorage.removeItem(SESSION_KEY);
       window.location.reload();
