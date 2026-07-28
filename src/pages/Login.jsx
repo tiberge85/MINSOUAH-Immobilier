@@ -224,6 +224,21 @@ export default function Login() {
         }
       }
 
+      // DERNIER RECOURS : si la liste des comptes est illisible (auth anonyme HS
+      // ou règles Firestore), on s'authentifie DIRECTEMENT avec l'email + mot de
+      // passe via Firebase, puis on relit la fiche avec cette session authentifiée.
+      // Ça permet de se connecter même quand la lecture pré-connexion est bloquée.
+      if (!user) {
+        try {
+          await signInWithEmailAndPassword(auth, emailLow, password);
+          const snap = await getDocs(collection(db, 'workspaces', WS, 'users'));
+          const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          user = all.find(u => (u.email || '').toLowerCase() === emailLow);
+        } catch (authErr) {
+          console.warn('[Login] auth directe Firebase échouée', authErr?.code || authErr?.message);
+        }
+      }
+
       if (!user) { setError('Aucun compte trouvé avec cet email.'); return; }
       if (user.suspended) { setError("Ce compte a été suspendu. Contactez l'administrateur."); return; }
 
