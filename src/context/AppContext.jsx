@@ -510,7 +510,12 @@ export function AppProvider({ children }) {
     // chargée (vide au démarrage) — sinon on déconnecte à tort et on boucle
     // sur la page de connexion (« ça charge puis revient au login »).
     if (!Array.isArray(state.users) || state.users.length === 0) return;
-    const fresh = state.users.find(u => String(u.id) === String(cu.id));
+    // Correspondance par id OU par email (une session dont l'id ne correspond pas
+    // exactement au doc ne doit pas provoquer une fausse déconnexion).
+    const cuEmail = (cu.email || '').toLowerCase();
+    const fresh = state.users.find(u =>
+      String(u.id) === String(cu.id) || (cuEmail && (u.email || '').toLowerCase() === cuEmail)
+    );
     if (!fresh) {
       localStorage.removeItem(SESSION_KEY);
       window.location.reload();
