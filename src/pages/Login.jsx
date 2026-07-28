@@ -214,12 +214,15 @@ export default function Login() {
       // Repli : si la liste locale n'est pas encore chargée (ou incomplète),
       // on interroge Firebase DIRECTEMENT avant de dire « aucun compte ».
       // Évite l'erreur « Aucun compte trouvé » quand on valide trop tôt.
+      let diag = '';
       if (!user) {
         try {
           const snap = await getDocs(collection(db, 'workspaces', WS, 'users'));
           const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
           user = all.find(u => (u.email || '').toLowerCase() === emailLow);
+          diag = `${snap.size} compte(s) lus · ws=${WS}`;
         } catch (fetchErr) {
+          diag = `lecture bloquée: ${fetchErr?.code || fetchErr?.message || 'inconnue'}`;
           console.warn('[Login] repli Firestore users échoué', fetchErr);
         }
       }
@@ -239,7 +242,7 @@ export default function Login() {
         }
       }
 
-      if (!user) { setError('Aucun compte trouvé avec cet email.'); return; }
+      if (!user) { setError(`Aucun compte trouvé avec cet email.${diag ? ` [${diag}]` : ''}`); return; }
       if (user.suspended) { setError("Ce compte a été suspendu. Contactez l'administrateur."); return; }
 
       if (user.role !== 'SUPER_ADMIN') {
