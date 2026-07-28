@@ -217,7 +217,7 @@ export default function Login() {
       if (!user) {
         try {
           const snap = await getDocs(collection(db, 'workspaces', WS, 'users'));
-          const all = snap.docs.map(d => d.data());
+          const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
           user = all.find(u => (u.email || '').toLowerCase() === emailLow);
         } catch (fetchErr) {
           console.warn('[Login] repli Firestore users échoué', fetchErr);
