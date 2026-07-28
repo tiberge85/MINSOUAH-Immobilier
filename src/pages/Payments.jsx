@@ -1916,9 +1916,20 @@ export default function Payments() {
       });
   }, [payments, now, closedMonthSet]);
 
+  // On n'affiche que les arriérés RECOUVRÉS pendant le MOIS SÉLECTIONNÉ (par date de
+  // règlement) — c.-à-d. les nouveaux paiements reçus ce mois, notamment après une
+  // clôture. Change le mois en haut de page pour voir une autre période.
+  const recoveredScoped = useMemo(() =>
+    recoveredArrears.filter(p => {
+      const d = parsePaidDate(p.paidDate);
+      return d && d.getMonth() === selMonthDate.getMonth() && d.getFullYear() === selMonthDate.getFullYear();
+    }),
+    [recoveredArrears, selMonthDate]
+  );
+
   const recoveredByTenant = useMemo(() => {
     const groups = {};
-    recoveredArrears.forEach(p => {
+    recoveredScoped.forEach(p => {
       const key = (p.tenantName || '—').toLowerCase().trim();
       if (!groups[key]) groups[key] = { tenantName: p.tenantName || '—', tenantPhone: p.tenantPhone || '', payments: [], total: 0 };
       groups[key].payments.push(p);
@@ -1928,12 +1939,12 @@ export default function Payments() {
       g.payments.sort((a, b) => (parsePaidDate(a.paidDate)?.getTime() || 0) - (parsePaidDate(b.paidDate)?.getTime() || 0))
     );
     return Object.values(groups).sort((a, b) => b.total - a.total);
-  }, [recoveredArrears]);
+  }, [recoveredScoped]);
 
   // Regroupement par MOIS concerné (pour un rapport clair, du plus récent au plus ancien)
   const recoveredByMonth = useMemo(() => {
     const groups = {};
-    recoveredArrears.forEach(p => {
+    recoveredScoped.forEach(p => {
       const key = p.month || '—';
       if (!groups[key]) groups[key] = { month: key, monthDate: monthLabelToDate(key), payments: [], total: 0 };
       groups[key].payments.push(p);
@@ -1941,9 +1952,9 @@ export default function Payments() {
     });
     Object.values(groups).forEach(g => g.payments.sort((a, b) => (a.tenantName || '').localeCompare(b.tenantName || '')));
     return Object.values(groups).sort((a, b) => (b.monthDate?.getTime() || 0) - (a.monthDate?.getTime() || 0));
-  }, [recoveredArrears]);
+  }, [recoveredScoped]);
 
-  const recoveredTotal = recoveredArrears.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const recoveredTotal = recoveredScoped.reduce((s, p) => s + (Number(p.amount) || 0), 0);
 
   /* ── Cautions & avances : saisies sur la fiche du locataire à l'entrée ──
      Rapport séparé (onglet dédié) + inclusion dans le rapport global. */
