@@ -1663,10 +1663,16 @@ export default function Payments() {
     const [selMn, selYr] = (selectedMonth || '').split(' ');
     const selIdx = MONTH_NAMES.indexOf(selMn);
     const selDate = selIdx >= 0 ? new Date(Number(selYr), selIdx, 1) : null;
-    const recorded = new Set(monthPmts.map(p => (p.tenantName || '').toLowerCase().trim()).filter(Boolean));
+    // Normalisation insensible aux accents/casse/espaces pour fiabiliser la
+    // correspondance nom du paiement ↔ nom du contrat.
+    const norm = (s) => (s || '').toString().toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    // Un locataire est « déjà enregistré ce mois » s'il a un paiement ce mois,
+    // reconnu par ID de locataire OU par nom normalisé.
+    const recordedNames = new Set(monthPmts.map(p => norm(p.tenantName)).filter(Boolean));
+    const recordedIds = new Set(monthPmts.map(p => (p.tenantId != null ? String(p.tenantId) : '')).filter(Boolean));
     const rentFor = (name) => {
-      const key = (name || '').toLowerCase().trim();
-      const c = (contracts || []).find(c => (c.tenant || '').toLowerCase().trim() === key && (c.status === 'Actif' || c.status === 'Expirant'));
+      const key = norm(name);
+      const c = (contracts || []).find(c => norm(c.tenant) === key && (c.status === 'Actif' || c.status === 'Expirant'));
       return c?.rent || 0;
     };
     // 1) Enregistrements explicites non réglés (hors Annulé)
@@ -1675,9 +1681,11 @@ export default function Payments() {
       .reduce((s, p) => s + ((p.amount && p.amount > 0) ? p.amount : rentFor(p.tenantName)), 0);
     // 2) Locataires actifs impayés non matérialisés ce mois, hors période d'avance
     (contracts || []).filter(c => c.status === 'Actif' || c.status === 'Expirant').forEach(c => {
-      const name = (c.tenant || '').toLowerCase().trim();
-      if (!name || recorded.has(name)) return;
-      const tenant = (tenants || []).find(t => (t.name || '').toLowerCase().trim() === name || (c.tenantId && String(t.id) === String(c.tenantId)));
+      const name = norm(c.tenant);
+      const cid = c.tenantId != null ? String(c.tenantId) : '';
+      if (!name && !cid) return;
+      if (recordedNames.has(name) || (cid && recordedIds.has(cid))) return; // déjà un enregistrement ce mois
+      const tenant = (tenants || []).find(t => norm(t.name) === name || (c.tenantId && String(t.id) === String(c.tenantId)));
       const psDate = tenant?.paymentStartDate ? new Date(tenant.paymentStartDate) : null;
       const psFirst = psDate && !isNaN(psDate.getTime()) ? new Date(psDate.getFullYear(), psDate.getMonth(), 1) : null;
       if (psFirst && selDate && selDate < psFirst) return; // encore en avance ce mois
