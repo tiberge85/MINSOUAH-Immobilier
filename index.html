@@ -17,6 +17,45 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      /* Filet de sécurité anti-cache périmé ─────────────────────────────────
+         Après un déploiement, un navigateur qui a gardé en cache un ancien
+         index.html peut demander un fichier /assets/*.js qui n'existe plus.
+         Le serveur renvoie alors index.html (HTML) à la place du JS → l'app
+         ne démarre pas et l'utilisateur retombe sur la page de connexion.
+         Ici on détecte cet échec de chargement du bundle et on force UN SEUL
+         rechargement propre pour récupérer la version courante. */
+      (function () {
+        var GUARD = '__minsouah_stale_reload__';
+        function recover() {
+          try {
+            if (!sessionStorage.getItem(GUARD)) {
+              sessionStorage.setItem(GUARD, '1');
+              location.reload();
+            }
+          } catch (e) { /* ignore */ }
+        }
+        window.addEventListener('error', function (e) {
+          var el = e && e.target;
+          // Échec de chargement d'un script/lien du bundle applicatif
+          if (el && el.tagName && el.src && String(el.src).indexOf('/assets/') !== -1) {
+            recover();
+            return;
+          }
+          // Erreur de parsing d'un module (HTML servi à la place du JS)
+          var msg = (e && e.message) || '';
+          if (/Unexpected token|failed to fetch dynamically|import|module/i.test(msg)) {
+            recover();
+          }
+        }, true);
+        // L'app a démarré correctement : on libère le garde-fou.
+        window.addEventListener('load', function () {
+          setTimeout(function () {
+            try { sessionStorage.removeItem(GUARD); } catch (e) { /* ignore */ }
+          }, 4000);
+        });
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
