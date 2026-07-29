@@ -10,7 +10,8 @@ import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
-const fmtK = (n) => `${(Number(n || 0) / 1000).toFixed(0)}k`;
+// Montants toujours affichés EN ENTIER (aucune abréviation « k » dans le programme).
+const fmtK = (n) => Number(n || 0).toLocaleString('fr-CI');
 
 const ChartTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -333,7 +334,7 @@ export default function Dashboard() {
                 </defs>
                 <CartesianGrid strokeDasharray="4" stroke="#d2c5ae" strokeOpacity={0.3} vertical={false} />
                 <XAxis dataKey="mois" tick={{ fill: '#817662', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#817662', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={42} />
+                <YAxis tick={{ fill: '#817662', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={78} />
                 <Tooltip content={<ChartTooltip />} />
                 <Area type="monotone" dataKey="revenus" name="revenus" stroke="#785a00" strokeWidth={2.5} fill="url(#gradRevenu)" dot={false} activeDot={{ r: 4, fill: '#785a00' }} />
                 <Area type="monotone" dataKey="depenses" name="dépenses" stroke="#006399" strokeWidth={2} fill="url(#gradDepense)" dot={false} activeDot={{ r: 4, fill: '#006399' }} />

@@ -193,7 +193,7 @@ export default function RevenusMinsouah() {
           <BarChart data={monthly}>
             <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
             <XAxis dataKey="label" fontSize={11} />
-            <YAxis fontSize={11} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+            <YAxis fontSize={10} width={78} tickFormatter={(v) => Number(v || 0).toLocaleString('fr-CI')} />
             <Tooltip formatter={(v) => fmt(v)} />
             <Bar dataKey="Commissions" fill="#6d3b07" radius={[4, 4, 0, 0]} />
           </BarChart>
