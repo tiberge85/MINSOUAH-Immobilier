@@ -3,8 +3,8 @@
 
    Un taux s'applique selon une précédence du plus SPÉCIFIQUE au plus GÉNÉRAL :
      propriétaire  >  immeuble  >  organisation.
-   Si AUCUNE règle ne s'applique, la commission est nulle (0 %) : une commission
-   n'est prélevée que là où une règle a été explicitement configurée.
+   Si aucune règle explicite ne s'applique, on retient le TAUX PAR DÉFAUT (10 %),
+   décochable à l'enregistrement d'un paiement.
 
    Chaque règle (commissionRates) : { id, orgId, buildingName?, ownerId?, rate,
    effectiveDate, active }. Une règle qui cible un propriétaire/immeuble précis
@@ -58,10 +58,10 @@ export function resolveCommission(rates, { orgId, ownerId, buildingName, date } 
     }
   }
   if (best) return { rate: Number(best.rate) || 0, ruleId: best.id || null, source: best.ownerId ? 'propriétaire' : best.buildingName ? 'immeuble' : best.orgId ? 'organisation' : 'global' };
-  // Aucune règle applicable → AUCUNE commission (0 %). Une commission ne
-  // s'applique que si une règle explicite (organisation, immeuble ou
-  // propriétaire) a été configurée.
-  return { rate: 0, ruleId: null, source: 'aucune' };
+  // Aucune règle explicite → on applique le TAUX PAR DÉFAUT (10 %) de sorte que la
+  // commission Minsouah s'applique à tous les paiements. Une règle propriétaire/
+  // immeuble/organisation reste prioritaire quand elle existe.
+  return { rate: DEFAULT_COMMISSION_RATE, ruleId: null, source: 'défaut' };
 }
 
 /** Calcule brut / commission / net à partir d'un montant et d'un taux. */
@@ -78,6 +78,17 @@ export function computeCommission(amount, rate) {
  */
 export function freezeCommissionOnPayment(payment, rates, actor = {}) {
   if (payment.commissionRate != null && payment.commissionFrozenAt) return null; // déjà figé
+  // Case « Commission Minsouah » décochée à l'enregistrement → aucune commission
+  // sur CE paiement (net = brut), figée à 0 %.
+  if (payment.applyCommission === false) {
+    return {
+      ...computeCommission(payment.amount, 0),
+      commissionRuleId: null,
+      commissionSource: 'désactivée',
+      commissionFrozenAt: new Date().toISOString(),
+      commissionBy: actor.userName || actor.userId || null,
+    };
+  }
   const ctx = {
     orgId: payment.orgId,
     ownerId: payment.ownerId ?? null,
