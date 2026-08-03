@@ -3,8 +3,8 @@
 
    Un taux s'applique selon une précédence du plus SPÉCIFIQUE au plus GÉNÉRAL :
      propriétaire  >  immeuble  >  organisation.
-   Si aucune règle explicite ne s'applique, on retient le TAUX PAR DÉFAUT (10 %),
-   décochable à l'enregistrement d'un paiement.
+   Si AUCUNE règle ne s'applique, la commission est nulle (0 %) : une commission
+   n'est prélevée que là où une règle a été explicitement configurée.
 
    Chaque règle (commissionRates) : { id, orgId, buildingName?, ownerId?, rate,
    effectiveDate, active }. Une règle qui cible un propriétaire/immeuble précis
@@ -58,10 +58,11 @@ export function resolveCommission(rates, { orgId, ownerId, buildingName, date } 
     }
   }
   if (best) return { rate: Number(best.rate) || 0, ruleId: best.id || null, source: best.ownerId ? 'propriétaire' : best.buildingName ? 'immeuble' : best.orgId ? 'organisation' : 'global' };
-  // Aucune règle explicite → on applique le TAUX PAR DÉFAUT (10 %) de sorte que la
-  // commission Minsouah s'applique à tous les paiements. Une règle propriétaire/
-  // immeuble/organisation reste prioritaire quand elle existe.
-  return { rate: DEFAULT_COMMISSION_RATE, ruleId: null, source: 'défaut' };
+  // Aucune règle applicable → AUCUNE commission (0 %). La commission ne s'applique
+  // QUE là où une règle explicite (organisation, immeuble ou propriétaire) a été
+  // configurée. Ex. : une règle sur l'immeuble MORIS le fait commissionner, sans
+  // toucher NORA qui n'a aucune règle.
+  return { rate: 0, ruleId: null, source: 'aucune' };
 }
 
 /** Calcule brut / commission / net à partir d'un montant et d'un taux. */
