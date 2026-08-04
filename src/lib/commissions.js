@@ -96,7 +96,15 @@ export function freezeCommissionOnPayment(payment, rates, actor = {}) {
     buildingName: buildingOf(payment.propertyName),
     date: payment.paidDate || payment.date || new Date().toISOString(),
   };
-  const { rate, ruleId, source } = resolveCommission(rates, ctx);
+  let { rate, ruleId, source } = resolveCommission(rates, ctx);
+  // L'utilisateur a explicitement COCHÉ « appliquer la commission » à
+  // l'enregistrement, mais aucune règle ne fixe de taux → on applique le taux
+  // par défaut (10 %). (Sans coche explicite, on s'en tient aux règles : 0 %.)
+  if (payment.applyCommission === true && !(rate > 0)) {
+    rate = DEFAULT_COMMISSION_RATE;
+    ruleId = null;
+    source = 'défaut (manuel)';
+  }
   const calc = computeCommission(payment.amount, rate);
   return {
     ...calc,
