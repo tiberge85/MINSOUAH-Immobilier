@@ -1976,10 +1976,6 @@ export default function Payments() {
         } else if (isClosedMonth) {
           if (p.postCloture) recovered = true;
           else if (closureDate && paid > closureDate) recovered = true;
-        } else if (isPast) {
-          const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
-          if (paid >= monthEnd) recovered = true;
-        }
         if (!recovered) return null;
 
         const monthsLate = Math.max(0, (paid.getFullYear() - monthStart.getFullYear()) * 12 + (paid.getMonth() - monthStart.getMonth()));
