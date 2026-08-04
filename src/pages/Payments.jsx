@@ -11,6 +11,7 @@ import { SCI_NORA_LOGO, SCI_NORA_STAMP } from '../lib/sciNoraAssets';
 import { can } from '../lib/permissions';
 import { QRCodeCanvas } from 'qrcode.react';
 import { currentMonthUnpaidList } from '../lib/rentStatus';
+import { resolveCommission, buildingOf, DEFAULT_COMMISSION_RATE } from '../lib/commissions';
 
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
@@ -1415,6 +1416,7 @@ export default function Payments() {
   const contracts     = useMemo(() => scopeOrg(state.contracts),     [state.contracts, myOrgId]);     // eslint-disable-line react-hooks/exhaustive-deps
   const transactions  = useMemo(() => scopeOrg(state.transactions),  [state.transactions, myOrgId]);  // eslint-disable-line react-hooks/exhaustive-deps
   const monthClosures = useMemo(() => scopeOrg(state.monthClosures), [state.monthClosures, myOrgId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const commissionRates = useMemo(() => scopeOrg(state.commissionRates), [state.commissionRates, myOrgId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fine-grained permissions for this module
   const canCreate = can(state.currentUser, 'payments', 'create');
@@ -1445,7 +1447,7 @@ export default function Payments() {
 
   /* ── Payment modal ── */
   const [payModal, setPayModal] = useState(false);
-  const [payForm, setPayForm] = useState({ propertyKey: '', tenantId: '', amount: '', month: currentMonthLabel, dueDate: '', method: 'Espèces', withPenalty: false });
+  const [payForm, setPayForm] = useState({ propertyKey: '', tenantId: '', amount: '', month: currentMonthLabel, dueDate: '', method: 'Espèces', withPenalty: false, applyCommission: true });
   const [quittancePayment, setQuittancePayment] = useState(null);
   const qrReceiptRef = useRef(null);
   const quittanceVerifyUrl = (p) => `${window.location.origin}/#/quittance/${p?.id || ''}`;
@@ -1590,6 +1592,37 @@ export default function Payments() {
       });
     });
   }, [payForm.propertyKey, allPropertyOptions, tenants, contracts]);
+
+  /* ── Commission applicable au paiement en cours de saisie ──
+     Résout le taux configuré (règle propriétaire / immeuble / organisation) pour
+     le bien + le locataire sélectionnés. 0 % si aucune règle → pas de commission
+     (ex. NORA), un taux > 0 sinon (ex. immeuble MORIS). La case ne s'affiche que
+     lorsqu'une commission est réellement configurée. */
+  const formCommissionRate = useMemo(() => {
+    if (!payForm.propertyKey) return 0;
+    const opt = allPropertyOptions.find(o => o.value === payForm.propertyKey);
+    const tenant = (tenants || []).find(t => String(t.id) === String(payForm.tenantId));
+    const linkedProp = opt ? (properties || []).find(p => p.id === opt.buildingId || Number(p.id) === Number(opt.buildingId)) : null;
+    const matchingContract = (contracts || []).find(c =>
+      (String(c.tenantId) === String(payForm.tenantId) || c.tenant === (tenant?.name || '')) &&
+      (c.status === 'Actif' || c.status === 'Expirant')
+    );
+    const ownerId = linkedProp?.ownerId ?? matchingContract?.ownerId ?? null;
+    const buildingName = buildingOf(opt?.propertyName || '');
+    const { rate } = resolveCommission(commissionRates, {
+      orgId: myOrgId, ownerId, buildingName, date: new Date().toISOString(),
+    });
+    return Number(rate) || 0;
+  }, [payForm.propertyKey, payForm.tenantId, allPropertyOptions, tenants, properties, contracts, commissionRates, myOrgId]);
+
+  // Taux effectif si la case est cochée : le taux configuré s'il existe, sinon 10 %.
+  const effectiveCommissionRate = formCommissionRate > 0 ? formCommissionRate : DEFAULT_COMMISSION_RATE;
+  // Coche par défaut la commission quand une règle la configure pour ce bien
+  // (ex. immeuble MORIS) ; décochée sinon (ex. NORA). L'utilisateur reste libre
+  // de (dé)cocher manuellement pour ce paiement.
+  useEffect(() => {
+    setPayForm(f => ({ ...f, applyCommission: formCommissionRate > 0 }));
+  }, [payForm.propertyKey, payForm.tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Filtered payments (main tab) ── */
   /* ── Tenants list for the tracking filter (no paid exclusion) ── */
@@ -2334,11 +2367,12 @@ export default function Payments() {
       paidDate: today,
       reminderSent: false,
       reminderCount: 0,
+      applyCommission: payForm.applyCommission !== false, // 10% par défaut, décochable
       ...(isClosed(payForm.month) ? { postCloture: true } : {}),
     };
     dispatch({ type: 'ADD_PAYMENT', payload: newPayment });
     setPayModal(false);
-    setPayForm({ propertyKey: '', tenantId: '', amount: '', month: currentMonthLabel, dueDate: '', method: 'Espèces', withPenalty: false });
+    setPayForm({ propertyKey: '', tenantId: '', amount: '', month: currentMonthLabel, dueDate: '', method: 'Espèces', withPenalty: false, applyCommission: true });
     setQuittancePayment(newPayment);
   };
 
@@ -3993,6 +4027,19 @@ export default function Payments() {
               <div className="flex justify-between font-black text-red-900 text-base mt-2 pt-2 border-t border-red-200"><span>Total à encaisser</span><span>{fmt((parseFloat(payForm.amount) || 0) + Math.round(parseFloat(payForm.amount) * 0.10))}</span></div>
             </div>
           )}
+
+          <label className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-colors ${payForm.applyCommission ? 'bg-amber-50 border-amber-300' : 'bg-surface-container border-outline-variant/40 hover:bg-surface-container-high'}`}>
+            <input type="checkbox" checked={!!payForm.applyCommission}
+              onChange={e => setPayForm(f => ({ ...f, applyCommission: e.target.checked }))}
+              className="w-4 h-4 accent-amber-600 flex-shrink-0" />
+            <div className="flex-1">
+              <p className={`text-sm font-semibold ${payForm.applyCommission ? 'text-amber-800' : 'text-on-surface'}`}>Appliquer la commission Minsouah {effectiveCommissionRate}%</p>
+              <p className={`text-xs mt-0.5 ${payForm.applyCommission ? 'text-amber-600' : 'text-on-surface-variant'}`}>{formCommissionRate > 0 ? 'Taux configuré pour ce bien' : 'Aucune règle configurée · applique 10 % si coché'} · (dé)cochez pour ce paiement</p>
+            </div>
+            {payForm.applyCommission && payForm.amount && (
+              <span className="font-bold text-sm text-amber-700 flex-shrink-0">−{fmt(Math.round((parseFloat(payForm.amount) || 0) * effectiveCommissionRate / 100))}</span>
+            )}
+          </label>
         </div>
       </ModalWrap>
 
