@@ -68,16 +68,21 @@ export function computeTenantStatement(tenant, { payments = [], contracts = [], 
     if (paidRec) {
       const amt = Number(paidRec.amount) || 0;
       totalPaid += amt;
-      rows.push({ label, statut: 'Payé', montant: amt, date: paidRec.paidDate || '', arrear: false });
+      rows.push({ label, statut: 'Payé', montant: amt, date: paidRec.paidDate || '', kind: 'paid' });
+    } else if (unpaidRec) {
+      // Arriéré RÉEL : un enregistrement non réglé existe pour ce mois.
+      const amt = Number(unpaidRec.amount) || rent;
+      if (isCurrent) { currentDue += amt; rows.push({ label, statut: 'À payer', montant: amt, date: '', kind: 'due' }); }
+      else { totalArrears += amt; rows.push({ label, statut: 'Impayé (arriéré)', montant: amt, date: '', kind: 'arrear' }); }
+    } else if (isCurrent) {
+      // Mois en cours sans règlement encore enregistré → attendu (pas un arriéré).
+      currentDue += rent;
+      rows.push({ label, statut: 'À payer', montant: rent, date: '', kind: 'due' });
     } else {
-      const amt = unpaidRec ? (Number(unpaidRec.amount) || rent) : rent;
-      if (isCurrent) {
-        currentDue += amt;
-        rows.push({ label, statut: 'À payer', montant: amt, date: '', arrear: false });
-      } else {
-        totalArrears += amt;
-        rows.push({ label, statut: 'Impayé (arriéré)', montant: amt, date: '', arrear: true });
-      }
+      // Mois passé SANS aucun enregistrement → on N'INVENTE PAS d'arriéré (cohérent
+      // avec la liste des arriérés, qui ne compte que les enregistrements réels).
+      // Ainsi un locataire à jour n'affiche pas de fausses dettes.
+      rows.push({ label, statut: 'Sans enregistrement', montant: 0, date: '', kind: 'none' });
     }
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
   }
@@ -89,7 +94,7 @@ export function computeTenantStatement(tenant, { payments = [], contracts = [], 
     totalPaid, totalArrears, currentDue,
     upToDate,
     statusLabel: totalArrears > 0 ? 'En retard' : (currentDue > 0 ? 'À jour (mois en cours à régler)' : 'À jour'),
-    arrearRows: rows.filter(r => r.arrear),
+    arrearRows: rows.filter(r => r.kind === 'arrear'),
   };
 }
 
@@ -113,8 +118,8 @@ function buildStatementHTML(st, orgSettings) {
   const rowsHTML = st.rows.map(r => `
     <tr>
       <td style="padding:7px 10px">${esc(r.label)}</td>
-      <td style="padding:7px 10px;color:${r.arrear ? '#b91c1c' : r.statut === 'Payé' ? '#15803d' : '#b45309'};font-weight:600">${esc(r.statut)}</td>
-      <td style="padding:7px 10px;text-align:right">${fmt(r.montant)}</td>
+      <td style="padding:7px 10px;color:${r.kind === 'arrear' ? '#b91c1c' : r.kind === 'paid' ? '#15803d' : r.kind === 'due' ? '#b45309' : '#9ca3af'};font-weight:600">${esc(r.statut)}</td>
+      <td style="padding:7px 10px;text-align:right">${r.kind === 'none' ? '—' : fmt(r.montant)}</td>
       <td style="padding:7px 10px;color:#6b7280;font-size:11px">${esc(r.date || '—')}</td>
     </tr>`).join('');
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Relevé — ${esc(t.name)}</title>
@@ -218,8 +223,8 @@ export default function TenantFinancialStatement({ tenant, payments, contracts, 
                 {st.rows.map((r, i) => (
                   <tr key={i} className="border-t border-outline-variant/10">
                     <td className="px-3 py-2">{r.label}</td>
-                    <td className={`px-3 py-2 font-medium ${r.arrear ? 'text-error' : r.statut === 'Payé' ? 'text-green-700' : 'text-amber-700'}`}>{r.statut}</td>
-                    <td className="px-3 py-2 text-right">{fmt(r.montant)}</td>
+                    <td className={`px-3 py-2 font-medium ${r.kind === 'arrear' ? 'text-error' : r.kind === 'paid' ? 'text-green-700' : r.kind === 'due' ? 'text-amber-700' : 'text-on-surface-variant'}`}>{r.statut}</td>
+                    <td className="px-3 py-2 text-right">{r.kind === 'none' ? '—' : fmt(r.montant)}</td>
                     <td className="px-3 py-2 text-on-surface-variant text-xs">{r.date || '—'}</td>
                   </tr>
                 ))}
