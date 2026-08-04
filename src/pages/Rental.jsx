@@ -6,6 +6,7 @@ import Icon from '../components/Icon';
 import SignaturePad from '../components/SignaturePad';
 import SearchSelect from '../components/SearchSelect';
 import TenantDocuments from '../components/TenantDocuments';
+import TenantFinancialStatement from '../components/TenantFinancialStatement';
 import { openContractReport } from '../lib/contractReport';
 import { can } from '../lib/permissions';
 
@@ -28,7 +29,7 @@ export default function Rental() {
   const canCreate = can(state.currentUser, 'rental', 'create');
   const canEdit   = can(state.currentUser, 'rental', 'edit');
   const canDelete = can(state.currentUser, 'rental', 'delete');
-  const { contracts = [], tenants = [], owners = [], properties = [] } = state;
+  const { contracts = [], tenants = [], owners = [], properties = [], payments = [], orgSettings = {} } = state;
 
   const [tab, setTab] = useState('Contrats');
   const [cFilter, setCFilter] = useState('Tous');
@@ -45,6 +46,7 @@ export default function Rental() {
   const [portalToken, setPortalToken] = useState(null);
   const [qrGenerating, setQrGenerating] = useState(false);
   const [docsTenant, setDocsTenant] = useState(null); // locataire dont on gère les documents
+  const [finTenant, setFinTenant] = useState(null);   // locataire dont on affiche l'état financier
 
   // Nombre de documents par locataire (pour le badge sur la fiche)
   const docCountByTenant = useMemo(() => {
@@ -732,6 +734,10 @@ ${sectionsHtml}
                   <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${STATUS_BADGE[t.status] || ''}`}>{t.status}</span>
                 </div>
                 <div className="flex items-center gap-1">
+                  <button title="État financier du locataire" onClick={() => setFinTenant(t)}
+                    className="flex items-center justify-center w-9 h-9 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary transition-colors">
+                    <Icon name="account_balance_wallet" size={18} />
+                  </button>
                   <button title="Documents du dossier" onClick={() => setDocsTenant(t)}
                     className="relative flex items-center justify-center w-9 h-9 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary transition-colors">
                     <Icon name="folder" size={18} />
@@ -1374,6 +1380,17 @@ ${sectionsHtml}
       )}
 
       {/* ── Documents du dossier locataire ──────────────────────────────── */}
+      {finTenant && (
+        <TenantFinancialStatement
+          tenant={finTenant}
+          payments={payments}
+          contracts={contracts}
+          properties={properties}
+          orgSettings={orgSettings}
+          onClose={() => setFinTenant(null)}
+        />
+      )}
+
       {docsTenant && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && setDocsTenant(null)}>
           <div className="bg-surface rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
