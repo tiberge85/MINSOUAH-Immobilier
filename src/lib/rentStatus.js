@@ -27,7 +27,7 @@ export function currentMonthUnpaidList({ payments = [], contracts = [], tenants 
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   // Normalisation insensible aux accents/casse/espaces + correspondance de mois
   // tolérante (« Aout » ≡ « Août ») pour ne pas rater un paiement du mois.
-  const norm = s => (s || '').toString().toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const norm = s => (s || '').toString().toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const normLabel = s => norm(s).replace(/\s+/g, ' ');
   const monthRecords = payments.filter(p => normLabel(p.month) === normLabel(label));
 
@@ -119,9 +119,10 @@ export function currentMonthUnpaidList({ payments = [], contracts = [], tenants 
       });
     });
 
-  // 2) Locataires ACTIFS sans contrat actif rattaché mais qui doivent payer un
-  //    loyer ce mois (loyer déduit du bien assigné). Garantit que le rappel tient
-  //    compte de TOUS les locataires actifs redevables du loyer.
+  // 2) Filet de sécurité : locataire ACTIF rattaché à un CONTRAT ACTIF que la
+  //    boucle 1 n'aurait pas capté. IMPORTANT : on EXIGE un contrat actif/expirant.
+  //    Ainsi un locataire dont l'appartement a été LIBÉRÉ (contrat terminé) ne
+  //    figure PLUS dans les rappels, même si sa fiche est restée « Actif ».
   tenants
     .filter(t => t.status === 'Actif' || !t.status)
     .forEach(t => {
@@ -130,9 +131,11 @@ export function currentMonthUnpaidList({ payments = [], contracts = [], tenants 
       if (isCovered(t.name, id) || alreadyAdded(t.name, id)) return; // déjà payé/couvert
       if (inAdvance(t.paymentStartDate)) return; // encore en avance ce mois
       const contract = contracts.find(c =>
-        nameMatch(c.tenant, t.name) || (t.id != null && c.tenantId && String(c.tenantId) === String(t.id))
+        (c.status === 'Actif' || c.status === 'Expirant') &&
+        (nameMatch(c.tenant, t.name) || (t.id != null && c.tenantId && String(c.tenantId) === String(t.id)))
       );
-      const rent = rentForTenant(t, contract);
+      if (!contract) return; // aucun contrat actif → n'occupe plus de bien → pas de rappel
+      const rent = (Number(contract.rent) || 0) || rentForTenant(t, contract);
       if (!rent || rent <= 0) return; // pas d'obligation de loyer identifiable
       markAdded(t.name, id);
       out.push({
