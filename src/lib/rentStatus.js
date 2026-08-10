@@ -1,4 +1,4 @@
-/* ────────────────────────────────────────────────────────────────────────────
+/* ────────────────────────────────────────────
    Statut des loyers du mois courant — source unique partagée par le tableau des
    paiements, l'onglet Rappels, le badge de la barre latérale et le taux de
    recouvrement, afin qu'ils affichent TOUS le même décompte.
@@ -43,8 +43,27 @@ export function currentMonthUnpaidList({ payments = [], contracts = [], tenants 
     return short.length >= 4 && long.includes(short);
   };
 
-  // Enregistrements explicites non réglés (vrais docs de paiement)
-  const explicit = monthRecords.filter(p => p.status !== 'Payé' && p.status !== 'Annulé');
+  // Occupants ACTUELS = locataires rattachés à un contrat actif/expirant. Sert à
+  // écarter des rappels les locataires PARTIS (ex. M. ALI, appartement LEVI libéré),
+  // même s'ils traînent encore un enregistrement d'impayé pour le mois.
+  const activeContracts = contracts.filter(c => c.status === 'Actif' || c.status === 'Expirant');
+  const activeNames = activeContracts.map(c => norm(c.tenant)).filter(Boolean);
+  const activeIds = new Set();
+  activeContracts.forEach(c => {
+    if (c.tenantId != null) activeIds.add(String(c.tenantId));
+    const t = tenants.find(tt => nameMatch(tt.name, c.tenant) || (c.tenantId && String(tt.id) === String(c.tenantId)));
+    if (t && t.id != null) activeIds.add(String(t.id));
+  });
+  const isActiveOccupant = (name, id) => {
+    if (id != null && id !== '' && activeIds.has(String(id))) return true;
+    return activeNames.some(an => nameMatch(an, name));
+  };
+
+  // Enregistrements explicites non réglés (vrais docs de paiement), MAIS seulement
+  // pour les occupants actuels — un locataire parti ne doit plus être relancé.
+  const explicit = monthRecords
+    .filter(p => p.status !== 'Payé' && p.status !== 'Annulé')
+    .filter(p => isActiveOccupant(p.tenantName, p.tenantId));
   // Locataires déjà couverts par un enregistrement ce mois (payé OU non), reconnus
   // par NOM normalisé (avec inclusion) OU par ID de locataire — pas de doublon.
   const coveredNames = monthRecords.map(p => norm(p.tenantName)).filter(Boolean);
@@ -134,40 +153,4 @@ export function currentMonthUnpaidList({ payments = [], contracts = [], tenants 
         (c.status === 'Actif' || c.status === 'Expirant') &&
         (nameMatch(c.tenant, t.name) || (t.id != null && c.tenantId && String(c.tenantId) === String(t.id)))
       );
-      if (!contract) return; // aucun contrat actif → n'occupe plus de bien → pas de rappel
-      const rent = (Number(contract.rent) || 0) || rentForTenant(t, contract);
-      if (!rent || rent <= 0) return; // pas d'obligation de loyer identifiable
-      markAdded(t.name, id);
-      out.push({
-        id: `synth-t-${t.id}`,
-        isSynthetic: true,
-        contractId: contract?.id || null,
-        tenantId: t.id != null ? t.id : null,
-        tenantName: t.name || '',
-        tenantPhone: t.phone || '',
-        tenantEmail: t.email || '',
-        ownerId: t.ownerId != null ? t.ownerId : (contract?.ownerId ?? null),
-        propertyName: t.property || contract?.propertyName || '',
-        amount: rent,
-        month: label,
-        status: 'Impayé',
-        reminderCount: 0,
-      });
-    });
-
-  return out;
-}
-
-/** Nombre de loyers du mois effectivement encaissés (Payé). */
-export function currentMonthPaidCount({ payments = [] }, now = new Date()) {
-  const label = currentMonthLabel(now);
-  return payments.filter(p => p.month === label && p.status === 'Payé').length;
-}
-
-/** Taux de recouvrement = payés / (payés + non payés) du mois courant. */
-export function currentMonthRecoveryRate(state, now = new Date()) {
-  const paid = currentMonthPaidCount(state, now);
-  const unpaid = currentMonthUnpaidList(state, now).length;
-  const total = paid + unpaid;
-  return total > 0 ? Math.round((paid / total) * 100) : 0;
-}
+      if (!contract) return; // aucun contrat actif → n'occupe plus
