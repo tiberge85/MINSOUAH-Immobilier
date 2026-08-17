@@ -1979,7 +1979,7 @@ export default function Payments() {
       const key = (p.tenantName || '—').toLowerCase().trim();
       if (!groups[key]) groups[key] = { tenantName: p.tenantName || '—', tenantPhone: p.tenantPhone || '', payments: [], total: 0 };
       groups[key].payments.push(p);
-     groups[key].total += p.amount || 0;
+    groups[key].total += p.amount || 0;
     });
     const mkey = (l) => { const [mn, yr] = (l || '').split(' '); const i = MONTH_NAMES.indexOf(mn); return i >= 0 ? parseInt(yr) * 12 + i : Infinity; };
     Object.values(groups).forEach(g => g.payments.sort((a, b) => mkey(a.month) - mkey(b.month)));
