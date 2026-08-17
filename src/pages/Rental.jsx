@@ -154,6 +154,27 @@ export default function Rental() {
     setTimeout(() => { sigBailleurRef.current?.clear(); sigPreneurRef.current?.clear(); }, 50);
   };
   const openEditContract = (c) => { setCForm({ ...c, rent: String(c.rent) }); setModal('contract'); setTarget(c); setStep(1); };
+  const endContract = (c) => {
+    if (!window.confirm(`Mettre fin au contrat de ${c.tenant} (${c.propertyName}) ?\n\n• Le contrat passe en « Résilié »\n• Le bien repasse « Libre »\n• Le locataire n'est plus compté dans les loyers à encaisser`)) return;
+    const today = new Date().toISOString().slice(0, 10);
+    dispatch({ type: 'UPDATE_CONTRACT', payload: { ...c, status: 'Résilié', endDate: c.endDate || today } });
+    const base = normN((c.propertyName || '').split(' — ')[0]);
+    const prop = properties.find(p => (c.propertyId != null && (p.id === c.propertyId || Number(p.id) === Number(c.propertyId))) || normN(p.name) === base);
+    if (prop) {
+      if (prop.isBuilding) {
+        const unitPart = normN((c.propertyName || '').split(' — ').slice(1).join(' — ').split('(')[0]);
+        const units = (prop.units || []).map(u => {
+          const num = normN(String(u.number || ''));
+          return num && unitPart.includes(num) ? { ...u, status: 'Libre' } : u;
+        });
+        dispatch({ type: 'UPDATE_PROPERTY', payload: { ...prop, units } });
+      } else {
+        dispatch({ type: 'UPDATE_PROPERTY', payload: { ...prop, status: 'Libre' } });
+      }
+    }
+    const tenant = tenants.find(t => normN(t.name) === normN(c.tenant) || (c.tenantId != null && String(t.id) === String(c.tenantId)));
+    if (tenant) dispatch({ type: 'UPDATE_TENANT', payload: { ...tenant, status: 'Inactif' } });
+  };
 
   const openAddTenant = () => {
     setTForm({ name: '', email: '', phone: '', emergencyName: '', emergencyPhone: '', property: '', since: '', status: 'Actif', color: COLORS[0] });
@@ -714,6 +735,9 @@ ${sectionsHtml}
                               openContractReport(c, prop, org, { sigBailleur: c.sigBailleur, sigPreneur: c.sigPreneur });
                             }} />
                           {canEdit && <IconBtn icon="edit" color="text-primary" onClick={() => openEditContract(c)} />}
+                          {canEdit && (c.status === 'Actif' || c.status === 'Expirant') && (
+                            <IconBtn icon="logout" color="text-amber-700" title="Mettre fin au contrat (départ locataire)" onClick={() => endContract(c)} />
+                          )}
                           {canDelete && <IconBtn icon="delete" color="text-error" onClick={() => setDeleteTarget({ type: 'contract', data: c })} />}
                         </div>
                       </td>
