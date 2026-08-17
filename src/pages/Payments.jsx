@@ -2045,7 +2045,7 @@ export default function Payments() {
         // « Ajouter un arriéré ». Évite que tous les paiements du mois y remontent.
         const cyR = now.getFullYear(), cmR = now.getMonth();
         const isPastMonth = monthStart.getFullYear() < cyR || (monthStart.getFullYear() === cyR && monthStart.getMonth() < cmR);
-        if (!isPastMonth && monthsLate < 1) return null;
+        if (monthsLate < 1) return null;
 
         return { ...p, amount, monthsLate };
       })
