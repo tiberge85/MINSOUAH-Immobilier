@@ -154,3 +154,39 @@ export function currentMonthUnpaidList({ payments = [], contracts = [], tenants 
         (nameMatch(c.tenant, t.name) || (t.id != null && c.tenantId && String(c.tenantId) === String(t.id)))
       );
       if (!contract) return; // aucun contrat actif → n'occupe plus
+const rent = (Number(contract.rent) || 0) || rentForTenant(t, contract);
+      if (!rent || rent <= 0) return; // pas d'obligation de loyer identifiable
+      markAdded(t.name, id);
+      out.push({
+        id: `synth-t-${t.id}`,
+        isSynthetic: true,
+        contractId: contract?.id || null,
+        tenantId: t.id != null ? t.id : null,
+        tenantName: t.name || '',
+        tenantPhone: t.phone || '',
+        tenantEmail: t.email || '',
+        ownerId: t.ownerId != null ? t.ownerId : (contract?.ownerId ?? null),
+        propertyName: t.property || contract?.propertyName || '',
+        amount: rent,
+        month: label,
+        status: 'Impayé',
+        reminderCount: 0,
+      });
+    });
+
+  return out;
+}
+
+/** Nombre de loyers du mois effectivement encaissés (Payé). */
+export function currentMonthPaidCount({ payments = [] }, now = new Date()) {
+  const label = currentMonthLabel(now);
+  return payments.filter(p => p.month === label && p.status === 'Payé').length;
+}
+
+/** Taux de recouvrement = payés / (payés + non payés) du mois courant. */
+export function currentMonthRecoveryRate(state, now = new Date()) {
+  const paid = currentMonthPaidCount(state, now);
+  const unpaid = currentMonthUnpaidList(state, now).length;
+  const total = paid + unpaid;
+  return total > 0 ? Math.round((paid / total) * 100) : 0;
+}
