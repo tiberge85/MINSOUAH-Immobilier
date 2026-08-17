@@ -1979,8 +1979,10 @@ export default function Payments() {
       const key = (p.tenantName || '—').toLowerCase().trim();
       if (!groups[key]) groups[key] = { tenantName: p.tenantName || '—', tenantPhone: p.tenantPhone || '', payments: [], total: 0 };
       groups[key].payments.push(p);
-      groups[key].total += p.amount || 0;
+     groups[key].total += p.amount || 0;
     });
+    const mkey = (l) => { const [mn, yr] = (l || '').split(' '); const i = MONTH_NAMES.indexOf(mn); return i >= 0 ? parseInt(yr) * 12 + i : Infinity; };
+    Object.values(groups).forEach(g => g.payments.sort((a, b) => mkey(a.month) - mkey(b.month)));
     return Object.values(groups).sort((a, b) => b.total - a.total);
   }, [arrearsList]);
 
@@ -2089,8 +2091,7 @@ export default function Payments() {
       groups[key].total += (p.amount && p.amount > 0) ? p.amount : 0;
     });
     Object.values(groups).forEach(g =>
-      g.payments.sort((a, b) => (parsePaidDate(a.paidDate)?.getTime() || 0) - (parsePaidDate(b.paidDate)?.getTime() || 0))
-    );
+     g.payments.sort((a, b) => (monthLabelToDate(a.month)?.getTime() || 0) - (monthLabelToDate(b.month)?.getTime() || 0))
     return Object.values(groups).sort((a, b) => b.total - a.total);
   }, [recoveredScoped]);
 
