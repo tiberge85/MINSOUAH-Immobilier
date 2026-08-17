@@ -2090,8 +2090,9 @@ export default function Payments() {
       groups[key].payments.push(p);
       groups[key].total += (p.amount && p.amount > 0) ? p.amount : 0;
     });
-    Object.values(groups).forEach(g =>
-     g.payments.sort((a, b) => (monthLabelToDate(a.month)?.getTime() || 0) - (monthLabelToDate(b.month)?.getTime() || 0))
+   Object.values(groups).forEach(g =>
+      g.payments.sort((a, b) => (monthLabelToDate(a.month)?.getTime() || 0) - (monthLabelToDate(b.month)?.getTime() || 0))
+    );
     return Object.values(groups).sort((a, b) => b.total - a.total);
   }, [recoveredScoped]);
 
