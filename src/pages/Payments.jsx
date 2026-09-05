@@ -2850,14 +2850,16 @@ export default function Payments() {
     const arrieres = (recoveredArrears || [])
       .filter(p => inSel(parsePaidDate(p.paidDate)) && !p.avanceVerseeProprio && !p.versementProprioId)
       .reduce((s, p) => s + (Number(p.amount) || 0), 0);
-    // Cautions & avances (nouveaux locataires) : on reprend EXACTEMENT l'onglet
-    // « Cautions & avances » (depositsList) pour que la synthèse affiche le même
-    // total que ce rapport — cautions détenues (hors cautions remboursées) + mois
-    // d'avance. On ne filtre plus par mois d'entrée : cela excluait à tort un
-    // locataire dont la date d'entrée n'était pas dans le mois sélectionné.
-    // Une caution/avance déjà VERSÉE au propriétaire ne compte plus dans le net.
-    const cautionsAvances = (depositsList || []).reduce((s, d) =>
-      d.depositVerseProprio ? s : s + (d.cautionRefunded ? 0 : (Number(d.cautionAmount) || 0)) + (Number(d.advanceAmount) || 0), 0);
+    // Cautions & avances (nouveaux locataires) DU MOIS uniquement : on ne compte
+    // que les cautions/avances des locataires ENTRÉS pendant le mois sélectionné,
+    // pour rester cohérent avec les KPI « Cautions reçues » / « Avances reçues » du
+    // rapport et ne pas gonfler le « Total encaissé »/« Net à reverser » avec le
+    // cumul de tous les mois (c'est ce cumul qui affichait un net à ~18 M au lieu
+    // du mois réel). Une caution/avance déjà VERSÉE au propriétaire ne compte pas.
+    const cautionsAvances = (depositsList || [])
+      .filter(d => depMonthLabel(d.entryDate) === monthLabel)
+      .reduce((s, d) =>
+        d.depositVerseProprio ? s : s + (d.cautionRefunded ? 0 : (Number(d.cautionAmount) || 0)) + (Number(d.advanceAmount) || 0), 0);
     const totalEncaisse = loyersMois + arrieres + anticipes + cautionsAvances;
     const charges = (transactions || [])
       .filter(t => { const d = parseTxDate(t.date); return d && inSel(d) && !t.positive; })
