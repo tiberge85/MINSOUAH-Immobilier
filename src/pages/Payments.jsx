@@ -744,6 +744,11 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
       <div class="kpi-v" style="color:#0369a1">${fCFA(depAdvance)}</div>
       <div class="kpi-s">Total des mois d'avance encaissés</div>
     </div>
+    ${synthesis ? `<div class="kpi">
+      <div class="kpi-l">Dépenses du mois</div>
+      <div class="kpi-v" style="color:#b91c1c">− ${fCFA(synthesis.charges)}</div>
+      <div class="kpi-s">Déduites du net à reverser</div>
+    </div>` : ''}
     <div class="kpi" style="background:#785a00;border-color:#785a00;grid-column:span 2">
       <div class="kpi-l" style="color:#f5e9c8">Net à reverser au propriétaire</div>
       <div class="kpi-v" style="color:#fff">${fCFA(synthesis ? synthesis.totalAReverser : (totalNetOwner + depCaution + depAdvance))}</div>
@@ -771,7 +776,7 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
         ${Object.keys(synthesis.anticipesByMonth || {}).sort((a,b)=>{const pa=a.split(' '),pb=b.split(' ');return (parseInt(pa[1]||0)*12+MONTH_NAMES.indexOf(pa[0]))-(parseInt(pb[1]||0)*12+MONTH_NAMES.indexOf(pb[0]));}).map(m => `<tr><td style="padding:5px 10px 5px 26px;color:#6b7280;font-size:11px">· ${m}</td><td style="padding:5px 10px;text-align:right;color:#6b7280;font-size:11px">${fCFA(synthesis.anticipesByMonth[m])}</td></tr>`).join('')}
         <tr><td style="padding:8px 10px">Cautions & avances (nouveaux locataires)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.cautionsAvances)}</td></tr>
         <tr style="background:#f0fdf4;font-weight:800"><td style="padding:9px 10px;color:#15803d">TOTAL ENCAISSÉ EN ${currentMonth.toUpperCase()}</td><td style="padding:9px 10px;text-align:right;color:#15803d">${fCFA(synthesis.totalEncaisse)}</td></tr>
-        <tr><td style="padding:8px 10px;color:#b91c1c">(−) Charges du mois</td><td style="padding:8px 10px;text-align:right;color:#b91c1c">− ${fCFA(synthesis.charges)}</td></tr>
+        <tr><td style="padding:8px 10px;color:#b91c1c">(−) Dépenses du mois (Comptabilité)</td><td style="padding:8px 10px;text-align:right;color:#b91c1c">− ${fCFA(synthesis.charges)}</td></tr>
         <tr style="background:#785a00;color:#fff;font-weight:900"><td style="padding:11px 10px;font-size:13px">NET À REVERSER AU PROPRIÉTAIRE</td><td style="padding:11px 10px;text-align:right;font-size:14px">${fCFA(synthesis.totalAReverser)}</td></tr>
       </tbody>
     </table>
@@ -1741,6 +1746,18 @@ export default function Payments() {
     const [emn, eyr] = (selectedMonth || '').split(' ');
     const eidx = MONTH_NAMES.indexOf(emn);
     const eDate = eidx >= 0 ? new Date(Number(eyr), eidx, 1) : null;
+    const normX = (s) => (s || '').toString().toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    // Loyers du mois DÉJÀ réglés ET déjà reversés au propriétaire (ex. prépaiement
+    // reversé) : ils sont soldés → on les RETIRE du « loyer attendu » pour que les
+    // chiffres bouclent (Attendu = Encaissé restant + Impayés).
+    const settledReversed = new Set(
+      monthPmts.filter(p => p.status === 'Payé' && p.avanceVerseeProprio).map(p => normX(p.tenantName)).filter(Boolean)
+    );
+    const isSettled = (name) => {
+      const n = normX(name);
+      if (!n) return false;
+      return [...settledReversed].some(s => s === n || s.includes(n) || n.includes(s));
+    };
     return (contracts || [])
       .filter(c => c.status === 'Actif' || c.status === 'Expirant')
       .filter(c => {
@@ -1750,6 +1767,7 @@ export default function Payments() {
         const psFirst = psDate && !isNaN(psDate.getTime()) ? new Date(psDate.getFullYear(), psDate.getMonth(), 1) : null;
         return !(psFirst && eDate && eDate < psFirst); // exclure ceux encore en avance
       })
+      .filter(c => !isSettled(c.tenant)) // exclure loyers déjà réglés ET reversés (soldés)
       .reduce((s, c) => s + (Number(c.rent) || 0), 0);
   })();
   // « Encaissés » = loyers réglés du mois, MAIS on retire ceux déjà reversés au
@@ -2191,6 +2209,12 @@ export default function Payments() {
     advanceTotal:    depositsThisMonth.reduce((s, d) => s + d.advanceAmount, 0),
     grandTotal:      depositsThisMonth.reduce((s, d) => s + d.cautionAmount + d.advanceAmount, 0),
   }), [depositsThisMonth]);
+
+  // Basculer entre « le mois sélectionné » et « toutes les cautions » — pour
+  // retrouver et restituer la caution d'un locataire quel que soit son mois d'entrée.
+  const [depAllMonths, setDepAllMonths] = useState(false);
+  const depositsShown = depAllMonths ? depositsList : depositsThisMonth;
+  const depositsTotalsShown = depAllMonths ? depositsTotals : depositsTotalsMonth;
 
   const toggleCautionRefund = (d) => {
     const tenant = (tenants || []).find(t => String(t.id) === String(d.tenantId));
@@ -2848,7 +2872,7 @@ export default function Payments() {
       payments,
       arrearsByTenant,
       advanceTenants: reportAdvance,
-      deposits: depositsList,
+      deposits: depositsThisMonth,
       depositsTotals,
       synthesis: buildMonthSynthesis(selectedMonth),
       orgSettings,
@@ -2867,7 +2891,7 @@ export default function Payments() {
       currentMonth: selectedMonth,
       contracts, payments, arrearsByTenant,
       advanceTenants: reportAdvance,
-      deposits: depositsList, depositsTotals,
+      deposits: depositsThisMonth, depositsTotals,
       synthesis: buildMonthSynthesis(selectedMonth),
       orgSettings,
     });
@@ -3718,22 +3742,27 @@ export default function Payments() {
         <div className="flex flex-col gap-md">
           <div className="flex items-center justify-between flex-wrap gap-sm">
             <div>
-              <h3 className="font-bold text-on-surface text-base">Cautions & avances — {selectedMonth}</h3>
+              <h3 className="font-bold text-on-surface text-base">Cautions & avances — {depAllMonths ? 'toutes les cautions' : selectedMonth}</h3>
               <p className="text-sm text-on-surface-variant mt-0.5">
-                {depositsThisMonth.length} locataire(s) entré(s) ce mois · Total encaissé : <span className="font-bold text-primary">{fmt(depositsTotalsMonth.grandTotal)}</span>
+                {depositsShown.length} locataire(s){depAllMonths ? '' : ' entré(s) ce mois'} · Total : <span className="font-bold text-primary">{fmt(depositsTotalsShown.grandTotal)}</span>
               </p>
             </div>
-            {depositsThisMonth.length > 0 && (
-              <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintDeposits}>Exporter PDF</Btn>
-            )}
+            <div className="flex gap-sm">
+              <Btn icon={depAllMonths ? 'calendar_month' : 'apps'} variant="secondary" onClick={() => setDepAllMonths(v => !v)}>
+                {depAllMonths ? `Mois (${selectedMonth})` : 'Tous les mois'}
+              </Btn>
+              {depositsShown.length > 0 && (
+                <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintDeposits}>Exporter PDF</Btn>
+              )}
+            </div>
           </div>
 
           <section className="grid grid-cols-2 lg:grid-cols-4 gap-md">
             {[
-              { label: 'Cautions détenues', value: fmt(depositsTotalsMonth.cautionHeld), icon: 'shield', cls: 'bg-primary/10 text-primary' },
-              { label: 'Avances encaissées', value: fmt(depositsTotalsMonth.advanceTotal), icon: 'event_available', cls: 'bg-blue-100 text-blue-700' },
-              { label: 'Cautions restituées', value: fmt(depositsTotalsMonth.cautionRefunded), icon: 'undo', cls: 'bg-green-100 text-green-700' },
-              { label: 'Total encaissé', value: fmt(depositsTotalsMonth.grandTotal), icon: 'savings', cls: 'bg-amber-100 text-amber-700' },
+              { label: 'Cautions détenues', value: fmt(depositsTotalsShown.cautionHeld), icon: 'shield', cls: 'bg-primary/10 text-primary' },
+              { label: 'Avances encaissées', value: fmt(depositsTotalsShown.advanceTotal), icon: 'event_available', cls: 'bg-blue-100 text-blue-700' },
+              { label: 'Cautions restituées', value: fmt(depositsTotalsShown.cautionRefunded), icon: 'undo', cls: 'bg-green-100 text-green-700' },
+              { label: 'Total encaissé', value: fmt(depositsTotalsShown.grandTotal), icon: 'savings', cls: 'bg-amber-100 text-amber-700' },
             ].map(s => (
               <div key={s.label} className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-center gap-md">
                 <div className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 ${s.cls}`}><Icon name={s.icon} size={20} /></div>
@@ -3745,7 +3774,7 @@ export default function Payments() {
             ))}
           </section>
 
-          {depositsThisMonth.length > 0 && renderListSearch()}
+          {depositsShown.length > 0 && renderListSearch()}
 
           <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
             <div className="overflow-x-auto">
@@ -3758,13 +3787,13 @@ export default function Payments() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/20">
-                  {depositsThisMonth.length === 0 && (
+                  {depositsShown.length === 0 && (
                     <tr><td colSpan={8} className="text-center py-12 text-on-surface-variant">
-                      <Icon name="savings" size={36} className="opacity-30 mb-2" /><p>Aucune caution ni avance encaissée en {selectedMonth}</p>
-                      <p className="text-xs mt-1">Les cautions/avances apparaissent le mois d'entrée du locataire.</p>
+                      <Icon name="savings" size={36} className="opacity-30 mb-2" /><p>{depAllMonths ? 'Aucune caution ni avance enregistrée' : `Aucune caution ni avance encaissée en ${selectedMonth}`}</p>
+                      <p className="text-xs mt-1">{depAllMonths ? '' : "Les cautions apparaissent le mois d'entrée du locataire — cliquez « Tous les mois » pour en retrouver une plus ancienne."}</p>
                     </td></tr>
                   )}
-                  {depositsThisMonth.filter(d => matchLS(d.tenantName, d.propertyName)).map(d => (
+                  {depositsShown.filter(d => matchLS(d.tenantName, d.propertyName)).map(d => (
                     <tr key={d.tenantId} className="hover:bg-surface-container-low transition-colors">
                       <td className="px-4 py-3.5">
                         <p className="font-semibold text-sm text-on-surface">{d.tenantName}</p>
