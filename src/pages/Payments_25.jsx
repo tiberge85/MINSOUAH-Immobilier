@@ -167,6 +167,71 @@ function buildPenaltyReportHTML(penaltyList, month, orgSettings) {
   </body></html>`;
 }
 
+/* ── Rapport COMPLET des arriérés (recouvrés + restant dû passé + mois en cours) ── */
+function buildFullArrearsReportHTML({ recoveredByTenant = [], recoveredTotal = 0, arrearsByMonth = [], arrearsTotal = 0, currentUnpaid = [], currentUnpaidTotal = 0, selectedMonth = '', orgSettings = {} }) {
+  const org = orgSettings || {};
+  const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const fCFA = n => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
+  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const recSection = recoveredByTenant.length ? recoveredByTenant.map(g => {
+    const rows = (g.payments || []).map(p => `
+      <tr><td style="padding:6px 10px">${esc(p.tenantName || g.tenantName)}</td>
+      <td style="padding:6px 10px;color:#555">${esc(p.month || '')} · ${esc(p.propertyName || '')}</td>
+      <td style="padding:6px 10px;text-align:right;font-weight:600">${fCFA(p.amount)}</td>
+      <td style="padding:6px 10px;color:#6b7280;font-size:11px">${esc(p.paidDate || '')}</td></tr>`).join('');
+    return `<tr style="background:#ecfdf5"><td colspan="4" style="padding:6px 10px;font-weight:700;color:#065f46">${esc(g.tenantName)} — ${fCFA(g.total)}</td></tr>${rows}`;
+  }).join('') : '<tr><td colspan="4" style="padding:10px;text-align:center;color:#9ca3af">Aucun arriéré recouvré</td></tr>';
+
+  const dueSection = arrearsByMonth.length ? arrearsByMonth.map(g => {
+    const rows = (g.payments || []).map(p => `
+      <tr><td style="padding:6px 10px">${esc(p.tenantName || '')}</td>
+      <td style="padding:6px 10px;color:#555">${esc(p.propertyName || '')}</td>
+      <td style="padding:6px 10px;text-align:right;font-weight:600;color:#b45309">${fCFA(p.amount)}</td></tr>`).join('');
+    return `<tr style="background:#fffbeb"><td colspan="3" style="padding:6px 10px;font-weight:700;color:#92400e">${esc(g.month)} — ${fCFA(g.total)}</td></tr>${rows}`;
+  }).join('') : '<tr><td colspan="3" style="padding:10px;text-align:center;color:#9ca3af">Aucun arriéré restant dû</td></tr>';
+
+  const curSection = currentUnpaid.length ? currentUnpaid.map(p => `
+    <tr><td style="padding:6px 10px">${esc(p.tenantName || '')}</td>
+    <td style="padding:6px 10px;color:#555">${esc(p.propertyName || '')}</td>
+    <td style="padding:6px 10px;text-align:right;font-weight:600;color:#b91c1c">${fCFA(p.amount)}</td></tr>`).join('')
+    : '<tr><td colspan="3" style="padding:10px;text-align:center;color:#9ca3af">Tous les loyers du mois sont réglés</td></tr>';
+
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Rapport complet des arriérés</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;font-size:12.5px;color:#1a1a1a;padding:26px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #785a00;padding-bottom:12px;margin-bottom:16px}
+    .org{font-size:19px;font-weight:900;color:#785a00}
+    .muted{color:#6b7280;font-size:11px}
+    .kpis{display:flex;gap:12px;margin:14px 0}
+    .kpi{flex:1;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;text-align:center}
+    .kpi .v{font-size:18px;font-weight:900} .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;margin-top:2px}
+    h2{font-size:13px;margin:18px 0 8px;padding-bottom:5px;border-bottom:2px solid #eee}
+    table{width:100%;border-collapse:collapse;font-size:12px}
+    thead td{background:#f3f4f6;font-weight:700;padding:7px 10px}
+    tbody tr{border-bottom:1px solid #f1f1f1}
+    .foot{margin-top:20px;padding-top:10px;border-top:1px solid #eee;font-size:10px;color:#9ca3af;text-align:center}
+  </style></head><body>
+    <div class="header">
+      <div>${org.logo ? `<img src="${org.logo}" style="max-height:48px"/>` : `<div class="org">${esc(org.companyName || 'Minsouah Immobilier')}</div>`}
+        <div class="muted">Rapport complet des arriérés · ${esc(selectedMonth)} · généré le ${today}</div></div>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="v" style="color:#15803d">${fCFA(recoveredTotal)}</div><div class="l">Recouvrés (${recoveredByTenant.length})</div></div>
+      <div class="kpi"><div class="v" style="color:#b45309">${fCFA(arrearsTotal)}</div><div class="l">Restant dû · mois passés</div></div>
+      <div class="kpi"><div class="v" style="color:#b91c1c">${fCFA(currentUnpaidTotal)}</div><div class="l">À payer · mois en cours (${currentUnpaid.length})</div></div>
+    </div>
+    <h2 style="color:#065f46">✔ Arriérés recouvrés</h2>
+    <table><thead><tr><td>Locataire</td><td>Mois · Propriété</td><td style="text-align:right">Montant</td><td>Réglé le</td></tr></thead><tbody>${recSection}</tbody></table>
+    <h2 style="color:#92400e">⏳ Restant dû — mois passés</h2>
+    <table><thead><tr><td>Locataire</td><td>Propriété</td><td style="text-align:right">Montant dû</td></tr></thead><tbody>${dueSection}</tbody></table>
+    <h2 style="color:#b91c1c">● À payer — mois en cours (${esc(selectedMonth)})</h2>
+    <table><thead><tr><td>Locataire</td><td>Propriété</td><td style="text-align:right">Montant</td></tr></thead><tbody>${curSection}</tbody></table>
+    <p class="foot">${esc(org.companyName || 'Minsouah Immobilier')} · Document généré automatiquement · ${today}</p>
+  </body></html>`;
+}
+
 /* ── Arrears Report HTML ──────────────────────────────────────────────────── */
 function buildArrearsReportHTML(arrearsByMonth, arrearsTotal, orgSettings) {
   const org = orgSettings || {};
@@ -679,6 +744,11 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
       <div class="kpi-v" style="color:#0369a1">${fCFA(depAdvance)}</div>
       <div class="kpi-s">Total des mois d'avance encaissés</div>
     </div>
+    ${synthesis ? `<div class="kpi">
+      <div class="kpi-l">Dépenses du mois</div>
+      <div class="kpi-v" style="color:#b91c1c">− ${fCFA(synthesis.charges)}</div>
+      <div class="kpi-s">Déduites du net à reverser</div>
+    </div>` : ''}
     <div class="kpi" style="background:#785a00;border-color:#785a00;grid-column:span 2">
       <div class="kpi-l" style="color:#f5e9c8">Net à reverser au propriétaire</div>
       <div class="kpi-v" style="color:#fff">${fCFA(synthesis ? synthesis.totalAReverser : (totalNetOwner + depCaution + depAdvance))}</div>
@@ -706,7 +776,7 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
         ${Object.keys(synthesis.anticipesByMonth || {}).sort((a,b)=>{const pa=a.split(' '),pb=b.split(' ');return (parseInt(pa[1]||0)*12+MONTH_NAMES.indexOf(pa[0]))-(parseInt(pb[1]||0)*12+MONTH_NAMES.indexOf(pb[0]));}).map(m => `<tr><td style="padding:5px 10px 5px 26px;color:#6b7280;font-size:11px">· ${m}</td><td style="padding:5px 10px;text-align:right;color:#6b7280;font-size:11px">${fCFA(synthesis.anticipesByMonth[m])}</td></tr>`).join('')}
         <tr><td style="padding:8px 10px">Cautions & avances (nouveaux locataires)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.cautionsAvances)}</td></tr>
         <tr style="background:#f0fdf4;font-weight:800"><td style="padding:9px 10px;color:#15803d">TOTAL ENCAISSÉ EN ${currentMonth.toUpperCase()}</td><td style="padding:9px 10px;text-align:right;color:#15803d">${fCFA(synthesis.totalEncaisse)}</td></tr>
-        <tr><td style="padding:8px 10px;color:#b91c1c">(−) Charges du mois</td><td style="padding:8px 10px;text-align:right;color:#b91c1c">− ${fCFA(synthesis.charges)}</td></tr>
+        <tr><td style="padding:8px 10px;color:#b91c1c">(−) Dépenses du mois (Comptabilité)</td><td style="padding:8px 10px;text-align:right;color:#b91c1c">− ${fCFA(synthesis.charges)}</td></tr>
         <tr style="background:#785a00;color:#fff;font-weight:900"><td style="padding:11px 10px;font-size:13px">NET À REVERSER AU PROPRIÉTAIRE</td><td style="padding:11px 10px;text-align:right;font-size:14px">${fCFA(synthesis.totalAReverser)}</td></tr>
       </tbody>
     </table>
@@ -1676,6 +1746,18 @@ export default function Payments() {
     const [emn, eyr] = (selectedMonth || '').split(' ');
     const eidx = MONTH_NAMES.indexOf(emn);
     const eDate = eidx >= 0 ? new Date(Number(eyr), eidx, 1) : null;
+    const normX = (s) => (s || '').toString().toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    // Loyers du mois DÉJÀ réglés ET déjà reversés au propriétaire (ex. prépaiement
+    // reversé) : ils sont soldés → on les RETIRE du « loyer attendu » pour que les
+    // chiffres bouclent (Attendu = Encaissé restant + Impayés).
+    const settledReversed = new Set(
+      monthPmts.filter(p => p.status === 'Payé' && p.avanceVerseeProprio).map(p => normX(p.tenantName)).filter(Boolean)
+    );
+    const isSettled = (name) => {
+      const n = normX(name);
+      if (!n) return false;
+      return [...settledReversed].some(s => s === n || s.includes(n) || n.includes(s));
+    };
     return (contracts || [])
       .filter(c => c.status === 'Actif' || c.status === 'Expirant')
       .filter(c => {
@@ -1685,6 +1767,7 @@ export default function Payments() {
         const psFirst = psDate && !isNaN(psDate.getTime()) ? new Date(psDate.getFullYear(), psDate.getMonth(), 1) : null;
         return !(psFirst && eDate && eDate < psFirst); // exclure ceux encore en avance
       })
+      .filter(c => !isSettled(c.tenant)) // exclure loyers déjà réglés ET reversés (soldés)
       .reduce((s, c) => s + (Number(c.rent) || 0), 0);
   })();
   // « Encaissés » = loyers réglés du mois, MAIS on retire ceux déjà reversés au
@@ -1795,6 +1878,10 @@ export default function Payments() {
   const currentMonthUnpaid = useMemo(
     () => isSelMonthClosed ? [] : currentMonthUnpaidList({ payments, contracts, tenants, properties }, selMonthDate),
     [payments, contracts, tenants, properties, selMonthDate, isSelMonthClosed]
+  );
+  const currentMonthUnpaidTotal = useMemo(
+    () => currentMonthUnpaid.reduce((s, p) => s + (Number(p.amount) || 0), 0),
+    [currentMonthUnpaid]
   );
 
   /* ── Active tenants in their ADVANCE period this month (paid caution/avance,
@@ -1910,8 +1997,10 @@ export default function Payments() {
       const key = (p.tenantName || '—').toLowerCase().trim();
       if (!groups[key]) groups[key] = { tenantName: p.tenantName || '—', tenantPhone: p.tenantPhone || '', payments: [], total: 0 };
       groups[key].payments.push(p);
-      groups[key].total += p.amount || 0;
+    groups[key].total += p.amount || 0;
     });
+    const mkey = (l) => { const [mn, yr] = (l || '').split(' '); const i = MONTH_NAMES.indexOf(mn); return i >= 0 ? parseInt(yr) * 12 + i : Infinity; };
+    Object.values(groups).forEach(g => g.payments.sort((a, b) => mkey(a.month) - mkey(b.month)));
     return Object.values(groups).sort((a, b) => b.total - a.total);
   }, [arrearsList]);
 
@@ -1944,12 +2033,17 @@ export default function Payments() {
      tombe dans un mois postérieur au mois couvert (loyer en retard finalement
      encaissé). Sert de base au rapport "Arriérés recouvrés". */
   const recoveredArrears = useMemo(() => {
-    const closureDateFor = (m) => {
-      const c = (monthClosures || []).find(x => x.month === m);
-      return c?.closedAt ? new Date(c.closedAt) : null;
-    };
-    const cy = now.getFullYear();
-    const cm = now.getMonth();
+    const normA = (s) => (s || '').toString().toLowerCase().trim();
+    // Clés (locataire|mois) des loyers qui ONT RÉELLEMENT ÉTÉ un arriéré : soit
+    // saisis manuellement via « Ajouter un arriéré » (isArrear), soit générés
+    // impayés par une clôture de mois (autoGenerated). Un loyer n'est « recouvré »
+    // QUE s'il correspond à l'un de ces cas. Ainsi un paiement NORMAL — même réglé
+    // après une clôture faite tôt (ex. Mme TOUTOUKPE, à jour) — n'y figure PLUS.
+    const arrearKeys = new Set(
+      (payments || [])
+        .filter(p => p.isArrear || p.autoGenerated)
+        .map(p => `${normA(p.tenantName)}|${normA(p.month)}`)
+    );
     return (payments || [])
       .filter(p => p.status === 'Payé')
       .map(p => {
@@ -1960,30 +2054,20 @@ export default function Payments() {
         const paid = parsePaidDate(p.paidDate);
         if (!paid || isNaN(paid.getTime())) return null;
 
-        const isClosedMonth = closedMonthSet.has(p.month);
-        const closureDate = isClosedMonth ? closureDateFor(p.month) : null;
-        const isPast = monthStart.getFullYear() < cy || (monthStart.getFullYear() === cy && monthStart.getMonth() < cm);
-
-        // Un « arriéré recouvré » = loyer réglé EN RETARD :
-        //  • arriéré explicite (onglet Arriérés) ou généré à la clôture (autoGenerated) ;
-        //  • OU loyer d'un mois CLÔTURÉ réglé APRÈS la date de clôture (repère
-        //    postCloture ou date de règlement postérieure) — inclut les paiements
-        //    « normaux » encaissés après clôture (ex. S2, MAG 2) ;
-        //  • OU loyer d'un mois PASSÉ non clôturé réglé après la fin du mois.
-        let recovered = false;
-        if (p.isArrear || p.autoGenerated) {
-          recovered = true;
-        } else if (isClosedMonth) {
-          if (p.postCloture) recovered = true;
-          else if (closureDate && paid > closureDate) recovered = true;
-        } else if (isPast) {
-          const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
-          if (paid >= monthEnd) recovered = true;
-        }
-        if (!recovered) return null;
+        const wasArrear = p.isArrear || p.autoGenerated ||
+          arrearKeys.has(`${normA(p.tenantName)}|${normA(p.month)}`);
+        if (!wasArrear) return null; // jamais un arriéré → ignoré
 
         const monthsLate = Math.max(0, (paid.getFullYear() - monthStart.getFullYear()) * 12 + (paid.getMonth() - monthStart.getMonth()));
-        return { ...p, amount, monthsLate, _closureDate: closureDate };
+        // Un arriéré RECOUVRÉ concerne un loyer d'un mois PASSÉ, OU réglé au moins un
+        // mois après le mois couvert. Un loyer du MOIS EN COURS réglé ce mois-ci
+        // (retard 0) n'est PAS un arriéré recouvré — même s'il a été saisi via
+        // « Ajouter un arriéré ». Évite que tous les paiements du mois y remontent.
+        const cyR = now.getFullYear(), cmR = now.getMonth();
+        const isPastMonth = monthStart.getFullYear() < cyR || (monthStart.getFullYear() === cyR && monthStart.getMonth() < cmR);
+        if (monthsLate < 1) return null;
+
+        return { ...p, amount, monthsLate };
       })
       .filter(Boolean)
       // Déduplication : évite qu'un même loyer (locataire + mois + propriété + date)
@@ -2024,8 +2108,8 @@ export default function Payments() {
       groups[key].payments.push(p);
       groups[key].total += (p.amount && p.amount > 0) ? p.amount : 0;
     });
-    Object.values(groups).forEach(g =>
-      g.payments.sort((a, b) => (parsePaidDate(a.paidDate)?.getTime() || 0) - (parsePaidDate(b.paidDate)?.getTime() || 0))
+   Object.values(groups).forEach(g =>
+      g.payments.sort((a, b) => (monthLabelToDate(a.month)?.getTime() || 0) - (monthLabelToDate(b.month)?.getTime() || 0))
     );
     return Object.values(groups).sort((a, b) => b.total - a.total);
   }, [recoveredScoped]);
@@ -2125,6 +2209,12 @@ export default function Payments() {
     advanceTotal:    depositsThisMonth.reduce((s, d) => s + d.advanceAmount, 0),
     grandTotal:      depositsThisMonth.reduce((s, d) => s + d.cautionAmount + d.advanceAmount, 0),
   }), [depositsThisMonth]);
+
+  // Basculer entre « le mois sélectionné » et « toutes les cautions » — pour
+  // retrouver et restituer la caution d'un locataire quel que soit son mois d'entrée.
+  const [depAllMonths, setDepAllMonths] = useState(false);
+  const depositsShown = depAllMonths ? depositsList : depositsThisMonth;
+  const depositsTotalsShown = depAllMonths ? depositsTotals : depositsTotalsMonth;
 
   const toggleCautionRefund = (d) => {
     const tenant = (tenants || []).find(t => String(t.id) === String(d.tenantId));
@@ -2573,6 +2663,18 @@ export default function Payments() {
     if (win) { win.document.write(html); win.document.close(); }
   };
 
+  // Rapport COMPLET : recouvrés + restant dû (mois passés) + à payer (mois en cours).
+  const handlePrintFullArrears = () => {
+    const html = buildFullArrearsReportHTML({
+      recoveredByTenant, recoveredTotal,
+      arrearsByMonth, arrearsTotal,
+      currentUnpaid: currentMonthUnpaid, currentUnpaidTotal: currentMonthUnpaidTotal,
+      selectedMonth, orgSettings,
+    });
+    const win = window.open('', '_blank', 'width=900,height=700');
+    if (win) { win.document.write(html); win.document.close(); }
+  };
+
   // Export Excel des arriérés recouvrés, regroupés par locataire.
   const handleExportArrearsRecoveredExcel = () => {
     const rows = [];
@@ -2725,9 +2827,11 @@ export default function Payments() {
     const anticipesByMonth = {}; // { 'Août 2026': montant, ... }
     (payments || []).forEach(p => {
       if (p.status !== 'Payé') return;
-      // Déjà versé au propriétaire → ne compte PLUS dans le « montant à reverser »
-      // du mois (loyers du mois comme anticipés) : la somme a déjà été payée.
-      if (p.avanceVerseeProprio) return;
+      // Déjà reversé au propriétaire → ne compte PLUS dans le « net à reverser » :
+      //  • marqué individuellement « versé » (avanceVerseeProprio), OU
+      //  • inclus dans un bordereau de reversement validé (versementProprioId).
+      // Sans le second, tout ce qui a été reversé par bordereau gonflait le net.
+      if (p.avanceVerseeProprio || p.versementProprioId) return;
       const amt = Number(p.amount) || 0;
       const cov = monthLabelToDate(p.month);
       const paidInSel = inSel(parsePaidDate(p.paidDate));
@@ -2744,7 +2848,7 @@ export default function Payments() {
     // dédoublonnés, réellement en retard) filtrée sur les règlements du mois —
     // pour que la synthèse colle à l'onglet « Arriérés recouvrés ».
     const arrieres = (recoveredArrears || [])
-      .filter(p => inSel(parsePaidDate(p.paidDate)) && !p.avanceVerseeProprio)
+      .filter(p => inSel(parsePaidDate(p.paidDate)) && !p.avanceVerseeProprio && !p.versementProprioId)
       .reduce((s, p) => s + (Number(p.amount) || 0), 0);
     // Cautions & avances (nouveaux locataires) : on reprend EXACTEMENT l'onglet
     // « Cautions & avances » (depositsList) pour que la synthèse affiche le même
@@ -2768,13 +2872,38 @@ export default function Payments() {
       payments,
       arrearsByTenant,
       advanceTenants: reportAdvance,
-      deposits: depositsList,
+      deposits: depositsThisMonth,
       depositsTotals,
       synthesis: buildMonthSynthesis(selectedMonth),
       orgSettings,
     });
     const win = window.open('', '_blank', 'width=900,height=700');
     if (win) { win.document.write(html); win.document.close(); }
+  };
+
+  // Envoi du rapport financier mensuel par e-mail (même contenu que le rapport
+  // global) via le service d'e-mail de l'appli. Vaut pour l'organisation courante.
+  const handleEmailGlobalReport = async () => {
+    const defaultTo = orgSettings?.email || orgSettings?.companyEmail || '';
+    const to = window.prompt('Envoyer le rapport financier mensuel à quelle adresse e-mail ?', defaultTo);
+    if (!to || !to.trim()) return;
+    const html = buildGlobalReportHTML({
+      currentMonth: selectedMonth,
+      contracts, payments, arrearsByTenant,
+      advanceTenants: reportAdvance,
+      deposits: depositsThisMonth, depositsTotals,
+      synthesis: buildMonthSynthesis(selectedMonth),
+      orgSettings,
+    });
+    const subject = `Rapport financier — ${orgSettings?.companyName || 'Organisation'} — ${selectedMonth}`;
+    try {
+      const { ok, error } = await sendEmail({ to: to.trim(), subject, html });
+      alert(ok
+        ? `Rapport financier de ${selectedMonth} envoyé à ${to.trim()}.`
+        : `Échec de l'envoi : ${error || 'vérifiez la configuration e-mail (Firebase).'}`);
+    } catch (e) {
+      alert(`Échec de l'envoi : ${e?.message || 'erreur inconnue'}`);
+    }
   };
 
   /* ── Month closure helpers ── */
@@ -3433,6 +3562,7 @@ export default function Payments() {
                   Supprimer ({arrearsSelected.size})
                 </Btn>
               )}
+              <Btn icon="summarize" onClick={handlePrintFullArrears}>Rapport complet (PDF)</Btn>
               {arrearsByTenant.length > 0 && (
                 <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintArrears}>Restant dû (PDF)</Btn>
               )}
@@ -3441,6 +3571,25 @@ export default function Payments() {
               <Btn icon="add_circle" onClick={() => { setArrearsAddForm({ tenantId: '', months: [], amountPerMonth: '', status: 'Impayé', propertyName: '' }); setArrearsAddModal(true); }}>
                 Ajouter un arriéré
               </Btn>
+            </div>
+          </div>
+
+          {/* 3 blocs : Recouvrés / Restant dû mois passés / À payer mois en cours */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+              <div className="text-lg font-extrabold text-green-700">{fmt(recoveredTotal)}</div>
+              <div className="text-xs font-semibold text-green-800">Arriérés recouvrés ({recoveredByTenant.length})</div>
+              <div className="text-[11px] text-green-600 mt-0.5">Réglés · {selectedMonth}</div>
+            </div>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div className="text-lg font-extrabold text-amber-700">{fmt(arrearsTotal)}</div>
+              <div className="text-xs font-semibold text-amber-800">Restant dû · mois passés ({arrearsByTenant.length})</div>
+              <div className="text-[11px] text-amber-600 mt-0.5">Loyers en retard non réglés</div>
+            </div>
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+              <div className="text-lg font-extrabold text-red-700">{fmt(currentMonthUnpaidTotal)}</div>
+              <div className="text-xs font-semibold text-red-800">À payer · mois en cours ({currentMonthUnpaid.length})</div>
+              <div className="text-[11px] text-red-600 mt-0.5">{selectedMonth}</div>
             </div>
           </div>
 
@@ -3593,22 +3742,27 @@ export default function Payments() {
         <div className="flex flex-col gap-md">
           <div className="flex items-center justify-between flex-wrap gap-sm">
             <div>
-              <h3 className="font-bold text-on-surface text-base">Cautions & avances — {selectedMonth}</h3>
+              <h3 className="font-bold text-on-surface text-base">Cautions & avances — {depAllMonths ? 'toutes les cautions' : selectedMonth}</h3>
               <p className="text-sm text-on-surface-variant mt-0.5">
-                {depositsThisMonth.length} locataire(s) entré(s) ce mois · Total encaissé : <span className="font-bold text-primary">{fmt(depositsTotalsMonth.grandTotal)}</span>
+                {depositsShown.length} locataire(s){depAllMonths ? '' : ' entré(s) ce mois'} · Total : <span className="font-bold text-primary">{fmt(depositsTotalsShown.grandTotal)}</span>
               </p>
             </div>
-            {depositsThisMonth.length > 0 && (
-              <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintDeposits}>Exporter PDF</Btn>
-            )}
+            <div className="flex gap-sm">
+              <Btn icon={depAllMonths ? 'calendar_month' : 'apps'} variant="secondary" onClick={() => setDepAllMonths(v => !v)}>
+                {depAllMonths ? `Mois (${selectedMonth})` : 'Tous les mois'}
+              </Btn>
+              {depositsShown.length > 0 && (
+                <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintDeposits}>Exporter PDF</Btn>
+              )}
+            </div>
           </div>
 
           <section className="grid grid-cols-2 lg:grid-cols-4 gap-md">
             {[
-              { label: 'Cautions détenues', value: fmt(depositsTotalsMonth.cautionHeld), icon: 'shield', cls: 'bg-primary/10 text-primary' },
-              { label: 'Avances encaissées', value: fmt(depositsTotalsMonth.advanceTotal), icon: 'event_available', cls: 'bg-blue-100 text-blue-700' },
-              { label: 'Cautions restituées', value: fmt(depositsTotalsMonth.cautionRefunded), icon: 'undo', cls: 'bg-green-100 text-green-700' },
-              { label: 'Total encaissé', value: fmt(depositsTotalsMonth.grandTotal), icon: 'savings', cls: 'bg-amber-100 text-amber-700' },
+              { label: 'Cautions détenues', value: fmt(depositsTotalsShown.cautionHeld), icon: 'shield', cls: 'bg-primary/10 text-primary' },
+              { label: 'Avances encaissées', value: fmt(depositsTotalsShown.advanceTotal), icon: 'event_available', cls: 'bg-blue-100 text-blue-700' },
+              { label: 'Cautions restituées', value: fmt(depositsTotalsShown.cautionRefunded), icon: 'undo', cls: 'bg-green-100 text-green-700' },
+              { label: 'Total encaissé', value: fmt(depositsTotalsShown.grandTotal), icon: 'savings', cls: 'bg-amber-100 text-amber-700' },
             ].map(s => (
               <div key={s.label} className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-center gap-md">
                 <div className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 ${s.cls}`}><Icon name={s.icon} size={20} /></div>
@@ -3620,7 +3774,7 @@ export default function Payments() {
             ))}
           </section>
 
-          {depositsThisMonth.length > 0 && renderListSearch()}
+          {depositsShown.length > 0 && renderListSearch()}
 
           <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
             <div className="overflow-x-auto">
@@ -3633,13 +3787,13 @@ export default function Payments() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/20">
-                  {depositsThisMonth.length === 0 && (
+                  {depositsShown.length === 0 && (
                     <tr><td colSpan={8} className="text-center py-12 text-on-surface-variant">
-                      <Icon name="savings" size={36} className="opacity-30 mb-2" /><p>Aucune caution ni avance encaissée en {selectedMonth}</p>
-                      <p className="text-xs mt-1">Les cautions/avances apparaissent le mois d'entrée du locataire.</p>
+                      <Icon name="savings" size={36} className="opacity-30 mb-2" /><p>{depAllMonths ? 'Aucune caution ni avance enregistrée' : `Aucune caution ni avance encaissée en ${selectedMonth}`}</p>
+                      <p className="text-xs mt-1">{depAllMonths ? '' : "Les cautions apparaissent le mois d'entrée du locataire — cliquez « Tous les mois » pour en retrouver une plus ancienne."}</p>
                     </td></tr>
                   )}
-                  {depositsThisMonth.filter(d => matchLS(d.tenantName, d.propertyName)).map(d => (
+                  {depositsShown.filter(d => matchLS(d.tenantName, d.propertyName)).map(d => (
                     <tr key={d.tenantId} className="hover:bg-surface-container-low transition-colors">
                       <td className="px-4 py-3.5">
                         <p className="font-semibold text-sm text-on-surface">{d.tenantName}</p>
@@ -3712,6 +3866,7 @@ export default function Payments() {
             <div className="flex gap-2 flex-wrap">
               <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintReport}>Rapport mensuel</Btn>
               <Btn icon="analytics" variant="primary" onClick={handlePrintGlobalReport}>Rapport global</Btn>
+              <Btn icon="mail" variant="secondary" onClick={handleEmailGlobalReport}>Envoyer par mail</Btn>
               <Btn icon="download" variant="secondary" onClick={handleExportExcel}>Export Excel</Btn>
               <Btn icon="fact_check" variant="secondary" onClick={handleExportReconciliation}>Réconciliation (Excel)</Btn>
               {isClosed(selectedMonth) ? (
