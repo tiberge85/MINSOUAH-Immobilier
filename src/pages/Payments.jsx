@@ -554,13 +554,28 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
   // Payments for the current month
   const [curMonthName, curYear] = currentMonth.split(' ');
   const curMonthPmts = payments.filter(p => p.month === currentMonth);
-  const paidNames = new Set(curMonthPmts.filter(p => p.status === 'Payé').map(p => (p.tenantName || '').toLowerCase().trim()));
+  // Locataires dont le loyer de CE mois a été payé en AVANCE puis déjà VERSÉ au
+  // propriétaire (ex. A1 : septembre encaissé et reversé dès juillet). Ils sont
+  // entièrement hors de ce mois : ni attendus, ni comptés dans l'encaissé/les
+  // compteurs — sinon l'« Attendu ce mois » et le taux de recouvrement restent
+  // gonflés (3 300 000 au lieu de 2 970 000).
+  const settledReversedNames = new Set(
+    curMonthPmts
+      .filter(p => p.status === 'Payé' && p.avanceVerseeProprio)
+      .map(p => (p.tenantName || '').toLowerCase().trim())
+  );
+  const isSettledRev = (name) => settledReversedNames.has((name || '').toLowerCase().trim());
+  const paidNames = new Set(curMonthPmts.filter(p => p.status === 'Payé' && !isSettledRev(p.tenantName)).map(p => (p.tenantName || '').toLowerCase().trim()));
   const advanceNames = new Set(advanceTenants.map(a => (a.tenantName || '').toLowerCase().trim()));
 
-  // Expected this month = active contracts not in advance period
-  const expectedContracts = activeContracts.filter(c => !advanceNames.has((c.tenant || '').toLowerCase().trim()));
+  // Expected this month = active contracts not in advance period AND not already
+  // paid-in-advance & reversed to owner.
+  const expectedContracts = activeContracts.filter(c => {
+    const k = (c.tenant || '').toLowerCase().trim();
+    return !advanceNames.has(k) && !settledReversedNames.has(k);
+  });
   const totalExpected = expectedContracts.reduce((s, c) => s + (c.rent || 0), 0);
-  const paidMonth = curMonthPmts.filter(p => p.status === 'Payé');
+  const paidMonth = curMonthPmts.filter(p => p.status === 'Payé' && !isSettledRev(p.tenantName));
   // Encaissé NET des montants déjà reversés au propriétaire (avanceVerseeProprio),
   // pour rester cohérent avec le KPI « Encaissés » de la page et la synthèse.
   // Le brut (avec les versés) sert uniquement au taux de recouvrement.
@@ -752,7 +767,7 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
     <div class="kpi" style="background:#785a00;border-color:#785a00;grid-column:span 2">
       <div class="kpi-l" style="color:#f5e9c8">Net à reverser au propriétaire</div>
       <div class="kpi-v" style="color:#fff">${fCFA(synthesis ? synthesis.totalAReverser : (totalNetOwner + depCaution + depAdvance))}</div>
-      <div class="kpi-s" style="color:#f5e9c8">Total encaissé du mois − charges</div>
+      <div class="kpi-s" style="color:#f5e9c8">Encaissé du mois − commission − charges</div>
     </div>
   </div>
 
@@ -776,11 +791,12 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
         ${Object.keys(synthesis.anticipesByMonth || {}).sort((a,b)=>{const pa=a.split(' '),pb=b.split(' ');return (parseInt(pa[1]||0)*12+MONTH_NAMES.indexOf(pa[0]))-(parseInt(pb[1]||0)*12+MONTH_NAMES.indexOf(pb[0]));}).map(m => `<tr><td style="padding:5px 10px 5px 26px;color:#6b7280;font-size:11px">· ${m}</td><td style="padding:5px 10px;text-align:right;color:#6b7280;font-size:11px">${fCFA(synthesis.anticipesByMonth[m])}</td></tr>`).join('')}
         <tr><td style="padding:8px 10px">Cautions & avances (nouveaux locataires)</td><td style="padding:8px 10px;text-align:right">${fCFA(synthesis.cautionsAvances)}</td></tr>
         <tr style="background:#f0fdf4;font-weight:800"><td style="padding:9px 10px;color:#15803d">TOTAL ENCAISSÉ EN ${currentMonth.toUpperCase()}</td><td style="padding:9px 10px;text-align:right;color:#15803d">${fCFA(synthesis.totalEncaisse)}</td></tr>
+        <tr><td style="padding:8px 10px;color:#b45309">(−) Commission Minsouah</td><td style="padding:8px 10px;text-align:right;color:#b45309">− ${fCFA(synthesis.commission || 0)}</td></tr>
         <tr><td style="padding:8px 10px;color:#b91c1c">(−) Dépenses du mois (Comptabilité)</td><td style="padding:8px 10px;text-align:right;color:#b91c1c">− ${fCFA(synthesis.charges)}</td></tr>
         <tr style="background:#785a00;color:#fff;font-weight:900"><td style="padding:11px 10px;font-size:13px">NET À REVERSER AU PROPRIÉTAIRE</td><td style="padding:11px 10px;text-align:right;font-size:14px">${fCFA(synthesis.totalAReverser)}</td></tr>
       </tbody>
     </table>
-    <p style="font-size:9px;color:#b0a090;margin-top:6px">Encaissements réels du mois (par date de paiement) : loyers du mois + arriérés recouvrés + loyers anticipés + cautions & avances des nouveaux locataires, diminués des charges du mois.</p>
+    <p style="font-size:9px;color:#b0a090;margin-top:6px">Encaissements réels du mois (par date de paiement) : loyers du mois + arriérés recouvrés + loyers anticipés + cautions & avances des nouveaux locataires, diminués de la commission Minsouah et des charges du mois.</p>
   </section>` : ''}
 
   <!-- Current month detail -->
@@ -2822,7 +2838,7 @@ export default function Payments() {
       if (amt >= 100000) return 'Studio';
       return 'Autre';
     };
-    let loyersMois = 0, anticipes = 0;
+    let loyersMois = 0, anticipes = 0, commission = 0;
     const byType = { 'Studio': 0, '2 Pièces': 0, '3 Pièces': 0, '4 Pièces': 0, 'Magasin': 0, 'Autre': 0 };
     const anticipesByMonth = {}; // { 'Août 2026': montant, ... }
     (payments || []).forEach(p => {
@@ -2833,23 +2849,25 @@ export default function Payments() {
       // Sans le second, tout ce qui a été reversé par bordereau gonflait le net.
       if (p.avanceVerseeProprio || p.versementProprioId) return;
       const amt = Number(p.amount) || 0;
+      const comm = Number(p.commissionAmount) || 0;
       const cov = monthLabelToDate(p.month);
       const paidInSel = inSel(parsePaidDate(p.paidDate));
       if (cov && cov.getTime() === target.getTime()) {
         // Loyer du MOIS : compté dès qu'il est payé (par mois de loyer), comme
         // l'« Encaissé » du rapport — indépendant de la date de règlement.
-        loyersMois += amt; byType[typeOfPayment(p)] += amt;
+        loyersMois += amt; byType[typeOfPayment(p)] += amt; commission += comm;
       } else if (cov && cov.getTime() > target.getTime()) {
         // Loyer anticipé : compté seulement s'il a été ENCAISSÉ pendant ce mois.
-        if (paidInSel) { anticipes += amt; anticipesByMonth[p.month] = (anticipesByMonth[p.month] || 0) + amt; }
+        if (paidInSel) { anticipes += amt; anticipesByMonth[p.month] = (anticipesByMonth[p.month] || 0) + amt; commission += comm; }
       }
     });
     // Arriérés RECOUVRÉS ce mois : on réutilise la liste fiable (vrais arriérés,
     // dédoublonnés, réellement en retard) filtrée sur les règlements du mois —
     // pour que la synthèse colle à l'onglet « Arriérés recouvrés ».
-    const arrieres = (recoveredArrears || [])
-      .filter(p => inSel(parsePaidDate(p.paidDate)) && !p.avanceVerseeProprio && !p.versementProprioId)
-      .reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const arrieresPmts = (recoveredArrears || [])
+      .filter(p => inSel(parsePaidDate(p.paidDate)) && !p.avanceVerseeProprio && !p.versementProprioId);
+    const arrieres = arrieresPmts.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    commission += arrieresPmts.reduce((s, p) => s + (Number(p.commissionAmount) || 0), 0);
     // Cautions & avances (nouveaux locataires) DU MOIS uniquement : on ne compte
     // que les cautions/avances des locataires ENTRÉS pendant le mois sélectionné,
     // pour rester cohérent avec les KPI « Cautions reçues » / « Avances reçues » du
@@ -2864,7 +2882,8 @@ export default function Payments() {
     const charges = (transactions || [])
       .filter(t => { const d = parseTxDate(t.date); return d && inSel(d) && !t.positive; })
       .reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
-    return { loyersMois, byType, anticipesByMonth, arrieres, anticipes, cautionsAvances, totalEncaisse, charges, totalAReverser: totalEncaisse - charges };
+    // Net à reverser au propriétaire = encaissé du mois − commission Minsouah − charges.
+    return { loyersMois, byType, anticipesByMonth, arrieres, anticipes, cautionsAvances, commission, totalEncaisse, charges, totalAReverser: totalEncaisse - commission - charges };
   };
 
   const handlePrintGlobalReport = () => {
