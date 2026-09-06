@@ -712,12 +712,15 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
   const FR_SHORT = { 'janv': 0, 'févr': 1, 'fevr': 1, 'mars': 2, 'avr': 3, 'mai': 4, 'juin': 5, 'juil': 6, 'août': 7, 'aout': 7, 'sept': 8, 'oct': 9, 'nov': 10, 'déc': 11, 'dec': 11 };
   const dateToMonthLabel = (dateStr) => {
     if (!dateStr) return '';
-    const d = new Date(dateStr);
-    if (!isNaN(d.getTime())) return `${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`;
     const s = String(dateStr);
-    // jj/mm/aaaa
-    let m = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    // jj/mm/aaaa (ou jj-mm-aaaa) : format français PRIORITAIRE. Sinon
+    // new Date('06/09/2026') est lu à l'américaine (6 sept. → 9 juin) et la
+    // dépense tombe dans le mauvais mois → « Charges du mois » = 0 dans le
+    // bordereau propriétaire alors que le rapport global les compte bien.
+    let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
     if (m) return `${MONTHS_FR[Number(m[2]) - 1]} ${m[3]}`;
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return `${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`;
     // « 20 juil. 2026 » (format français court)
     m = s.match(/(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\.?\s+(\d{4})/);
     if (m) { const idx = FR_SHORT[m[2].toLowerCase().replace('.', '')]; if (idx != null) return `${MONTHS_FR[idx]} ${m[3]}`; }
