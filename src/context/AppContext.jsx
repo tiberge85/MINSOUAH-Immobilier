@@ -329,118 +329,154 @@ export function AppProvider({ children }) {
   const unsubFirestoreRef = useRef([]);
 
   useEffect(() => {
+    let cancelled = false;
+    const MAX_HEAL = 4;
+    let healTries = 0;
+
+    // Ouvre (ou RÉ-ouvre) tous les abonnements Firestore pour l'utilisateur Firebase
+    // courant. Extrait en fonction pour pouvoir RÉESSAYER automatiquement quand une
+    // lecture « org » est refusée au démarrage. Cause : course entre l'ouverture des
+    // abonnements et la reconnaissance par les règles Firestore du document
+    // usersByUid → permission-denied → l'appli ne chargeait pas les données et
+    // renvoyait à l'écran de connexion (« ça charge puis revient au mot de passe »).
+    // On réaffirme l'autorisation (usersByUid + jeton frais) et on se ré-abonne au
+    // lieu d'abandonner. Ne se déclenche que si l'utilisateur est CONNECTÉ (session
+    // locale présente) et est borné à MAX_HEAL essais → aucune boucle possible.
+    const openFirestore = async (user) => {
+      const unsubs = [];
+      let healed = false;
+
+      // Derive orgId from session for non-admin filtering
+      let sessionOrgId = null;
+      let sessionUser = null;
+      try {
+        const saved = localStorage.getItem(SESSION_KEY);
+        if (saved) {
+          sessionUser = JSON.parse(saved);
+          // SUPER_ADMIN sees all orgs; everyone else is scoped to their orgId
+          if (sessionUser?.role !== 'SUPER_ADMIN') sessionOrgId = sessionUser?.orgId || null;
+        }
+      } catch { /* ignore */ }
+
+      // Refresh usersByUid so Firestore rules recognize this session's CURRENT org,
+      // WAIT for the write to land on the server, and force a FRESH ID token BEFORE
+      // opening the org-filtered subscriptions (rules read usersByUid + token
+      // server-side; without this, org reads race → PERMISSION_DENIED).
+      if (sessionUser) {
+        try {
+          const ubRef = wsDoc('usersByUid', user.uid);
+          await setDoc(ubRef, {
+            userId: String(sessionUser.id), orgId: sessionUser.orgId || 'default', role: sessionUser.role,
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+          await getDocFromServer(ubRef);
+          try { await user.getIdToken(true); } catch { /* ignore */ }
+        } catch (e) { console.warn('[usersByUid sync]', e?.code || e?.message); }
+      }
+      if (cancelled) { unsubs.forEach((u) => u()); return; }
+
+      // Réautorisation + ré-abonnement quand une lecture ORG est refusée au démarrage.
+      const scheduleHeal = () => {
+        if (healed || cancelled) return;
+        healed = true;
+        healTries += 1;
+        const delay = 500 * healTries;
+        console.warn(`[AppContext] permission-denied au démarrage → réautorisation + ré-abonnement (essai ${healTries}/${MAX_HEAL}) dans ${delay}ms`);
+        unsubs.forEach((u) => u());
+        setTimeout(() => { if (!cancelled) openFirestore(user); }, delay);
+      };
+
+      const sub = (colName, orgFiltered = false) => {
+        const q = (orgFiltered && sessionOrgId)
+          ? query(wsCol(colName), where('orgId', '==', sessionOrgId))
+          : wsCol(colName);
+        unsubs.push(
+          onSnapshot(
+            q,
+            (snap) => {
+              const docs = snap.docs.map((d) => d.data());
+              setState((s) => ({ ...s, [colName]: docs }));
+              if (!loadedRef.current.has(colName)) {
+                loadedRef.current.add(colName);
+                checkBootstrap();
+              }
+            },
+            (err) => {
+              console.error(`[onSnapshot:${colName}]`, err.code, err.message);
+              // Course au démarrage : collection org refusée alors qu'on est connecté
+              // → on réessaie (réautorisation) au lieu de marquer « chargé » avec des
+              // données vides (ce qui bloquait l'appli et renvoyait au login).
+              if (err.code === 'permission-denied' && orgFiltered && sessionUser && healTries < MAX_HEAL) {
+                scheduleHeal();
+                return;
+              }
+              if (!loadedRef.current.has(colName)) {
+                loadedRef.current.add(colName);
+                checkBootstrap();
+              }
+            }
+          )
+        );
+      };
+
+      // organizations + licenses: always unfiltered (super admin sees all)
+      sub('organizations');
+      sub('licenses');
+      sub('users');
+      // entity collections: filtered by orgId for non-admin users
+      ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
+        'tickets', 'inspections', 'conversations', 'monthClosures',
+        'insurances', 'budgets', 'referrers', 'prestataires', 'bordereaux', 'commissionRates',
+        'tenantDocuments'].forEach(c => sub(c, true));
+
+      sub('tenantPortals'); // publicly readable portal tokens
+
+      // Listings + client profiles (marketplace — no org filter)
+      sub('listings');
+      sub('listingClients');
+      sub('listingUnlocks');
+
+      // Activity log
+      unsubs.push(
+        onSnapshot(wsCol('activityLog'),
+          (snap) => setState((s) => ({
+            ...s,
+            activityLog: snap.docs
+              .map((d) => d.data())
+              .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+              .slice(0, 500),
+          })),
+          () => {}
+        )
+      );
+
+      // Settings docs — org settings are per-org (settings/{orgId})
+      const orgSettingsDocRef = sessionOrgId
+        ? wsDoc('settings', sessionOrgId)
+        : wsDoc('settings', 'org'); // SUPER_ADMIN fallback
+      unsubs.push(
+        onSnapshot(orgSettingsDocRef,
+          (snap) => { if (snap.exists()) setState((s) => ({ ...s, orgSettings: { ...DEFAULT_ORG, ...snap.data() } })); },
+          () => {}
+        ),
+        onSnapshot(wsDoc('settings', 'system'),
+          (snap) => { if (snap.exists()) setState((s) => ({ ...s, systemSettings: { ...DEFAULT_SYSTEM, ...snap.data() } })); },
+          () => {}
+        ),
+        onSnapshot(wsDoc('publicSettings', 'marketplace'),
+          (snap) => { if (snap.exists()) setState((s) => ({ ...s, publicMarketplace: snap.data() })); },
+          () => {}
+        )
+      );
+
+      // Store for cleanup (remplace les abonnements précédents)
+      unsubFirestoreRef.current.forEach((u) => u());
+      unsubFirestoreRef.current = unsubs;
+    };
+
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Auth is ready — open all Firestore listeners
-        const unsubs = [];
-
-        // Derive orgId from session for non-admin filtering
-        let sessionOrgId = null;
-        let sessionUser = null;
-        try {
-          const saved = localStorage.getItem(SESSION_KEY);
-          if (saved) {
-            sessionUser = JSON.parse(saved);
-            // SUPER_ADMIN sees all orgs; everyone else is scoped to their orgId
-            if (sessionUser?.role !== 'SUPER_ADMIN') sessionOrgId = sessionUser?.orgId || null;
-          }
-        } catch { /* ignore */ }
-
-        // Refresh usersByUid so Firestore rules recognize this session's CURRENT
-        // org, and WAIT for the write to land on the server BEFORE opening the
-        // org-filtered subscriptions. Without this, switching organization
-        // returned no data until a manual refresh (rules evaluated the reads
-        // against the previous org → PERMISSION_DENIED).
-        if (sessionUser) {
-          try {
-            const ubRef = wsDoc('usersByUid', user.uid);
-            await setDoc(ubRef, {
-              userId: String(sessionUser.id), orgId: sessionUser.orgId || 'default', role: sessionUser.role,
-              updatedAt: new Date().toISOString(),
-            }, { merge: true });
-            await getDocFromServer(ubRef);
-          } catch (e) { console.warn('[usersByUid sync]', e?.code || e?.message); }
-        }
-
-        const sub = (colName, orgFiltered = false) => {
-          const q = (orgFiltered && sessionOrgId)
-            ? query(wsCol(colName), where('orgId', '==', sessionOrgId))
-            : wsCol(colName);
-          unsubs.push(
-            onSnapshot(
-              q,
-              (snap) => {
-                const docs = snap.docs.map((d) => d.data());
-                setState((s) => ({ ...s, [colName]: docs }));
-                if (!loadedRef.current.has(colName)) {
-                  loadedRef.current.add(colName);
-                  checkBootstrap();
-                }
-              },
-              (err) => {
-                console.error(`[onSnapshot:${colName}]`, err.code, err.message);
-                if (!loadedRef.current.has(colName)) {
-                  loadedRef.current.add(colName);
-                  checkBootstrap();
-                }
-              }
-            )
-          );
-        };
-
-        // organizations + licenses: always unfiltered (super admin sees all)
-        sub('organizations');
-        sub('licenses');
-        sub('users');
-        // entity collections: filtered by orgId for non-admin users
-        ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
-          'tickets', 'inspections', 'conversations', 'monthClosures',
-          'insurances', 'budgets', 'referrers', 'prestataires', 'bordereaux', 'commissionRates',
-          'tenantDocuments'].forEach(c => sub(c, true));
-
-        sub('tenantPortals'); // publicly readable portal tokens
-
-        // Listings + client profiles (marketplace — no org filter)
-        sub('listings');
-        sub('listingClients');
-        sub('listingUnlocks');
-
-        // Activity log
-        unsubs.push(
-          onSnapshot(wsCol('activityLog'),
-            (snap) => setState((s) => ({
-              ...s,
-              activityLog: snap.docs
-                .map((d) => d.data())
-                .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
-                .slice(0, 500),
-            })),
-            () => {}
-          )
-        );
-
-        // Settings docs — org settings are per-org (settings/{orgId})
-        const orgSettingsDocRef = sessionOrgId
-          ? wsDoc('settings', sessionOrgId)
-          : wsDoc('settings', 'org'); // SUPER_ADMIN fallback
-        unsubs.push(
-          onSnapshot(orgSettingsDocRef,
-            (snap) => { if (snap.exists()) setState((s) => ({ ...s, orgSettings: { ...DEFAULT_ORG, ...snap.data() } })); },
-            () => {}
-          ),
-          onSnapshot(wsDoc('settings', 'system'),
-            (snap) => { if (snap.exists()) setState((s) => ({ ...s, systemSettings: { ...DEFAULT_SYSTEM, ...snap.data() } })); },
-            () => {}
-          ),
-          onSnapshot(wsDoc('publicSettings', 'marketplace'),
-            (snap) => { if (snap.exists()) setState((s) => ({ ...s, publicMarketplace: snap.data() })); },
-            () => {}
-          )
-        );
-
-        // Store for cleanup
-        unsubFirestoreRef.current.forEach((u) => u());
-        unsubFirestoreRef.current = unsubs;
+        await openFirestore(user);
       } else {
         // Close stale subscriptions (e.g., from a brief re-auth during verification polling)
         unsubFirestoreRef.current.forEach((u) => u());
@@ -463,6 +499,7 @@ export function AppProvider({ children }) {
     });
 
     return () => {
+      cancelled = true;
       unsubAuth();
       unsubFirestoreRef.current.forEach((u) => u());
     };
