@@ -358,6 +358,36 @@ export function AppProvider({ children }) {
         }
       } catch { /* ignore */ }
 
+      // RÉCUPÉRATION DE SESSION : Firebase est authentifié (non anonyme) mais la
+      // session locale a disparu (localStorage vidé, autre appareil, etc.). On
+      // RECONSTRUIT la session depuis la fiche utilisateur (collection `users`,
+      // lisible) au lieu de lancer les requêtes org SANS filtre orgId — que les
+      // règles Firestore refusent (permission-denied sur TOUTES les données) et qui
+      // renvoyaient à l'écran de connexion. C'est la cause de « ça charge puis
+      // revient au mot de passe » et des données qui ne se chargent pas.
+      if (!sessionUser && user && !user.isAnonymous && user.email) {
+        try {
+          const snap = await getDocs(wsCol('users'));
+          const emailLow = user.email.toLowerCase();
+          const me = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .find(u => (u.email || '').toLowerCase() === emailLow);
+          if (me && !me.suspended) {
+            sessionUser = {
+              id: me.id, role: me.role, name: me.name, initials: me.initials,
+              email: me.email, color: me.color, avatar: me.avatar || null,
+              personId: me.personId || null, firstLogin: me.firstLogin || false,
+              orgId: me.orgId || 'default',
+              orgIds: me.orgIds || [me.orgId || 'default'],
+              permissions: me.permissions || null,
+            };
+            if (me.role !== 'SUPER_ADMIN') sessionOrgId = me.orgId || null;
+            try { localStorage.setItem(SESSION_KEY, JSON.stringify(sessionUser)); } catch { /* quota */ }
+            setState((s) => ({ ...s, currentUser: sessionUser }));
+            console.warn('[AppContext] session locale absente → reconstruite depuis Firebase Auth (' + emailLow + ')');
+          }
+        } catch (e) { console.warn('[session recovery]', e?.code || e?.message); }
+      }
+
       // Refresh usersByUid so Firestore rules recognize this session's CURRENT org,
       // WAIT for the write to land on the server, and force a FRESH ID token BEFORE
       // opening the org-filtered subscriptions (rules read usersByUid + token
@@ -386,7 +416,16 @@ export function AppProvider({ children }) {
         setTimeout(() => { if (!cancelled) openFirestore(user); }, delay);
       };
 
+      const isSuper = sessionUser?.role === 'SUPER_ADMIN';
       const sub = (colName, orgFiltered = false) => {
+        // Un non-super-admin sans orgId connu ne DOIT pas interroger une collection
+        // org sans filtre : les règles Firestore refusent (permission-denied sur
+        // toutes les données). On marque « chargé » pour débloquer le démarrage au
+        // lieu d'ouvrir un abonnement voué à l'échec.
+        if (orgFiltered && !sessionOrgId && !isSuper) {
+          if (!loadedRef.current.has(colName)) { loadedRef.current.add(colName); checkBootstrap(); }
+          return;
+        }
         const q = (orgFiltered && sessionOrgId)
           ? query(wsCol(colName), where('orgId', '==', sessionOrgId))
           : wsCol(colName);
