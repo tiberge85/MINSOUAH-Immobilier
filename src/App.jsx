@@ -243,8 +243,12 @@ function ProtectedRoute({ children, allowedRoles, module }) {
     if (!orgsLoaded || !licsLoaded) {
       return <BootstrapScreen />;
     }
-    const org     = (state.organizations || []).find(o => o.id === user.orgId);
-    const license = (state.licenses     || []).find(l => l.orgId === user.orgId);
+    const org      = (state.organizations || []).find(o => o.id === user.orgId);
+    // Une organisation peut avoir PLUSIEURS licences (anciennes suspendues + une
+    // active). On prend une licence VALIDE si elle existe — sinon .find() renvoyait
+    // parfois une vieille licence « suspended » et affichait un faux « Accès suspendu ».
+    const orgLicenses = (state.licenses || []).filter(l => l.orgId === user.orgId);
+    const license = orgLicenses.find(isLicenseValid) || orgLicenses[0];
     // Block if: org deleted, no license at all, or license invalid/expired/suspended
     if (!org || !license || !isLicenseValid(license)) {
       return <SuspendedScreen license={license} onLogout={() => dispatch({ type: 'LOGOUT' })} />;

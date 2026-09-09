@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import { verifyPwd } from '../lib/auth';
+import { isLicenseValid } from '../lib/licenses';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, setDoc, getDocFromServer, collection, getDocs } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
@@ -247,7 +248,13 @@ export default function Login() {
 
       if (user.role !== 'SUPER_ADMIN') {
         const userOrg = (state.organizations || []).find(o => o.id === user.orgId);
-        if (userOrg && userOrg.active === false) {
+        // Ne bloquer que si l'organisation est désactivée ET n'a AUCUNE licence valide.
+        // Une organisation est auto-désactivée quand une licence expire, mais n'était
+        // jamais réactivée quand une nouvelle licence valide était ajoutée — ce qui
+        // bloquait à tort toute l'équipe (ex. une agence dont l'essai a été renouvelé).
+        const hasValidLicense = (state.licenses || [])
+          .some(l => l.orgId === user.orgId && isLicenseValid(l));
+        if (userOrg && userOrg.active === false && !hasValidLicense) {
           setError("Votre organisation est suspendue. Contactez le support Minsouah.");
           return;
         }
