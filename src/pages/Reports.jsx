@@ -3,15 +3,29 @@ import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import Modal from '../components/ui/Modal';
 import { can, FULL_ACCESS_ROLES } from '../lib/permissions';
-import { uploadFile } from '../lib/storage';
+import { compressImage } from '../lib/storage';
 
 const inputCls = 'w-full border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest focus:outline-none focus:border-primary';
+
+// Limite totale des pièces jointes par rapport (stockées dans le document — la
+// limite Firestore est 1 Mo ; on garde de la marge pour le titre + le texte).
+const MAX_TOTAL_BYTES = 850 * 1024;
 
 function fmtDate(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   return isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
+
+const fileToDataUrl = (file) => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(r.result);
+  r.onerror = reject;
+  r.readAsDataURL(file);
+});
+
+// Estimation de la taille d'une chaîne base64 (data URL) en octets.
+const dataUrlBytes = (u) => Math.ceil(((u || '').split(',')[1] || '').length * 0.75);
 
 export default function Reports() {
   const { state, dispatch } = useApp();
@@ -20,13 +34,11 @@ export default function Reports() {
   const canCreate = can(user, 'reports', 'create');
   const canDeletePerm = can(user, 'reports', 'delete');
 
-  // Autres utilisateurs de la même organisation (destinataires possibles)
   const orgUsers = useMemo(
     () => (state.users || []).filter(u => u.orgId === user?.orgId && String(u.id) !== String(user?.id)),
     [state.users, user]
   );
 
-  // Rapports visibles : l'auteur, un destinataire, ou un admin
   const visibleReports = useMemo(() => {
     return (state.reports || [])
       .filter(r => r.orgId === user?.orgId)
@@ -40,11 +52,11 @@ export default function Reports() {
 
   const [showForm, setShowForm] = useState(false);
   const [viewing, setViewing] = useState(null);
-  const [form, setForm] = useState({ title: '', body: '', readerIds: [], files: [] });
-  const [uploading, setUploading] = useState(false);
+  const [form, setForm] = useState({ title: '', body: '', readerIds: [], attachments: [] });
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
-  const resetForm = () => setForm({ title: '', body: '', readerIds: [], files: [] });
+  const resetForm = () => setForm({ title: '', body: '', readerIds: [], attachments: [] });
   const nameOf = (id) => (state.users || []).find(u => String(u.id) === String(id))?.name || '—';
 
   const toggleReader = (id) => setForm(f => ({
@@ -52,35 +64,49 @@ export default function Reports() {
     readerIds: f.readerIds.includes(id) ? f.readerIds.filter(x => x !== id) : [...f.readerIds, id],
   }));
 
-  const onFiles = (e) => {
+  const onFiles = async (e) => {
+    setErr('');
     const list = Array.from(e.target.files || []);
-    setForm(f => ({ ...f, files: [...f.files, ...list] }));
     e.target.value = '';
+    setBusy(true);
+    try {
+      const next = [...form.attachments];
+      let total = next.reduce((s, a) => s + dataUrlBytes(a.dataUrl), 0);
+      for (const file of list) {
+        let f = file;
+        if ((file.type || '').startsWith('image/')) {
+          try { f = await compressImage(file, 1400, 0.7); } catch { /* garde l'original */ }
+        }
+        const dataUrl = await fileToDataUrl(f);
+        const bytes = dataUrlBytes(dataUrl);
+        if (total + bytes > MAX_TOTAL_BYTES) {
+          setErr(`« ${file.name} » dépasse la limite (total ~850 Ko/rapport). Réduisez la taille ou joignez moins de fichiers.`);
+          continue;
+        }
+        total += bytes;
+        next.push({ name: file.name, type: f.type || file.type || '', dataUrl });
+      }
+      setForm(prev => ({ ...prev, attachments: next }));
+    } catch (e) {
+      console.error('[Reports] lecture fichier', e);
+      setErr("Impossible de lire un fichier. Réessayez.");
+    } finally {
+      setBusy(false);
+    }
   };
-  const removeFile = (i) => setForm(f => ({ ...f, files: f.files.filter((_, idx) => idx !== i) }));
+  const removeAttachment = (i) => setForm(f => ({ ...f, attachments: f.attachments.filter((_, idx) => idx !== i) }));
 
-  const submit = async () => {
+  const submit = () => {
     setErr('');
     if (!form.title.trim()) { setErr('Le titre est obligatoire.'); return; }
-    setUploading(true);
-    try {
-      const reportId = `rep_${Date.now()}`;
-      const attachments = [];
-      for (const file of form.files) {
-        if (file.size > 25 * 1024 * 1024) { setErr(`« ${file.name} » dépasse 25 Mo.`); setUploading(false); return; }
-        const path = `orgs/${user.orgId}/reports/${reportId}/${Date.now()}_${file.name}`;
-        const url = await uploadFile(path, file);
-        attachments.push({ name: file.name, url, type: file.type || '', size: file.size });
-      }
-      dispatch({ type: 'ADD_REPORT', payload: { id: reportId, title: form.title.trim(), body: form.body, readerIds: form.readerIds, attachments } });
-      resetForm();
-      setShowForm(false);
-    } catch (e) {
-      console.error('[Reports] upload', e);
-      setErr("Échec de l'envoi des pièces jointes. Réessayez ou publiez sans pièce jointe.");
-    } finally {
-      setUploading(false);
-    }
+    dispatch({ type: 'ADD_REPORT', payload: {
+      title: form.title.trim(),
+      body: form.body,
+      readerIds: form.readerIds,
+      attachments: form.attachments.map(a => ({ name: a.name, type: a.type, dataUrl: a.dataUrl })),
+    }});
+    resetForm();
+    setShowForm(false);
   };
 
   const del = (r) => {
@@ -88,6 +114,8 @@ export default function Reports() {
     dispatch({ type: 'DELETE_REPORT', payload: r.id });
     if (viewing?.id === r.id) setViewing(null);
   };
+
+  const usedBytes = form.attachments.reduce((s, a) => s + dataUrlBytes(a.dataUrl), 0);
 
   return (
     <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl flex flex-col gap-gutter max-w-5xl mx-auto">
@@ -133,14 +161,14 @@ export default function Reports() {
       {/* Créer un rapport */}
       <Modal
         open={showForm}
-        onClose={() => { if (!uploading) setShowForm(false); }}
+        onClose={() => { if (!busy) setShowForm(false); }}
         title="Nouveau rapport"
         size="lg"
         footer={
           <div className="flex justify-end gap-2">
-            <button onClick={() => setShowForm(false)} disabled={uploading} className="px-4 py-2 rounded-lg border border-outline-variant text-on-surface-variant disabled:opacity-60">Annuler</button>
-            <button onClick={submit} disabled={uploading} className="px-4 py-2 rounded-lg bg-primary text-on-primary font-semibold inline-flex items-center gap-2 disabled:opacity-60">
-              {uploading ? <><Icon name="progress_activity" size={18} className="animate-spin" /> Envoi…</> : <><Icon name="send" size={18} /> Publier</>}
+            <button onClick={() => setShowForm(false)} disabled={busy} className="px-4 py-2 rounded-lg border border-outline-variant text-on-surface-variant disabled:opacity-60">Annuler</button>
+            <button onClick={submit} disabled={busy} className="px-4 py-2 rounded-lg bg-primary text-on-primary font-semibold inline-flex items-center gap-2 disabled:opacity-60">
+              <Icon name="send" size={18} /> Publier
             </button>
           </div>
         }
@@ -156,16 +184,18 @@ export default function Reports() {
             <textarea value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} rows={7} className={inputCls} placeholder="Rédigez votre rapport…" />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-on-surface-variant uppercase">Pièces jointes</label>
-            <input type="file" multiple onChange={onFiles} className="text-sm text-on-surface-variant" />
-            {form.files.length > 0 && (
+            <label className="text-xs font-semibold text-on-surface-variant uppercase">Pièces jointes <span className="normal-case font-normal text-on-surface-variant/70">(images compressées · total ~850 Ko)</span></label>
+            <input type="file" multiple onChange={onFiles} disabled={busy} className="text-sm text-on-surface-variant" />
+            {busy && <span className="text-xs text-on-surface-variant inline-flex items-center gap-1"><Icon name="progress_activity" size={14} className="animate-spin" /> Traitement…</span>}
+            {form.attachments.length > 0 && (
               <div className="flex flex-col gap-1 mt-1">
-                {form.files.map((f, i) => (
+                {form.attachments.map((a, i) => (
                   <div key={i} className="flex items-center justify-between text-sm bg-surface-container rounded px-2 py-1">
-                    <span className="truncate inline-flex items-center gap-1"><Icon name="attach_file" size={14} /> {f.name}</span>
-                    <button onClick={() => removeFile(i)} className="text-on-surface-variant hover:text-error shrink-0"><Icon name="close" size={16} /></button>
+                    <span className="truncate inline-flex items-center gap-1"><Icon name={(a.type||'').startsWith('image/') ? 'image' : 'attach_file'} size={14} /> {a.name}</span>
+                    <button onClick={() => removeAttachment(i)} className="text-on-surface-variant hover:text-error shrink-0"><Icon name="close" size={16} /></button>
                   </div>
                 ))}
+                <span className="text-xs text-on-surface-variant">{Math.round(usedBytes / 1024)} Ko / 850 Ko</span>
               </div>
             )}
           </div>
@@ -195,13 +225,15 @@ export default function Reports() {
             </div>
             <p className="text-body text-on-surface whitespace-pre-wrap">{viewing.body || '—'}</p>
             {(viewing.attachments || []).length > 0 && (
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-2">
                 <p className="text-xs font-semibold text-on-surface-variant uppercase">Pièces jointes</p>
-                {viewing.attachments.map((a, i) => (
-                  <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-primary hover:underline text-sm">
-                    <Icon name="attach_file" size={16} /> {a.name}
-                  </a>
-                ))}
+                <div className="flex flex-wrap gap-2">
+                  {viewing.attachments.map((a, i) => (
+                    (a.type || '').startsWith('image/')
+                      ? <a key={i} href={a.dataUrl} target="_blank" rel="noopener noreferrer" title={a.name}><img src={a.dataUrl} alt={a.name} className="w-28 h-28 object-cover rounded-lg border border-outline-variant/30" /></a>
+                      : <a key={i} href={a.dataUrl} download={a.name} className="inline-flex items-center gap-2 text-primary hover:underline text-sm border border-outline-variant/30 rounded-lg px-3 py-2"><Icon name="attach_file" size={16} /> {a.name}</a>
+                  ))}
+                </div>
               </div>
             )}
             <div className="flex flex-col gap-1 border-t border-outline-variant/30 pt-3">

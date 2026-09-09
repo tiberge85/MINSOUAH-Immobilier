@@ -55,7 +55,7 @@ const ROLE_HOME = {
   // legacy (kept for existing sessions until migration runs)
   ADMIN:     '/',
   MANAGER:   '/',
-  CONCIERGE: '/',
+  CONCIERGE: '/concierge',
   TECHNICIAN:'/',
   ACCOUNTANT:'/',
 };
@@ -220,7 +220,11 @@ function ProtectedRoute({ children, allowedRoles, module }) {
     }
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
+  // Le rôle limite l'accès SAUF si l'utilisateur a explicitement la permission du
+  // module (case cochée dans Réglages → Utilisateurs) : dans ce cas la permission
+  // prime. Sinon, cocher « Calendrier »/« Prestataires » pour un concierge ne
+  // donnait aucun accès (le rôle n'était pas dans la liste autorisée de la page).
+  if (allowedRoles && !allowedRoles.includes(user.role) && !(module && canView(user, module))) {
     return <Navigate to={ROLE_HOME[user.role] || '/'} replace />;
   }
   // Fine-grained module gate — a restricted agent is redirected to the first
