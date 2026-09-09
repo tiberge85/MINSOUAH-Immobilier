@@ -41,6 +41,7 @@ export const MODULES = [
   { key: 'referrers',    label: "Apporteurs d'affaire", icon: 'group_add',           path: '/referrers',    actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'prestataires', label: 'Prestataires',    icon: 'handyman',                 path: '/prestataires', actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'inbox',        label: 'Messagerie',      icon: 'support_agent',            path: '/inbox',        actions: ['view'] },
+  { key: 'reports',      label: 'Rapports',        icon: 'description',              path: '/reports',      actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'portals',      label: 'Portails (locataires/propriétaires/concierge)', icon: 'people', path: null, actions: ['view'] },
   { key: 'settings',     label: 'Paramètres',      icon: 'settings',                 path: null,            actions: ['view'] },
 ];

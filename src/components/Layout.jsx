@@ -35,6 +35,7 @@ const navItems = [
   { path: '/prestataires', label: 'Prestataires',          icon: 'handyman',               mobileIcon: 'handyman' },
   { path: '/concierge',   label: 'Mon Espace',        icon: 'supervised_user_circle',  mobileIcon: 'supervised_user_circle', roles: ['CONCIERGE'] },
   { path: '/inbox',       label: 'Messagerie',        icon: 'support_agent',           mobileIcon: 'mail' },
+  { path: '/reports',     label: 'Rapports',          icon: 'description',             mobileIcon: 'description' },
 ];
 
 const pageTitles = {
@@ -55,6 +56,7 @@ const pageTitles = {
   '/portal/tenant':   'Portail Locataires',
   '/portal/owner':    'Portail Propriétaires',
   '/concierge':       'Portail Concierge',
+  '/reports':         'Rapports',
   '/settings':        'Paramètres',
 };
 

@@ -34,6 +34,7 @@ import Insurance     from './pages/Insurance';
 import PublicTenantPortal from './pages/PublicTenantPortal';
 import Referrers     from './pages/Referrers';
 import Prestataires  from './pages/Prestataires';
+import Reports       from './pages/Reports';
 import Bordereaux    from './pages/Bordereaux';
 import RevenusMinsouah from './pages/RevenusMinsouah';
 import PublicBordereau from './pages/PublicBordereau';
@@ -304,6 +305,7 @@ function AppRoutes() {
         <Route path="insurance"   element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER']} module="insurance"><Insurance /></ProtectedRoute>} />
         <Route path="referrers"    element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER']} module="referrers"><Referrers /></ProtectedRoute>} />
         <Route path="prestataires" element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'TECHNICIAN']} module="prestataires"><Prestataires /></ProtectedRoute>} />
+        <Route path="reports" element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE', 'TECHNICIAN', 'ACCOUNTANT']} module="reports"><Reports /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
 

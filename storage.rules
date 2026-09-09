@@ -64,6 +64,14 @@ service firebase.storage {
       allow write: if isManager() && maxSize(25);
     }
 
+    // ── Pièces jointes des rapports ───────────────────────────────────────────
+    // Écriture par tout utilisateur connecté (la permission "créer un rapport" est
+    // gérée dans l'app + Firestore) ; lecture par tout utilisateur connecté.
+    match /orgs/{orgId}/reports/{reportId}/{fileName} {
+      allow read:  if isAuth();
+      allow write: if isAuth() && maxSize(25);
+    }
+
     // ── Photos marketplace (annonces publiques) ───────────────────────────────
     // Lecture publique (anonymous OK). Écriture : tout utilisateur connecté
     // (le contrôle métier "super admin seulement" est dans l'UI + Firestore rules).

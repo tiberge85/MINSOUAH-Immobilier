@@ -281,6 +281,7 @@ export function AppProvider({ children }) {
     bordereaux: [],
     commissionRates: [],
     tenantDocuments: [],
+    reports: [],
     currentUser: null,
     orgSettings: DEFAULT_ORG,
     systemSettings: DEFAULT_SYSTEM,
@@ -452,7 +453,10 @@ export function AppProvider({ children }) {
               // Course au démarrage : collection org refusée alors qu'on est connecté
               // → on réessaie (réautorisation) au lieu de marquer « chargé » avec des
               // données vides (ce qui bloquait l'appli et renvoyait au login).
-              if (err.code === 'permission-denied' && orgFiltered && sessionUser && healTries < MAX_HEAL) {
+              // 'reports' peut être refusé tant que sa règle Firestore n'est pas
+              // déployée : ne pas déclencher le ré-essai pour lui (sinon démarrage
+              // ralenti pour toute l'équipe avant le déploiement des règles).
+              if (err.code === 'permission-denied' && orgFiltered && sessionUser && healTries < MAX_HEAL && colName !== 'reports') {
                 scheduleHeal();
                 return;
               }
@@ -473,7 +477,7 @@ export function AppProvider({ children }) {
       ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
         'tickets', 'inspections', 'conversations', 'monthClosures',
         'insurances', 'budgets', 'referrers', 'prestataires', 'bordereaux', 'commissionRates',
-        'tenantDocuments'].forEach(c => sub(c, true));
+        'tenantDocuments', 'reports'].forEach(c => sub(c, true));
 
       sub('tenantPortals'); // publicly readable portal tokens
 
@@ -1197,6 +1201,26 @@ export function AppProvider({ children }) {
           break;
         case 'DELETE_PRESTATAIRE':
           await deleteDoc(wsDoc('prestataires', payload));
+          break;
+
+        // ── RAPPORTS (reports — titre + texte + pièces jointes, lecteurs choisis) ──
+        case 'ADD_REPORT': {
+          const id = payload.id || `rep_${Date.now()}`;
+          await setDoc(wsDoc('reports', id), {
+            ...payload, id, orgId,
+            authorId: st.currentUser?.id || null,
+            authorName: st.currentUser?.name || '',
+            readerIds: payload.readerIds || [],
+            attachments: payload.attachments || [],
+            createdAt: new Date().toISOString(),
+          });
+          break;
+        }
+        case 'UPDATE_REPORT':
+          await setDoc(wsDoc('reports', payload.id), { ...payload, orgId }, { merge: true });
+          break;
+        case 'DELETE_REPORT':
+          await deleteDoc(wsDoc('reports', payload));
           break;
 
         // ── REFERRERS (apporteurs d'affaire) ─────────────────────────────────
