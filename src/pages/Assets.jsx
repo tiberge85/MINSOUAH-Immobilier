@@ -34,7 +34,7 @@ const buildingRevenue = (units = []) =>
   units.filter(u => u.status === 'Loué').reduce((s, u) => s + Number(u.rent || 0), 0);
 
 // ── Sous-composants ───────────────────────────────────────────────────────────
-function UnitRow({ unit, onEdit, onDelete }) {
+function UnitRow({ unit, onEdit, onDelete, canFinance = true }) {
   return (
     <div className={`flex items-center gap-3 p-3 rounded-xl border ${UNIT_STATUS_COLORS[unit.status] || 'bg-surface-container border-outline-variant/20'} group`}>
       <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
@@ -47,7 +47,7 @@ function UnitRow({ unit, onEdit, onDelete }) {
           <p className="text-xs text-on-surface-variant">{unit.rooms ? `${unit.rooms} pièce(s)` : ''}</p>
         </div>
         <div>
-          <p className="font-bold text-primary">{fmt(unit.rent)}/mois</p>
+          {canFinance && <p className="font-bold text-primary">{fmt(unit.rent)}/mois</p>}
         </div>
         <div>
           <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${UNIT_STATUS_COLORS[unit.status]}`}>
@@ -132,6 +132,8 @@ export default function Assets() {
   const canCreate = can(state.currentUser, 'assets', 'create');
   const canEdit   = can(state.currentUser, 'assets', 'edit');
   const canDelete = can(state.currentUser, 'assets', 'delete');
+  // Masque les montants (loyers, revenus) pour un utilisateur sans accès Finances.
+  const canFinance = can(state.currentUser, 'finance', 'view');
   const properties = state.properties || [];
 
   const [filter, setFilter]         = useState('Tous');
@@ -364,7 +366,7 @@ export default function Assets() {
           { label: 'Libres',      value: libres,      icon: 'lock_open',    color: 'text-blue-600',    statusVal: 'Disponible' },
           { label: 'Maintenance', value: maintenance, icon: 'build',        color: 'text-error',       statusVal: 'Maintenance' },
           { label: 'Revenus/mois', value: fmt(revenue), icon: 'trending_up', color: 'text-on-primary-container', highlight: true, statusVal: '__revenue__' },
-        ].map(s => {
+        ].filter(s => canFinance || s.statusVal !== '__revenue__').map(s => {
           const isActive = s.statusVal !== '__revenue__' && statusFilter === s.statusVal;
           return (
             <button
@@ -462,6 +464,7 @@ export default function Assets() {
                   unit={item.data}
                   building={item.building}
                   canEdit={canEdit}
+                  canFinance={canFinance}
                   onChangeType={(nt) => changeUnitType(item.building, item.data, nt)}
                   onBuildingDetail={() => { setTarget(item.building); setModal('detail'); setAddingUnitToDetail(false); setDetailUnitEdit(null); }}
                 />
@@ -477,6 +480,7 @@ export default function Assets() {
                   onQr={() => setQrModal(p)}
                   canEdit={canEdit}
                   canDelete={canDelete}
+                  canFinance={canFinance}
                 />
               );
             }
@@ -490,6 +494,7 @@ export default function Assets() {
                 onChangeType={(nt) => changePropertyType(p, nt)}
                 canEdit={canEdit}
                 canDelete={canDelete}
+                canFinance={canFinance}
               />
             );
           })}
@@ -755,7 +760,7 @@ export default function Assets() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-6">
                 {[
                   ['Adresse', target.address], ['Type', target.type],
-                  ['Loyer', fmt(target.rent) + '/mois'], ['Propriétaire', target.owner || '—'],
+                  ...(canFinance ? [['Loyer', fmt(target.rent) + '/mois']] : []), ['Propriétaire', target.owner || '—'],
                   ['Surface', target.surface ? `${target.surface} m²` : '—'], ['Pièces', target.rooms || '—'],
                 ].map(([l, v]) => (
                   <div key={l} className="bg-surface-container rounded-xl p-3">
@@ -815,10 +820,12 @@ export default function Assets() {
                 ))}
               </div>
 
+              {canFinance && (
               <div className="bg-primary-container/30 rounded-xl p-3 mb-6 flex justify-between items-center">
                 <span className="text-sm text-on-surface-variant font-medium">Revenu mensuel total</span>
                 <span className="font-black text-primary">{fmt(buildingRevenue(target.units))}/mois</span>
               </div>
+              )}
 
               {/* Liste des unités */}
               <div className="flex items-center justify-between mb-3">
@@ -846,7 +853,7 @@ export default function Assets() {
                       onSave={() => updateUnitInBuilding(target, detailUnitEdit)}
                       onCancel={() => setDetailUnitEdit(null)} />
                   ) : (
-                    <UnitRow key={u.id} unit={u}
+                    <UnitRow key={u.id} unit={u} canFinance={canFinance}
                       onEdit={u => { setDetailUnitEdit(u); setAddingUnitToDetail(false); }}
                       onDelete={id => deleteUnitFromBuilding(target, id)} />
                   )
@@ -896,7 +903,7 @@ export default function Assets() {
                   `Adresse: ${qrModal.address || '—'}`,
                   `Type: ${qrModal.type || (qrModal.isBuilding ? 'Immeuble' : '—')}`,
                   qrModal.owner ? `Propriétaire: ${qrModal.owner}` : null,
-                  !qrModal.isBuilding && qrModal.rent ? `Loyer: ${Number(qrModal.rent).toLocaleString('fr-CI')} FCFA/mois` : null,
+                  canFinance && !qrModal.isBuilding && qrModal.rent ? `Loyer: ${Number(qrModal.rent).toLocaleString('fr-CI')} FCFA/mois` : null,
                   `Statut: ${qrModal.status || '—'}`,
                   `Ref: MINS-${qrModal.id}`,
                 ].filter(Boolean).join('\n')}
@@ -907,7 +914,7 @@ export default function Assets() {
             </div>
             <div className="text-left bg-surface-container rounded-xl p-3 mb-3 text-xs space-y-1">
               {qrModal.owner && <p><span className="text-on-surface-variant">Propriétaire :</span> <strong className="text-on-surface">{qrModal.owner}</strong></p>}
-              {!qrModal.isBuilding && qrModal.rent > 0 && <p><span className="text-on-surface-variant">Loyer :</span> <strong className="text-primary">{fmt(qrModal.rent)}/mois</strong></p>}
+              {canFinance && !qrModal.isBuilding && qrModal.rent > 0 && <p><span className="text-on-surface-variant">Loyer :</span> <strong className="text-primary">{fmt(qrModal.rent)}/mois</strong></p>}
               <p><span className="text-on-surface-variant">Statut :</span> <strong className="text-on-surface">{qrModal.status || '—'}</strong></p>
               <p className="text-on-surface-variant">Réf : MINS-{qrModal.id}</p>
             </div>
@@ -946,7 +953,7 @@ export default function Assets() {
 }
 
 // ── Cartes ────────────────────────────────────────────────────────────────────
-function UnitFlatCard({ unit, building, onBuildingDetail, onChangeType, canEdit }) {
+function UnitFlatCard({ unit, building, onBuildingDetail, onChangeType, canEdit, canFinance = true }) {
   const statusColor = {
     'Loué':        'bg-green-100 text-green-800 border-green-200',
     'Disponible':  'bg-blue-50 text-blue-700 border-blue-200',
@@ -982,7 +989,7 @@ function UnitFlatCard({ unit, building, onBuildingDetail, onChangeType, canEdit 
           <span className="text-xs text-on-surface-variant flex items-center gap-1">
             <Icon name="person" size={12} />{building.owner || '—'}
           </span>
-          <span className="font-bold text-primary text-sm">{fmt(unit.rent)}/mois</span>
+          {canFinance && <span className="font-bold text-primary text-sm">{fmt(unit.rent)}/mois</span>}
         </div>
         {canEdit && onChangeType && (
           <div className="mt-3 pt-3 border-t border-outline-variant/10" onClick={e => e.stopPropagation()}>
@@ -1000,7 +1007,7 @@ function UnitFlatCard({ unit, building, onBuildingDetail, onChangeType, canEdit 
   );
 }
 
-function BuildingCard({ building, onDetail, onEdit, onDelete, onQr, canEdit, canDelete }) {
+function BuildingCard({ building, onDetail, onEdit, onDelete, onQr, canEdit, canDelete, canFinance = true }) {
   const units = building.units || [];
   const loued = units.filter(u => u.status === 'Loué').length;
   const libres = units.filter(u => u.status === 'Disponible').length;
@@ -1075,14 +1082,14 @@ function BuildingCard({ building, onDetail, onEdit, onDelete, onQr, canEdit, can
             </div>
             <span className="text-xs text-on-surface-variant">{building.owner}</span>
           </div>
-          <span className="font-bold text-primary text-sm">{fmt(revenue)}/mois</span>
+          {canFinance && <span className="font-bold text-primary text-sm">{fmt(revenue)}/mois</span>}
         </div>
       </div>
     </div>
   );
 }
 
-function PropertyCard({ property, onDetail, onEdit, onDelete, onQr, onChangeType, canEdit, canDelete }) {
+function PropertyCard({ property, onDetail, onEdit, onDelete, onQr, onChangeType, canEdit, canDelete, canFinance = true }) {
   return (
     <div onClick={onDetail} className="bg-surface rounded-2xl overflow-hidden border border-outline-variant/20 shadow-sm hover:shadow-md transition-shadow cursor-pointer group">
       <div className="relative h-44 overflow-hidden bg-surface-container">
@@ -1127,7 +1134,7 @@ function PropertyCard({ property, onDetail, onEdit, onDelete, onQr, onChangeType
             </div>
             <span className="text-xs text-on-surface-variant">{property.owner}</span>
           </div>
-          <span className="font-bold text-primary text-sm">{fmt(property.rent)}/mois</span>
+          {canFinance && <span className="font-bold text-primary text-sm">{fmt(property.rent)}/mois</span>}
         </div>
         {canEdit && onChangeType && !property.isBuilding && (
           <div className="mt-3 pt-3 border-t border-outline-variant/10" onClick={e => e.stopPropagation()}>

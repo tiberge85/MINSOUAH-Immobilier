@@ -29,6 +29,8 @@ export default function Rental() {
   const canCreate = can(state.currentUser, 'rental', 'create');
   const canEdit   = can(state.currentUser, 'rental', 'edit');
   const canDelete = can(state.currentUser, 'rental', 'delete');
+  // Masque les montants (loyers, revenus) pour un utilisateur sans accès Finances.
+  const canFinance = can(state.currentUser, 'finance', 'view');
   const { contracts = [], tenants = [], owners = [], properties = [], payments = [], orgSettings = {} } = state;
 
   const [tab, setTab] = useState('Contrats');
@@ -708,7 +710,7 @@ ${sectionsHtml}
               <table className="w-full text-left">
                 <thead className="bg-primary text-on-primary">
                   <tr>
-                    {['Propriété', 'Locataire', 'Loyer', 'Fin de bail', 'Statut', ''].map(h => (
+                    {['Propriété', 'Locataire', ...(canFinance ? ['Loyer'] : []), 'Fin de bail', 'Statut', ''].map(h => (
                       <th key={h} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider ${h === 'Loyer' ? 'text-right' : h === 'Fin de bail' ? 'text-center' : ''}`}>{h}</th>
                     ))}
                   </tr>
@@ -721,7 +723,7 @@ ${sectionsHtml}
                         <p className="text-xs text-on-surface-variant">{c.propertyType}</p>
                       </td>
                       <td className="px-4 py-3 text-sm text-on-surface">{c.tenant}</td>
-                      <td className="px-4 py-3 text-right font-bold text-primary text-sm">{fmt(c.rent)}</td>
+                      {canFinance && <td className="px-4 py-3 text-right font-bold text-primary text-sm">{fmt(c.rent)}</td>}
                       <td className="px-4 py-3 text-center text-xs text-on-surface-variant">{c.endDate || '—'}</td>
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${STATUS_BADGE[c.status] || ''}`}>{c.status}</span>
@@ -744,7 +746,7 @@ ${sectionsHtml}
                     </tr>
                   ))}
                   {filteredContracts.length === 0 && (
-                    <tr><td colSpan={6} className="text-center py-12 text-on-surface-variant text-sm">Aucun contrat trouvé</td></tr>
+                    <tr><td colSpan={canFinance ? 6 : 5} className="text-center py-12 text-on-surface-variant text-sm">Aucun contrat trouvé</td></tr>
                   )}
                 </tbody>
               </table>
@@ -821,7 +823,7 @@ ${sectionsHtml}
                       </span>
                     )}
                     <span className="flex items-center gap-1.5"><Icon name="apartment" size={12} /><span className="truncate">{t.property || '—'}</span></span>
-                    {rent && (
+                    {canFinance && rent && (
                       <span className="flex items-center gap-1.5 font-semibold text-primary">
                         <Icon name="payments" size={12} />{Number(rent).toLocaleString('fr-CI')} FCFA/mois
                       </span>
@@ -855,7 +857,7 @@ ${sectionsHtml}
             <table className="w-full text-left">
               <thead className="bg-primary text-on-primary">
                 <tr>
-                  {['Propriétaire', 'Contact', 'Biens', 'Revenu/mois', 'Statut', ''].map(h => (
+                  {['Propriétaire', 'Contact', 'Biens', ...(canFinance ? ['Revenu/mois'] : []), 'Statut', ''].map(h => (
                     <th key={h} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider ${h === 'Revenu/mois' ? 'text-right' : h === 'Biens' ? 'text-center' : ''}`}>{h}</th>
                   ))}
                 </tr>
@@ -876,7 +878,7 @@ ${sectionsHtml}
                     <td className="px-4 py-3 text-center">
                       <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary-container text-on-primary-container text-xs font-bold">{o.properties}</span>
                     </td>
-                    <td className="px-4 py-3 text-right font-bold text-primary text-sm">{fmt(computeOwnerRevenue(o))}</td>
+                    {canFinance && <td className="px-4 py-3 text-right font-bold text-primary text-sm">{fmt(computeOwnerRevenue(o))}</td>}
                     <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${STATUS_BADGE[o.status] || ''}`}>{o.status}</span></td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 justify-end">
@@ -887,7 +889,7 @@ ${sectionsHtml}
                   </tr>
                 ))}
                 {filteredOwners.length === 0 && (
-                  <tr><td colSpan={6} className="text-center py-12 text-on-surface-variant text-sm">Aucun propriétaire trouvé</td></tr>
+                  <tr><td colSpan={canFinance ? 6 : 5} className="text-center py-12 text-on-surface-variant text-sm">Aucun propriétaire trouvé</td></tr>
                 )}
               </tbody>
             </table>

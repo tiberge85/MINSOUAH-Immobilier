@@ -152,6 +152,9 @@ export function canView(user, moduleKey) {
  * /settings (always accessible) when nothing is viewable.
  */
 export function firstAllowedPath(user) {
+  // Le concierge a son propre espace : on l'y envoie plutôt que sur la première
+  // page « module » (sinon il atterrissait sur Patrimoine).
+  if (user?.role === 'CONCIERGE') return '/concierge';
   for (const m of MODULES) {
     if (m.path && can(user, m.key, 'view')) return m.path;
   }
