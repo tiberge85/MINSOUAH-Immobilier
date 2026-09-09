@@ -3,7 +3,7 @@ import {
   collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc,
   writeBatch, getDocs, query, where, getDocFromServer, increment, runTransaction,
 } from 'firebase/firestore';
-import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { onAuthStateChanged, signInAnonymously, signOut } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { hashPwd, verifyPwd } from '../lib/auth';
 import { checkLimit } from '../lib/planLimits';
@@ -298,7 +298,10 @@ export function AppProvider({ children }) {
 
   // Track which essential collections have received their first snapshot
   const loadedRef = useRef(new Set());
-  const ESSENTIAL = ['users', 'organizations', 'properties', 'contracts', 'tenants', 'payments', 'owners'];
+  // 'licenses' est ESSENTIEL : sans lui, la garde de route affiche « Accès suspendu »
+  // le temps que les licences arrivent (org/licence introuvables) puis « passe » —
+  // on attend donc leur chargement avant de terminer le démarrage.
+  const ESSENTIAL = ['users', 'organizations', 'licenses', 'properties', 'contracts', 'tenants', 'payments', 'owners'];
 
   const checkBootstrap = useCallback(() => {
     if (ESSENTIAL.every((c) => loadedRef.current.has(c))) {
@@ -365,7 +368,11 @@ export function AppProvider({ children }) {
       // règles Firestore refusent (permission-denied sur TOUTES les données) et qui
       // renvoyaient à l'écran de connexion. C'est la cause de « ça charge puis
       // revient au mot de passe » et des données qui ne se chargent pas.
-      if (!sessionUser && user && !user.isAnonymous && user.email) {
+      // Déconnexion volontaire en cours : ne pas reconstruire la session (sinon on
+      // reconnecte l'utilisateur qui vient de se déconnecter).
+      let justLoggedOut = false;
+      try { justLoggedOut = !!sessionStorage.getItem('_minsouah_loggedout'); if (justLoggedOut) sessionStorage.removeItem('_minsouah_loggedout'); } catch { /* ignore */ }
+      if (!sessionUser && !justLoggedOut && user && !user.isAnonymous && user.email) {
         try {
           const snap = await getDocs(wsCol('users'));
           const emailLow = user.email.toLowerCase();
@@ -773,7 +780,15 @@ export function AppProvider({ children }) {
           break;
         }
         case 'LOGOUT': {
+          // Marqueur lu par la reconstruction de session pour ne PAS reconnecter
+          // juste après une déconnexion volontaire (au cas où signOut n'a pas encore
+          // vidé la session Firebase avant le rechargement).
+          try { sessionStorage.setItem('_minsouah_loggedout', '1'); } catch { /* ignore */ }
           localStorage.removeItem(SESSION_KEY);
+          // Déconnecte AUSSI Firebase Auth — sinon la session Firebase persiste et la
+          // reconstruction de session reconnecte l'utilisateur aussitôt (« impossible
+          // de se déconnecter »).
+          try { await signOut(auth); } catch { /* ignore */ }
           // Reload to clear all org-filtered subscriptions
           window.location.reload();
           break;
