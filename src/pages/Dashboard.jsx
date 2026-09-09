@@ -437,7 +437,8 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Recovery pie */}
+        {/* Recovery pie — masqué si pas d'accès Finances */}
+        {canFinance && (
         <div className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20">
           <h3 className="font-h3 text-h3 text-on-surface mb-1">Recouvrement des Loyers</h3>
           <p className="text-body-sm text-on-surface-variant mb-sm">{payments.length} paiements au total</p>
@@ -476,6 +477,7 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* Recent contracts */}
@@ -498,7 +500,7 @@ export default function Dashboard() {
                 <tr>
                   <th className="px-md py-3 text-label-sm font-label-sm uppercase tracking-wider">Propriété</th>
                   <th className="px-md py-3 text-label-sm font-label-sm uppercase tracking-wider">Locataire</th>
-                  <th className="px-md py-3 text-label-sm font-label-sm uppercase tracking-wider text-right">Loyer</th>
+                  {canFinance && <th className="px-md py-3 text-label-sm font-label-sm uppercase tracking-wider text-right">Loyer</th>}
                   <th className="px-md py-3 text-label-sm font-label-sm uppercase tracking-wider">Fin</th>
                   <th className="px-md py-3 text-label-sm font-label-sm uppercase tracking-wider">Statut</th>
                 </tr>
@@ -518,9 +520,11 @@ export default function Dashboard() {
                       </div>
                     </td>
                     <td className="px-md py-4 text-body-md text-on-surface">{c.tenant}</td>
+                    {canFinance && (
                     <td className="px-md py-4 text-label-md font-label-md text-right text-primary">
                       {(c.rent || 0).toLocaleString('fr-CI')} FCFA/mois
                     </td>
+                    )}
                     <td className="px-md py-4 text-body-sm text-on-surface-variant">{c.endDate || '—'}</td>
                     <td className="px-md py-4">
                       <Badge label={c.status} />
