@@ -5,6 +5,7 @@ import {
   BarChart, Bar, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import { useApp } from '../context/AppContext';
+import { canView } from '../lib/permissions';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
@@ -183,6 +184,10 @@ export default function Dashboard() {
   const pendingTickets = tickets.filter((t) => t.status === 'En attente').length;
   const urgentTickets = tickets.filter((t) => t.priority === 'Urgent').length;
 
+  // Un utilisateur SANS accès « Finances » (ex. un agent/concierge restreint) ne
+  // doit pas voir les montants financiers (revenus, encaissé, impayés, graphique).
+  const canFinance = canView(state.currentUser, 'finance');
+
   const kpiCards = [
     {
       label: 'Total Propriétés',
@@ -223,7 +228,7 @@ export default function Dashboard() {
       sub: 'Contrats actifs cumulés',
       subIcon: 'trending_up', subColor: 'text-green-600',
       icon: 'payments', iconBg: 'bg-green-100 text-green-700',
-      to: '/finance',
+      to: '/finance', finance: true,
     },
     {
       label: 'Total Encaissé',
@@ -232,7 +237,7 @@ export default function Dashboard() {
       subIcon: recoveryRate >= 80 ? 'check_circle' : 'warning',
       subColor: recoveryRate >= 80 ? 'text-green-600' : 'text-amber-600',
       icon: 'account_balance_wallet', iconBg: 'bg-green-100 text-green-700',
-      to: '/payments',
+      to: '/payments', finance: true,
     },
     {
       label: 'Impayés',
@@ -241,7 +246,7 @@ export default function Dashboard() {
       subIcon: unpaidAmount > 0 ? 'error' : 'check_circle',
       subColor: unpaidAmount > 0 ? 'text-error' : 'text-green-600',
       icon: 'warning', iconBg: unpaidAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700',
-      to: '/payments',
+      to: '/payments', finance: true,
     },
     {
       label: 'Tickets Maintenance',
@@ -289,14 +294,15 @@ export default function Dashboard() {
 
       {/* KPI cards — 4 per row */}
       <section className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-md">
-        {kpiCards.map((card) => (
+        {kpiCards.filter((card) => canFinance || !card.finance).map((card) => (
           <KpiCard key={card.label} {...card} onClick={card.to ? () => navigate(card.to) : undefined} />
         ))}
       </section>
 
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
-        {/* Revenue area chart */}
+        {/* Revenue area chart — masqué si pas d'accès Finances */}
+        {canFinance && (
         <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex flex-col">
           <div className="flex flex-wrap justify-between items-center mb-lg gap-sm">
             <div>
@@ -352,6 +358,7 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Alerts panel */}
         <div className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex flex-col">
