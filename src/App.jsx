@@ -234,6 +234,15 @@ function ProtectedRoute({ children, allowedRoles, module }) {
   }
   // License + org guard — SUPER_ADMIN is always exempt
   if (user.role !== 'SUPER_ADMIN') {
+    // Sur réseau lent, le délai de démarrage (12 s) peut expirer AVANT l'arrivée des
+    // organisations/licences. Tant que ces listes sont vides, les données ne sont pas
+    // encore chargées : on affiche le chargement, JAMAIS « Accès suspendu » (sinon un
+    // faux « suspendu » clignote, ou bloque les utilisateurs sur connexion lente).
+    const orgsLoaded = (state.organizations || []).length > 0;
+    const licsLoaded = (state.licenses || []).length > 0;
+    if (!orgsLoaded || !licsLoaded) {
+      return <BootstrapScreen />;
+    }
     const org     = (state.organizations || []).find(o => o.id === user.orgId);
     const license = (state.licenses     || []).find(l => l.orgId === user.orgId);
     // Block if: org deleted, no license at all, or license invalid/expired/suspended
