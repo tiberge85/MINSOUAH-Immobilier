@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { useApp } from '../context/AppContext';
 import { canView } from '../lib/permissions';
+import { computeMonthMetrics, monthLabelNow } from '../lib/monthMetrics';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
@@ -177,9 +178,14 @@ export default function Dashboard() {
   const unpaidPayments = payments.filter(p => p.status !== 'Payé');
   const unpaidAmount = unpaidPayments.reduce((s, p) => s + (p.amount || 0), 0);
   const totalCollected = paidPayments.reduce((s, p) => s + (p.amount || 0), 0);
-  const recoveryRate = payments.length > 0
-    ? Math.round((paidPayments.length / payments.length) * 100)
-    : 100;
+
+  // Recouvrement DU MOIS EN COURS — calculé exactement comme la page Paiements
+  // (source de vérité) pour être cohérent avec la vue propriétaire.
+  const mm = useMemo(
+    () => computeMonthMetrics({ payments, contracts, tenants, monthLabel: monthLabelNow() }),
+    [payments, contracts, tenants]
+  );
+  const recoveryRate = mm.recoveryRate;
 
   const pendingTickets = tickets.filter((t) => t.status === 'En attente').length;
   const urgentTickets = tickets.filter((t) => t.priority === 'Urgent').length;
@@ -265,10 +271,10 @@ export default function Dashboard() {
     { name: 'Libres', value: Math.max(0, totalUnits - activeContracts), color: '#d2c5ae' },
   ].filter(d => d.value > 0);
 
-  /* Payment recovery pie */
+  /* Payment recovery pie — du mois en cours (cohérent avec le taux ci-dessus) */
   const recoveryPie = [
-    { name: 'Payés', value: paidPayments.length, color: '#4CAF50' },
-    { name: 'Impayés', value: unpaidPayments.length, color: '#ba1a1a' },
+    { name: 'Payés', value: mm.paidCount, color: '#4CAF50' },
+    { name: 'Impayés', value: mm.unpaidCount, color: '#ba1a1a' },
   ].filter(d => d.value > 0);
 
   const recentContracts = contracts.slice(0, 5);
@@ -441,8 +447,8 @@ export default function Dashboard() {
         {canFinance && (
         <div className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20">
           <h3 className="font-h3 text-h3 text-on-surface mb-1">Recouvrement des Loyers</h3>
-          <p className="text-body-sm text-on-surface-variant mb-sm">{payments.length} paiements au total</p>
-          {payments.length === 0 ? (
+          <p className="text-body-sm text-on-surface-variant mb-sm">{monthLabelNow()} · {mm.paidCount + mm.unpaidCount} loyer(s) attendu(s)</p>
+          {(mm.paidCount + mm.unpaidCount) === 0 ? (
             <div className="text-center py-10 text-on-surface-variant">
               <Icon name="payments" size={40} className="opacity-30 mb-2" />
               <p>Aucun paiement enregistré</p>

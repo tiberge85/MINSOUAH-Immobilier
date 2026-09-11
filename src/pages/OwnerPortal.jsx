@@ -7,6 +7,7 @@ import {
 } from 'recharts';
 import Badge from '../components/ui/Badge';
 import Icon from '../components/Icon';
+import { computeMonthMetrics } from '../lib/monthMetrics';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
 // Montants toujours affichés EN ENTIER (aucune abréviation « k » dans le programme).
@@ -309,17 +310,32 @@ export default function OwnerPortal() {
   const OP_MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
   const _nowOP = new Date();
   const curMonthLbl = `${OP_MONTHS_FR[_nowOP.getMonth()]} ${_nowOP.getFullYear()}`;
+
+  // Métriques du MOIS EN COURS calculées EXACTEMENT comme la page Paiements
+  // (source de vérité), scopées aux données de ce propriétaire. Garantit que la
+  // vue d'ensemble affiche les mêmes attendu / encaissé / impayés / recouvrement.
+  const mm = useMemo(
+    () => computeMonthMetrics({ payments: ownerPayments, contracts: ownerContracts, tenants, monthLabel: curMonthLbl }),
+    [ownerPayments, ownerContracts, tenants, curMonthLbl]
+  );
+
   const collectedTotal = hasPeriod
     ? periodPayments.filter(p => p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0)
-    : ownerPayments.filter(p => p.month === curMonthLbl && p.status === 'Payé').reduce((s, p) => s + (p.amount || 0), 0);
+    : mm.collected;
   const pendingAmount  = hasPeriod
     ? periodPayments.filter(p => p.status !== 'Payé' && p.status !== 'Annulé').reduce((s, p) => s + (p.amount || 0), 0)
-    : Math.max(0, expectedMonthly - collectedTotal); // reste à encaisser ce mois
+    : mm.pending;
   const openTickets    = ownerTickets.filter(t => t.status !== 'Résolu').length;
 
-  // Taux de recouvrement : encaissé / attendu (mois) — ou encaissé / facturé (période).
-  const totalBilled = hasPeriod ? (collectedTotal + pendingAmount) : expectedMonthly;
-  const recoveryRate = totalBilled > 0 ? Math.round((collectedTotal / totalBilled) * 100) : null;
+  // « Attendu ce mois » affiché : mois en cours = base de la page Paiements ;
+  // période = encaissé + restant sur la période choisie.
+  const expectedShown = hasPeriod ? (collectedTotal + pendingAmount) : mm.expected;
+
+  // Taux de recouvrement : mois en cours = identique à Paiements ; période =
+  // encaissé / facturé sur la période.
+  const recoveryRate = hasPeriod
+    ? (expectedShown > 0 ? Math.round((collectedTotal / expectedShown) * 100) : null)
+    : mm.recoveryRate;
 
   // For chart: show expected revenue as a baseline when no payment records
   const hasPaymentData = ownerPayments.length > 0;
@@ -429,7 +445,7 @@ export default function OwnerPortal() {
 <table>
   <thead><tr><th>Indicateur</th><th style="text-align:right">Valeur</th></tr></thead>
   <tbody>
-    <tr><td>Loyer attendu/mois</td><td style="text-align:right">${Number(expectedMonthly).toLocaleString('fr-CI')} FCFA</td></tr>
+    <tr><td>Loyer attendu/mois</td><td style="text-align:right">${Number(expectedShown).toLocaleString('fr-CI')} FCFA</td></tr>
     <tr><td>Revenu annuel estimé</td><td style="text-align:right">${Number(expectedAnnual).toLocaleString('fr-CI')} FCFA</td></tr>
     <tr><td>Total encaissé</td><td style="text-align:right;color:#166534;font-weight:bold">${Number(collectedTotal).toLocaleString('fr-CI')} FCFA</td></tr>
     <tr><td>Impayés</td><td style="text-align:right;color:#991b1b;font-weight:bold">${Number(pendingAmount).toLocaleString('fr-CI')} FCFA</td></tr>
@@ -674,7 +690,7 @@ export default function OwnerPortal() {
       <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-md">
         <KpiCard label="Biens" value={ownerProperties.length} sub={`${occupiedCount} occ · ${freeCount} libre`} icon="apartment" color="bg-primary/10 text-primary" />
         <KpiCard label="Occupation" value={`${occupancyRate}%`} sub={`${activeContractsCount} contrat(s)`} icon="donut_large" color={occupancyRate >= 80 ? 'bg-green-100 text-green-700' : occupancyRate >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-error/10 text-error'} />
-        <KpiCard label="Attendu/mois" value={fmt(expectedMonthly)} sub={`An : ${fmt(expectedAnnual)}`} icon="trending_up" color="bg-green-100 text-green-700" />
+        <KpiCard label="Attendu/mois" value={fmt(expectedShown)} sub={`An : ${fmt(expectedAnnual)}`} icon="trending_up" color="bg-green-100 text-green-700" />
         <KpiCard label="Encaissé" value={fmt(collectedTotal)} sub={hasPeriod ? `${periodPayments.filter(p=>p.status==='Payé').length} paiem.` : `${curMonthLbl}`} icon="check_circle" color="bg-primary/10 text-primary" />
         <KpiCard label="Impayés" value={fmt(pendingAmount)} sub={hasPeriod ? (pendingAmount > 0 ? `${periodPayments.filter(p=>p.status!=='Payé'&&p.status!=='Annulé').length} en att.` : 'À jour') : (pendingAmount > 0 ? `reste ${curMonthLbl}` : 'À jour')} icon="warning" color={pendingAmount > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700'} />
         <KpiCard
@@ -817,7 +833,7 @@ export default function OwnerPortal() {
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-body-sm text-on-surface-variant">Loyer attendu/mois</span>
-                  <span className="font-bold text-on-surface">{fmt(expectedMonthly)}</span>
+                  <span className="font-bold text-on-surface">{fmt(expectedShown)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-body-sm text-on-surface-variant">Encaissé ({hasPeriod ? 'période' : curMonthLbl})</span>
@@ -1245,7 +1261,7 @@ export default function OwnerPortal() {
           {/* Financial summary */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-md">
             {[
-              { l: 'Loyer attendu/mois', v: fmt(expectedMonthly), c: 'text-primary' },
+              { l: 'Loyer attendu/mois', v: fmt(expectedShown), c: 'text-primary' },
               { l: 'Revenu annuel estimé', v: fmt(expectedAnnual), c: 'text-primary' },
               { l: 'Total encaissé', v: fmt(collectedTotal), c: 'text-green-700' },
               { l: 'Total arriérés', v: fmt(ownerArrears.reduce((s,p)=>s+(p.amount||0),0)), c: ownerArrears.length > 0 ? 'text-red-700' : 'text-green-700' },
