@@ -144,6 +144,19 @@ export default function OwnerPortal() {
     );
     const contractIds = new Set(ownerContracts.map(c => c.id));
     const tenantIds   = new Set(ownerContracts.map(c => c.tenantId).filter(Boolean));
+    // Noms des locataires des contrats du propriétaire — lien le plus fiable
+    // (les paiements portent presque toujours le nom du locataire, alors que
+    // ownerId / contractId / propertyName peuvent manquer ou différer).
+    const ownerTenantNames = ownerContracts.map(c => c.tenant).filter(Boolean);
+    // Correspondance de noms tolérante (accents/casse/inclusion ≥ 4 car.).
+    const nameMatch = (a, b) => {
+      a = norm(a); b = norm(b);
+      if (!a || !b) return false;
+      if (a === b) return true;
+      const short = a.length <= b.length ? a : b;
+      const long  = a.length <= b.length ? b : a;
+      return short.length >= 4 && long.includes(short);
+    };
     return payments.filter(p => {
       // 1. Direct ownerId match (most reliable — set by Payments.jsx since this fix)
       if (p.ownerId != null && (p.ownerId === owner.id || Number(p.ownerId) === owner.id)) return true;
@@ -158,6 +171,9 @@ export default function OwnerPortal() {
         const pn = norm(p.propertyName);
         if (ownerProps.some(op => pn === norm(op.name) || pn.startsWith(norm(op.name) + ' '))) return true;
       }
+      // 6. tenantName match contre les locataires des contrats du propriétaire
+      //    (rattrape les paiements sans ownerId/contractId/tenantId fiables).
+      if (p.tenantName && ownerTenantNames.some(tn => nameMatch(tn, p.tenantName))) return true;
       return false;
     });
   }, [owner, ownerContracts, properties, payments]);
