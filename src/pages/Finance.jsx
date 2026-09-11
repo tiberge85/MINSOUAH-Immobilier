@@ -149,6 +149,10 @@ export default function Finance() {
   const [chartPeriod, setChartPeriod] = useState('12 Mois');
   const [typeFilter, setTypeFilter] = useState('Tous');
   const [searchTx, setSearchTx] = useState('');
+  // Mois affiché dans la liste des transactions : par défaut le mois courant,
+  // pour que les dépenses des mois passés soient « archivées » (masquées) et
+  // qu'un nouveau mois reparte à zéro. « Tous » réaffiche tout l'historique.
+  const [txMonth, setTxMonth] = useState(() => { const n = new Date(); return `${MONTHS_FR[n.getMonth()]} ${n.getFullYear()}`; });
   const [expenseModal, setExpenseModal] = useState(false);
   const [expenseForm, setExpenseForm] = useState({ date: '', entity: '', description: '', amount: '', type: 'Réparations' });
   const [deleteTxTarget, setDeleteTxTarget] = useState(null);
@@ -386,11 +390,28 @@ export default function Finance() {
       });
   }, [transactions, payments]);
 
+  // Liste des mois présents dans les transactions (+ mois courant), pour le
+  // sélecteur d'archive de la liste des transactions.
+  const txMonthsOpts = useMemo(() => {
+    const set = new Set([curMonthLabel]);
+    effectiveTx.forEach(t => { const d = parseAnyDate(t.date); if (d) set.add(`${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`); });
+    return ['Tous', ...[...set].sort((a, b) => {
+      const da = monthLabelToDate(a), db = monthLabelToDate(b);
+      return (db?.getTime() || 0) - (da?.getTime() || 0);
+    })];
+  }, [effectiveTx, curMonthLabel]);
+
+  const inTxMonth = (dateStr) => {
+    if (txMonth === 'Tous') return true;
+    const d = parseAnyDate(dateStr);
+    return d && `${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}` === txMonth;
+  };
+
   const filteredTx = effectiveTx.filter((t) => {
     const matchType = typeFilter === 'Tous' || t.type === typeFilter;
     const q = searchTx.toLowerCase();
     const matchSearch = (t.entity || '').toLowerCase().includes(q) || (t.description || '').toLowerCase().includes(q);
-    return matchType && matchSearch;
+    return matchType && matchSearch && inTxMonth(t.date);
   });
 
   const handleExportPDF = () => {
@@ -651,6 +672,12 @@ export default function Finance() {
             <div className="p-md border-b border-outline-variant/20 flex flex-wrap justify-between items-center gap-md">
               <h3 className="font-h3 text-h3 text-on-surface">Transactions récentes</h3>
               <div className="flex flex-wrap gap-sm items-center">
+                <select value={txMonth} onChange={(e) => setTxMonth(e.target.value)}
+                  className="px-sm py-xs bg-surface-container-lowest border border-outline-variant rounded-lg text-body-sm focus:outline-none focus:border-primary">
+                  {txMonthsOpts.map((m) => (
+                    <option key={m} value={m}>{m === 'Tous' ? 'Tous les mois' : m}</option>
+                  ))}
+                </select>
                 <div className="flex gap-1 overflow-x-auto no-scrollbar">
                   {typeFilterOpts.map((opt) => (
                     <button key={opt} onClick={() => setTypeFilter(opt)} className={`px-sm py-xs rounded-full text-label-sm whitespace-nowrap ${typeFilter === opt ? 'bg-primary text-on-primary' : 'bg-surface-container border border-outline-variant/30 text-on-surface-variant'}`}>{opt}</button>
