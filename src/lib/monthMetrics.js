@@ -127,3 +127,82 @@ export function computeMonthMetrics({ payments = [], contracts = [], tenants = [
 
   return { expected, collected, pending, recoveryRate, paidCount, unpaidCount };
 }
+
+/**
+ * Les N derniers mois (le plus ancien d'abord, le mois courant en dernier).
+ * @returns {{label:string, short:string, m:number, y:number}[]}
+ */
+export function lastNMonths(n = 12, from = new Date()) {
+  const out = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(from.getFullYear(), from.getMonth() - i, 1);
+    out.push({
+      label: `${MM_MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`,
+      short: d.toLocaleDateString('fr-FR', { month: 'short' }),
+      m: d.getMonth(), y: d.getFullYear(),
+    });
+  }
+  return out;
+}
+
+/**
+ * Série de recouvrement sur les N derniers mois (pour graphiques).
+ * @returns {{mois:string, label:string, attendu:number, encaisse:number,
+ *            impaye:number, recouvrement:number}[]}
+ */
+export function recoverySeries({ payments = [], contracts = [], tenants = [], months = 12 }) {
+  return lastNMonths(months).map(mo => {
+    const mm = computeMonthMetrics({ payments, contracts, tenants, monthLabel: mo.label });
+    return {
+      mois: mo.short, label: mo.label,
+      attendu: mm.expected, encaisse: mm.collected, impaye: mm.pending,
+      recouvrement: mm.recoveryRate,
+    };
+  });
+}
+
+/**
+ * Détail par contrat (locataire / bien) pour un mois : statut de règlement.
+ * @returns {{tenant:string, property:string, rent:number,
+ *            status:'Payé'|'Impayé'|'En avance', collected:number}[]}
+ */
+export function monthTenantBreakdown({ payments = [], contracts = [], tenants = [], monthLabel = '' }) {
+  const monthPmts = payments.filter(p => normLabel(p.month) === normLabel(monthLabel));
+  const [emn, eyr] = (monthLabel || '').split(' ');
+  const eidx = MM_MONTH_NAMES.indexOf(emn);
+  const selDate = eidx >= 0 && eyr ? new Date(Number(eyr), eidx, 1) : null;
+
+  const startFirstOf = (c) => {
+    const t = (tenants || []).find(t =>
+      (t.name || '').toLowerCase().trim() === (c.tenant || '').toLowerCase().trim() ||
+      (c.tenantId != null && String(t.id) === String(c.tenantId)));
+    const ps = t?.paymentStartDate ? new Date(t.paymentStartDate) : null;
+    return ps && !isNaN(ps.getTime()) ? new Date(ps.getFullYear(), ps.getMonth(), 1) : null;
+  };
+
+  return (contracts || [])
+    .filter(c => c.status === 'Actif' || c.status === 'Expirant')
+    .map(c => {
+      const paid = monthPmts.filter(p => p.status === 'Payé' && !p.avanceVerseeProprio && (
+        (p.tenantId != null && c.tenantId != null && String(p.tenantId) === String(c.tenantId)) ||
+        nameMatch(p.tenantName, c.tenant)
+      ));
+      const collected = paid.reduce((s, p) => s + (p.amount || 0), 0);
+      const sf = startFirstOf(c);
+      let status;
+      if (paid.length > 0 || collected > 0) status = 'Payé';
+      else if (sf && selDate && selDate < sf) status = 'En avance';
+      else status = 'Impayé';
+      return {
+        tenant: c.tenant || '—',
+        property: c.propertyName || c.bien || '—',
+        rent: Number(c.rent) || 0,
+        status, collected,
+      };
+    })
+    .sort((a, b) => {
+      const order = { 'Impayé': 0, 'Payé': 1, 'En avance': 2 };
+      if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
+      return b.rent - a.rent;
+    });
+}

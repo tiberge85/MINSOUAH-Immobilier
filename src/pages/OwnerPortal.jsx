@@ -8,6 +8,7 @@ import {
 import Badge from '../components/ui/Badge';
 import Icon from '../components/Icon';
 import { computeMonthMetrics } from '../lib/monthMetrics';
+import RecoveryStats from '../components/RecoveryStats';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
 // Montants toujours affichés EN ENTIER (aucune abréviation « k » dans le programme).
@@ -636,6 +637,7 @@ export default function OwnerPortal() {
   const TABS = [
     { id: 'overview', label: 'Vue d\'ensemble', icon: 'dashboard' },
     { id: 'revenus', label: 'Revenus', icon: 'account_balance_wallet' },
+    { id: 'recouvrement', label: 'Recouvrement', icon: 'query_stats' },
     { id: 'properties', label: 'Biens', icon: 'apartment' },
     { id: 'finance', label: 'Finances', icon: 'trending_up' },
     { id: 'maintenance', label: 'Maintenance', icon: 'engineering' },
@@ -1068,6 +1070,11 @@ export default function OwnerPortal() {
             )}
           </div>
         </div>
+      )}
+
+      {/* ── RECOUVREMENT (statistiques) ──────────────────────────── */}
+      {activeTab === 'recouvrement' && (
+        <RecoveryStats payments={ownerPayments} contracts={ownerContracts} tenants={tenants} months={12} />
       )}
 
       {/* ── PROPERTIES ───────────────────────────────────────────── */}

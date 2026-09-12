@@ -396,10 +396,13 @@ export function AppProvider({ children }) {
         } catch (e) { console.warn('[session recovery]', e?.code || e?.message); }
       }
 
-      // Refresh usersByUid so Firestore rules recognize this session's CURRENT org,
-      // WAIT for the write to land on the server, and force a FRESH ID token BEFORE
-      // opening the org-filtered subscriptions (rules read usersByUid + token
-      // server-side; without this, org reads race → PERMISSION_DENIED).
+      // Refresh usersByUid so Firestore rules recognize this session's CURRENT org
+      // AVANT d'ouvrir les abonnements filtrés (les règles lisent usersByUid côté
+      // serveur). La persistance hors-ligne n'est PAS activée : `await setDoc` ne se
+      // résout donc qu'une fois l'écriture confirmée par le serveur → inutile de
+      // relire (getDocFromServer) ou de forcer un nouveau jeton (getIdToken(true)),
+      // qui n'ajoutaient que 1 à 3 s d'attente à CHAQUE connexion. Le filet de
+      // sécurité scheduleHeal rattrape la rare course restante.
       if (sessionUser) {
         try {
           const ubRef = wsDoc('usersByUid', user.uid);
@@ -407,8 +410,6 @@ export function AppProvider({ children }) {
             userId: String(sessionUser.id), orgId: sessionUser.orgId || 'default', role: sessionUser.role,
             updatedAt: new Date().toISOString(),
           }, { merge: true });
-          await getDocFromServer(ubRef);
-          try { await user.getIdToken(true); } catch { /* ignore */ }
         } catch (e) { console.warn('[usersByUid sync]', e?.code || e?.message); }
       }
       if (cancelled) { unsubs.forEach((u) => u()); return; }

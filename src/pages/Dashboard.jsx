@@ -7,6 +7,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { canView } from '../lib/permissions';
 import { computeMonthMetrics, monthLabelNow } from '../lib/monthMetrics';
+import RecoveryStats from '../components/RecoveryStats';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
@@ -154,6 +155,7 @@ export default function Dashboard() {
       })),
   ];
   const [chartPeriod, setChartPeriod] = useState('Mensuel');
+  const [showRecovery, setShowRecovery] = useState(false);
 
   const activeContracts = contracts.filter((c) => c.status === 'Actif').length;
   const expiringSoon = contracts.filter(c => {
@@ -542,6 +544,27 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Statistiques de recouvrement (repliable) — masqué sans accès Finances */}
+      {canFinance && (
+        <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
+          <button
+            onClick={() => setShowRecovery((v) => !v)}
+            className="w-full px-md py-md flex items-center justify-between hover:bg-surface-container-low transition-colors"
+          >
+            <h3 className="font-h3 text-h3 text-on-surface flex items-center gap-2">
+              <Icon name="query_stats" className="text-primary" />
+              Statistiques de recouvrement
+            </h3>
+            <Icon name={showRecovery ? 'expand_less' : 'expand_more'} className="text-on-surface-variant" />
+          </button>
+          {showRecovery && (
+            <div className="px-md pb-md pt-1 border-t border-outline-variant/20">
+              <RecoveryStats payments={payments} contracts={contracts} tenants={tenants} months={12} />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Urgent tickets */}
       {tickets.filter((t) => t.priority === 'Urgent').length > 0 && (
