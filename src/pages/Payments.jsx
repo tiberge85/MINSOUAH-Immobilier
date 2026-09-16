@@ -890,6 +890,34 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
     }
     return rent;
   };
+  // Une unité est-elle réellement LOUÉE ? (occupation réelle, indépendante d'un
+  // paiement du mois). On se base sur un contrat actif rattaché à l'unité, sinon
+  // sur le statut de l'unité. Corrige le rapport qui comptait « disponible » toute
+  // unité occupée mais sans paiement enregistré ce mois-ci.
+  const unitIsRented = (buildingName, unit) => {
+    const num = String(unit.number || '').trim().toLowerCase();
+    const bn = (buildingName || '').toLowerCase();
+    const hasContract = (contracts || []).some(c => {
+      if (c.status !== 'Actif' && c.status !== 'Expirant') return false;
+      const pn = (c.propertyName || '').toLowerCase();
+      if (num) {
+        // n° d'unité présent comme token distinct (évite « S1 » ⊂ « S15 »)
+        const esc = num.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const tokenRe = new RegExp('(^|[^a-z0-9])' + esc + '([^a-z0-9]|$)');
+        return (!bn || pn.includes(bn)) && tokenRe.test(pn);
+      }
+      return bn && pn.includes(bn); // bien simple (sans n° d'unité)
+    });
+    if (hasContract) return true;
+    const st = (unit.status || '').toLowerCase();
+    return st.includes('lou') || st.includes('occup'); // Loué / Occupé
+  };
+  const unitIsVacant = (buildingName, unit) => {
+    if (unitIsRented(buildingName, unit)) return false;
+    const st = (unit.status || '').toLowerCase();
+    if (st.includes('maintenance') || st.includes('travaux')) return false; // ni loué ni disponible
+    return true; // Disponible / Libre / sans locataire
+  };
   const unitCatKey = (buildingName, unit) => {
     const type = (unit.type || '').toLowerCase();
     const nm = `${buildingName} ${unit.number || ''}`.toLowerCase();
@@ -902,8 +930,10 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
     const units = prop.isBuilding ? (prop.units || []) : [{ number: '', type: prop.type, rent: prop.rent }];
     units.forEach(u => {
       const key = unitCatKey(bName, u);
-      if (!CAT_META[key]) CAT_META[key] = { totalUnits: 0, _b: new Set(), _t: new Set(), _ids: new Set(), _rent: 0 };
+      if (!CAT_META[key]) CAT_META[key] = { totalUnits: 0, rented: 0, vacant: 0, _b: new Set(), _t: new Set(), _ids: new Set(), _rent: 0 };
       CAT_META[key].totalUnits++;
+      if (unitIsRented(bName, u)) CAT_META[key].rented++;
+      else if (unitIsVacant(bName, u)) CAT_META[key].vacant++;
       if (bName) CAT_META[key]._b.add(bName);
       if (u.type) CAT_META[key]._t.add(u.type);
       // Identifiant d'unité : n° d'unité (S1, S25…) ou, à défaut, nom du bien (Zabulon…)
@@ -991,6 +1021,22 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
     advCatCount[cat] = (advCatCount[cat] || 0) + 1;
   });
 
+  /* Nombre de CONTRATS ACTIFS par catégorie = occupation réelle la plus fiable
+     (un contrat actif = une unité louée), indépendante des paiements du mois et
+     du statut éventuellement oublié sur une unité. */
+  const activeCatCount = {};
+  (contracts || [])
+    .filter(c => c.status === 'Actif' || c.status === 'Expirant')
+    .forEach(c => {
+      const cat = getCategory({
+        propertyName: c.propertyName,
+        propertyType: c.propertyType,
+        propertyIcon: c.propertyIcon,
+        amount: c.rent,
+      });
+      activeCatCount[cat] = (activeCatCount[cat] || 0) + 1;
+    });
+
   const sortedCats = Object.keys(catMap).sort((a, b) => {
     const ai = CATEGORY_ORDER.indexOf(a);
     const bi = CATEGORY_ORDER.indexOf(b);
@@ -1026,9 +1072,18 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
     const paidAmt = data.paid.reduce((s, p) => s + (p.amount || 0), 0);
     const unpaidAmt = data.unpaid.reduce((s, p) => s + (p.amount || 0), 0);
     const totalAmt = paidAmt + unpaidAmt;
-    const occupied = data.paid.length + data.unpaid.length + (advCatCount[cat] || 0);
+    const occupiedPmt = data.paid.length + data.unpaid.length + (advCatCount[cat] || 0);
     const totalUnits = meta.totalUnits || null;
-    const disponibles = totalUnits !== null ? totalUnits - occupied : null;
+    // « Loué(s) » = occupation RÉELLE, jamais le nombre de paiements du mois (sinon
+    // une unité occupée mais non payée / payée en avance était comptée disponible).
+    // On prend le MAX de deux signaux fiables : unités marquées louées (statut ou
+    // contrat rattaché) ET nombre de contrats actifs de cette catégorie — puis on
+    // borne à totalUnits. Repli sur l'ancien calcul si aucun signal.
+    const rentedCount = Math.max(meta.rented || 0, activeCatCount[cat] || 0);
+    const occupied = totalUnits !== null
+      ? Math.min(totalUnits, rentedCount > 0 ? rentedCount : occupiedPmt)
+      : (rentedCount > 0 ? rentedCount : occupiedPmt);
+    const disponibles = totalUnits !== null ? Math.max(0, totalUnits - occupied) : null;
 
     const paidRows = data.paid.map(p => `<tr>
       <td>${p.propertyName || '—'}</td><td>${p.tenantName || '—'}</td>
@@ -1110,6 +1165,53 @@ function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], adv
   <tbody>${advRows}</tbody></table>
 </div>`;
   })() : '';
+
+  /* ── Loyers payés en AVANCE, ENCAISSÉS ce mois (pour un mois à venir) ──
+     Un locataire qui règle en septembre le loyer d'octobre : le paiement porte
+     le mois de loyer « Octobre », il n'apparaît donc pas dans les catégories du
+     rapport de septembre (qui suivent le mois de loyer). On l'affiche ici pour
+     tracer l'argent RÉELLEMENT reçu ce mois — y compris s'il a déjà été reversé
+     au propriétaire (colonne dédiée), afin qu'il ne « disparaisse » jamais. */
+  const anticipatedSection = (() => {
+    const mLabelToDate = (label) => {
+      const [mn, yr] = (label || '').split(' ');
+      const i = MONTH_NAMES.indexOf(mn);
+      return (i >= 0 && yr) ? new Date(Number(yr), i, 1) : null;
+    };
+    const reportStart = mLabelToDate(month);
+    if (!reportStart) return '';
+    const list = (allPayments || []).filter(p => {
+      if (p.status !== 'Payé') return false;
+      const pd = parsePaidDate(p.paidDate);
+      if (!pd) return false;
+      const pdStart = new Date(pd.getFullYear(), pd.getMonth(), 1);
+      if (pdStart.getTime() !== reportStart.getTime()) return false; // encaissé CE mois
+      const rentStart = mLabelToDate(p.month);
+      return rentStart && rentStart.getTime() > reportStart.getTime(); // couvre un mois FUTUR
+    }).sort((a, b) => (mLabelToDate(a.month)?.getTime() || 0) - (mLabelToDate(b.month)?.getTime() || 0));
+    if (list.length === 0) return '';
+    const tot = list.reduce((s, p) => s + (p.amount || 0), 0);
+    const reversedTot = list.filter(p => p.avanceVerseeProprio).reduce((s, p) => s + (p.amount || 0), 0);
+    const rows = list.map(p => `<tr>
+      <td>${p.propertyName || '—'}</td><td>${p.tenantName || '—'}</td>
+      <td style="text-align:right;font-weight:700;color:#0369a1">${fCFA(p.amount)}</td>
+      <td style="text-align:center;font-weight:600">${p.month || '—'}</td>
+      <td>${p.paidDate || '—'}</td>
+      <td style="text-align:center">${p.avanceVerseeProprio ? '<span style="color:#15803d;font-weight:700">✔ Reversé</span>' : '<span style="color:#92400e;font-weight:600">En caisse</span>'}</td>
+    </tr>`).join('');
+    return `<div class="cat-section" style="border-color:#bfdbfe">
+  <div class="cat-header" style="background:#eff6ff">
+    <div class="cat-title" style="color:#0369a1">💰 Loyers payés en avance — encaissés en ${month}</div>
+    <div class="cat-stats" style="flex-direction:column;align-items:flex-end;gap:4px">
+      <span class="badge" style="background:#dbeafe;color:#0369a1">${list.length} paiement(s) · ${fCFA(tot)}</span>
+      ${reversedTot > 0 ? `<span style="font-size:10px;color:#15803d">dont ${fCFA(reversedTot)} déjà reversé(s) au propriétaire</span>` : ''}
+      <span style="font-size:10px;color:#888">Argent reçu ce mois pour un mois à venir</span>
+    </div>
+  </div>
+  <table style="margin:0"><thead><tr><th>Propriété</th><th>Locataire</th><th style="text-align:right">Montant</th><th style="text-align:center">Couvre le mois</th><th>Payé le</th><th style="text-align:center">Statut</th></tr></thead>
+  <tbody>${rows}</tbody></table>
+</div>`;
+  })();
 
   /* ── Synthesis: per-category summary ── */
   const synthRows = sortedCats.map(cat => {
@@ -1264,6 +1366,8 @@ tbody tr:nth-child(even){background:#fdf9f5}
 ${categorySections}
 
 ${advanceSection}
+
+${anticipatedSection}
 
 <hr class="section-divider"/>
 
