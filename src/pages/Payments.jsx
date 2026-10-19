@@ -3287,6 +3287,13 @@ export default function Payments() {
     </div>
   );
 
+  // Lignes affichées dans l'onglet Cautions. En vue « À restituer », taper une
+  // recherche permet de retrouver N'IMPORTE QUEL locataire dont la caution est
+  // encore détenue (pas seulement les sortis auto-détectés) pour la restituer.
+  const depRowsToShow = (depToRefund && lq)
+    ? depositsList.filter(d => d.cautionAmount > 0 && !d.cautionRefunded && !d.depositVerseProprio && matchLS(d.tenantName, d.propertyName))
+    : depositsShown.filter(d => matchLS(d.tenantName, d.propertyName));
+
   return (
     <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl max-w-7xl mx-auto flex flex-col gap-gutter">
 
@@ -4017,7 +4024,7 @@ export default function Payments() {
             ))}
           </section>
 
-          {depositsShown.length > 0 && renderListSearch()}
+          {(depToRefund || depositsShown.length > 0) && renderListSearch(depToRefund ? 'Rechercher un locataire pour restituer sa caution…' : undefined)}
 
           <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
             <div className="overflow-x-auto">
@@ -4030,13 +4037,13 @@ export default function Payments() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/20">
-                  {depositsShown.length === 0 && (
+                  {depRowsToShow.length === 0 && (
                     <tr><td colSpan={8} className="text-center py-12 text-on-surface-variant">
-                      <Icon name="savings" size={36} className="opacity-30 mb-2" /><p>{depToRefund ? 'Aucune caution à restituer' : (depAllMonths ? 'Aucune caution ni avance enregistrée' : `Aucune caution ni avance encaissée en ${selectedMonth}`)}</p>
-                      <p className="text-xs mt-1">{depToRefund ? 'Les cautions des locataires sortis (contrat résilié) apparaissent ici tant qu\'elles ne sont pas restituées ou versées au propriétaire.' : (depAllMonths ? '' : "Les cautions apparaissent le mois d'entrée du locataire — cliquez « Tous les mois » pour en retrouver une plus ancienne.")}</p>
+                      <Icon name="savings" size={36} className="opacity-30 mb-2" /><p>{depToRefund ? (lq ? `Aucun locataire trouvé pour « ${listSearch.trim()} »` : 'Aucune caution à restituer') : (depAllMonths ? 'Aucune caution ni avance enregistrée' : `Aucune caution ni avance encaissée en ${selectedMonth}`)}</p>
+                      <p className="text-xs mt-1">{depToRefund ? (lq ? 'La recherche porte sur tous les locataires dont la caution est encore détenue — vérifiez l\'orthographe du nom.' : 'Les cautions des locataires sortis (contrat résilié) apparaissent ici automatiquement. Utilisez la recherche ci-dessus pour restituer la caution d\'un autre locataire.') : (depAllMonths ? '' : "Les cautions apparaissent le mois d'entrée du locataire — cliquez « Tous les mois » pour en retrouver une plus ancienne.")}</p>
                     </td></tr>
                   )}
-                  {depositsShown.filter(d => matchLS(d.tenantName, d.propertyName)).map(d => (
+                  {depRowsToShow.map(d => (
                     <tr key={d.tenantId} className="hover:bg-surface-container-low transition-colors">
                       <td className="px-4 py-3.5">
                         <p className="font-semibold text-sm text-on-surface">{d.tenantName}</p>
