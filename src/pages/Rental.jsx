@@ -128,10 +128,18 @@ export default function Rental() {
   const isFormerTenant = (t) => tenantsResilie.has(normN(t.name)) && !tenantsWithContract.has(normN(t.name));
   // Nouveau locataire = date d'entrée dans le mois en cours.
   const _now = new Date();
-  const isNewThisMonth = (t) => {
-    if (!t.since) return false;
-    const d = new Date(t.since);
+  const _inThisMonth = (val) => {
+    if (!val) return false;
+    const d = new Date(val);
     return !isNaN(d.getTime()) && d.getMonth() === _now.getMonth() && d.getFullYear() === _now.getFullYear();
+  };
+  // « Nouveau ce mois » : entrée (Depuis) ce mois, OU fiche créée ce mois, OU
+  // contrat actif démarré ce mois — pour attraper un locataire ajouté/signé ce
+  // mois même si sa date « Depuis » est vide ou antérieure.
+  const isNewThisMonth = (t) => {
+    if (_inThisMonth(t.since) || _inThisMonth(t.createdAt)) return true;
+    const c = contracts.find(c => normN(c.tenant) === normN(t.name) && (c.status === 'Actif' || c.status === 'Expirant'));
+    return !!c && (_inThisMonth(c.startDate) || _inThisMonth(c.since) || _inThisMonth(c.createdAt));
   };
   const matchSearch = (t) => !normQ || normN(t.name).includes(normQ) || normN(t.property || '').includes(normQ) || (t.phone || '').replace(/\s+/g, '').includes(q.replace(/\s+/g, '')) || normN(t.email || '').includes(normQ);
   // Onglet « Locataires » : uniquement les ACTIFS (les sortis ont leur propre onglet).
