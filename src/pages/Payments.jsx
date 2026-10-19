@@ -844,7 +844,7 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
 }
 
 /* ── Monthly Report HTML ──────────────────────────────────────────────────── */
-function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], advance = [], contracts = [], expenses = [], properties = []) {
+function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], advance = [], contracts = [], expenses = [], properties = [], cautionsRefunded = 0) {
   const org = orgSettings || {};
   const orgLogo  = org.logo  || '';
   const orgStamp = org.stamp || '';
@@ -1380,6 +1380,7 @@ ${anticipatedSection}
       <div class="synth-kpi"><div class="synth-kpi-l">Commission Minsouah</div><div class="synth-kpi-v" style="color:#b45309">${Number(totalCommission).toLocaleString('fr-FR')}</div><div class="synth-kpi-s">FCFA</div></div>
       <div class="synth-kpi" style="background:#f0fdf4"><div class="synth-kpi-l">Net propriétaires</div><div class="synth-kpi-v" style="color:#15803d">${Number(totalNetOwner).toLocaleString('fr-FR')}</div><div class="synth-kpi-s">FCFA</div></div>
       <div class="synth-kpi"><div class="synth-kpi-l">Total dépenses</div><div class="synth-kpi-v" style="color:#b91c1c">${Number(totalExpenses).toLocaleString('fr-FR')}</div><div class="synth-kpi-s">FCFA</div></div>
+      ${cautionsRefunded > 0 ? `<div class="synth-kpi"><div class="synth-kpi-l">Cautions restituées</div><div class="synth-kpi-v" style="color:#0369a1">${Number(cautionsRefunded).toLocaleString('fr-FR')}</div><div class="synth-kpi-s">FCFA · ce mois</div></div>` : ''}
       <div class="synth-kpi" style="background:${netResult >= 0 ? '#f0fdf4' : '#fef2f2'}"><div class="synth-kpi-l">Résultat net</div><div class="synth-kpi-v" style="color:${netColor}">${netResult >= 0 ? '+' : ''}${Number(netResult).toLocaleString('fr-FR')}</div><div class="synth-kpi-s">FCFA</div></div>
     </div>
 
@@ -2252,6 +2253,11 @@ export default function Payments() {
   /* ── Cautions & avances : saisies sur la fiche du locataire à l'entrée ──
      Rapport séparé (onglet dédié) + inclusion dans le rapport global. */
   const depositsList = useMemo(() => {
+    // Locataires SORTIS : contrat résilié et aucun contrat actif/expirant → leur
+    // caution encore détenue est « à restituer ».
+    const _n = s => (s || '').toString().toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const _active = new Set((contracts || []).filter(c => c.status === 'Actif' || c.status === 'Expirant').map(c => _n(c.tenant)));
+    const _resilie = new Set((contracts || []).filter(c => c.status === 'Résilié').map(c => _n(c.tenant)));
     return (tenants || [])
       .map(t => {
         const cautionAmount = Number(t.cautionAmount) || 0;
@@ -2298,11 +2304,12 @@ export default function Payments() {
           cautionRefundDate: t.cautionRefundDate || '',
           depositVerseProprio: !!t.depositVerseProprio,
           depositVerseDate: t.depositVerseDate || '',
+          departed: _resilie.has(_n(t.name)) && !_active.has(_n(t.name)),
         };
       })
       .filter(Boolean)
       .sort((a, b) => (b.cautionAmount + b.advanceAmount) - (a.cautionAmount + a.advanceAmount));
-  }, [tenants]);
+  }, [tenants, contracts]);
 
   const depositsTotals = useMemo(() => ({
     cautionHeld:     depositsList.filter(d => !d.cautionRefunded).reduce((s, d) => s + d.cautionAmount, 0),
@@ -2333,8 +2340,22 @@ export default function Payments() {
   // Basculer entre « le mois sélectionné » et « toutes les cautions » — pour
   // retrouver et restituer la caution d'un locataire quel que soit son mois d'entrée.
   const [depAllMonths, setDepAllMonths] = useState(false);
-  const depositsShown = depAllMonths ? depositsList : depositsThisMonth;
-  const depositsTotalsShown = depAllMonths ? depositsTotals : depositsTotalsMonth;
+  const [depToRefund, setDepToRefund] = useState(false);
+  // Caution « à restituer » : locataire sorti (contrat résilié), caution encore
+  // détenue (ni restituée, ni versée au propriétaire).
+  const _isARestituer = (d) => d.departed && d.cautionAmount > 0 && !d.cautionRefunded && !d.depositVerseProprio;
+  const depositsToRefund = useMemo(() => depositsList.filter(_isARestituer), [depositsList]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toRefundTotal = depositsToRefund.reduce((s, d) => s + d.cautionAmount, 0);
+  // Cautions restituées dont la DATE DE RESTITUTION tombe dans le mois sélectionné
+  // (c'est ça « combien restitué ce mois » dans les rapports).
+  const cautionsRefundedThisMonth = useMemo(() =>
+    depositsList.filter(d => d.cautionRefunded && depMonthLabel(d.cautionRefundDate) === selectedMonth)
+      .reduce((s, d) => s + d.cautionAmount, 0),
+    [depositsList, selectedMonth]); // eslint-disable-line react-hooks/exhaustive-deps
+  const depositsShown = depToRefund ? depositsToRefund : (depAllMonths ? depositsList : depositsThisMonth);
+  const depositsTotalsShown = depToRefund
+    ? { cautionHeld: toRefundTotal, cautionRefunded: 0, advanceTotal: 0, grandTotal: toRefundTotal }
+    : (depAllMonths ? depositsTotals : depositsTotalsMonth);
 
   const toggleCautionRefund = (d) => {
     const tenant = (tenants || []).find(t => String(t.id) === String(d.tenantId));
@@ -2900,7 +2921,7 @@ export default function Payments() {
   };
 
   const handlePrintReport = () => {
-    const html = buildReportHTML(selectedMonth, reportPaid, reportUnpaid, orgSettings, payments, reportAdvance, contracts, monthExpenses, properties);
+    const html = buildReportHTML(selectedMonth, reportPaid, reportUnpaid, orgSettings, payments, reportAdvance, contracts, monthExpenses, properties, cautionsRefundedThisMonth);
     const win = window.open('', '_blank', 'width=900,height=700');
     if (win) { win.document.write(html); win.document.close(); }
   };
@@ -3867,26 +3888,34 @@ export default function Payments() {
         <div className="flex flex-col gap-md">
           <div className="flex items-center justify-between flex-wrap gap-sm">
             <div>
-              <h3 className="font-bold text-on-surface text-base">Cautions & avances — {depAllMonths ? 'toutes les cautions' : selectedMonth}</h3>
+              <h3 className="font-bold text-on-surface text-base">Cautions & avances — {depToRefund ? 'à restituer' : (depAllMonths ? 'toutes les cautions' : selectedMonth)}</h3>
               <p className="text-sm text-on-surface-variant mt-0.5">
-                {depositsShown.length} locataire(s){depAllMonths ? '' : ' entré(s) ce mois'} · Total : <span className="font-bold text-primary">{fmt(depositsTotalsShown.grandTotal)}</span>
+                {depToRefund
+                  ? <>{depositsShown.length} caution(s) de locataire(s) sorti(s) · À restituer : <span className="font-bold text-error">{fmt(toRefundTotal)}</span></>
+                  : <>{depositsShown.length} locataire(s){depAllMonths ? '' : ' entré(s) ce mois'} · Total : <span className="font-bold text-primary">{fmt(depositsTotalsShown.grandTotal)}</span></>}
               </p>
             </div>
-            <div className="flex gap-sm">
-              <Btn icon={depAllMonths ? 'calendar_month' : 'apps'} variant="secondary" onClick={() => setDepAllMonths(v => !v)}>
-                {depAllMonths ? `Mois (${selectedMonth})` : 'Tous les mois'}
+            <div className="flex gap-sm flex-wrap">
+              <Btn icon="assignment_return" variant={depToRefund ? 'primary' : 'secondary'} onClick={() => setDepToRefund(v => !v)}>
+                À restituer{depositsToRefund.length ? ` (${depositsToRefund.length})` : ''}
               </Btn>
+              {!depToRefund && (
+                <Btn icon={depAllMonths ? 'calendar_month' : 'apps'} variant="secondary" onClick={() => setDepAllMonths(v => !v)}>
+                  {depAllMonths ? `Mois (${selectedMonth})` : 'Tous les mois'}
+                </Btn>
+              )}
               {depositsShown.length > 0 && (
                 <Btn icon="picture_as_pdf" variant="secondary" onClick={handlePrintDeposits}>Exporter PDF</Btn>
               )}
             </div>
           </div>
 
-          <section className="grid grid-cols-2 lg:grid-cols-4 gap-md">
+          <section className="grid grid-cols-2 lg:grid-cols-5 gap-md">
             {[
               { label: 'Cautions détenues', value: fmt(depositsTotalsShown.cautionHeld), icon: 'shield', cls: 'bg-primary/10 text-primary' },
+              { label: 'À restituer', value: fmt(toRefundTotal), icon: 'assignment_return', cls: 'bg-error/10 text-error' },
+              { label: `Restituées en ${selectedMonth.split(' ')[0]}`, value: fmt(cautionsRefundedThisMonth), icon: 'undo', cls: 'bg-green-100 text-green-700' },
               { label: 'Avances encaissées', value: fmt(depositsTotalsShown.advanceTotal), icon: 'event_available', cls: 'bg-blue-100 text-blue-700' },
-              { label: 'Cautions restituées', value: fmt(depositsTotalsShown.cautionRefunded), icon: 'undo', cls: 'bg-green-100 text-green-700' },
               { label: 'Total encaissé', value: fmt(depositsTotalsShown.grandTotal), icon: 'savings', cls: 'bg-amber-100 text-amber-700' },
             ].map(s => (
               <div key={s.label} className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-center gap-md">
@@ -3914,8 +3943,8 @@ export default function Payments() {
                 <tbody className="divide-y divide-outline-variant/20">
                   {depositsShown.length === 0 && (
                     <tr><td colSpan={8} className="text-center py-12 text-on-surface-variant">
-                      <Icon name="savings" size={36} className="opacity-30 mb-2" /><p>{depAllMonths ? 'Aucune caution ni avance enregistrée' : `Aucune caution ni avance encaissée en ${selectedMonth}`}</p>
-                      <p className="text-xs mt-1">{depAllMonths ? '' : "Les cautions apparaissent le mois d'entrée du locataire — cliquez « Tous les mois » pour en retrouver une plus ancienne."}</p>
+                      <Icon name="savings" size={36} className="opacity-30 mb-2" /><p>{depToRefund ? 'Aucune caution à restituer' : (depAllMonths ? 'Aucune caution ni avance enregistrée' : `Aucune caution ni avance encaissée en ${selectedMonth}`)}</p>
+                      <p className="text-xs mt-1">{depToRefund ? 'Les cautions des locataires sortis (contrat résilié) apparaissent ici tant qu\'elles ne sont pas restituées ou versées au propriétaire.' : (depAllMonths ? '' : "Les cautions apparaissent le mois d'entrée du locataire — cliquez « Tous les mois » pour en retrouver une plus ancienne.")}</p>
                     </td></tr>
                   )}
                   {depositsShown.filter(d => matchLS(d.tenantName, d.propertyName)).map(d => (
@@ -3938,7 +3967,9 @@ export default function Payments() {
                           {d.cautionAmount > 0 ? (
                             d.cautionRefunded
                               ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 w-fit"><Icon name="check_circle" size={13} /> Restituée{d.cautionRefundDate ? ` · ${new Date(d.cautionRefundDate).toLocaleDateString('fr-CI')}` : ''}</span>
-                              : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 w-fit"><Icon name="lock" size={13} /> Détenue</span>
+                              : _isARestituer(d)
+                                ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-error/10 text-error w-fit"><Icon name="assignment_return" size={13} /> À restituer (sorti)</span>
+                                : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 w-fit"><Icon name="lock" size={13} /> Détenue</span>
                           ) : <span className="text-on-surface-variant text-xs">—</span>}
                           {d.depositVerseProprio && (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 w-fit"><Icon name="real_estate_agent" size={13} /> Versé propriétaire{d.depositVerseDate ? ` · ${new Date(d.depositVerseDate).toLocaleDateString('fr-CI')}` : ''}</span>
