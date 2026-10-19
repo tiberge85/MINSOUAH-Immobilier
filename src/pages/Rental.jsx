@@ -10,7 +10,7 @@ import TenantFinancialStatement from '../components/TenantFinancialStatement';
 import { openContractReport } from '../lib/contractReport';
 import { can } from '../lib/permissions';
 
-const TABS = ['Contrats', 'Locataires', 'Propriétaires'];
+const TABS = ['Contrats', 'Locataires', 'Anciens locataires', 'Propriétaires'];
 const CONTRACT_STATUSES = ['Tous', 'Actif', 'Expirant', 'Brouillon', 'Résilié'];
 const COLORS = ['bg-primary-container text-on-primary-container', 'bg-secondary-container text-on-secondary-container', 'bg-tertiary-container text-on-tertiary-container', 'bg-error-container text-on-error-container'];
 const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
@@ -123,11 +123,28 @@ export default function Rental() {
   const contractStatusCount = (s) => s === 'Tous' ? contracts.length : contracts.filter(c => c.status === s).length;
   const normQ = normN(q);
   const tenantsWithContract = useMemo(() => new Set(contracts.filter(c => c.status === 'Actif' || c.status === 'Expirant').map(c => normN(c.tenant))), [contracts]);
+  // Locataires SORTIS : au moins un contrat « Résilié » et AUCUN contrat actif/expirant.
+  const tenantsResilie = useMemo(() => new Set(contracts.filter(c => c.status === 'Résilié').map(c => normN(c.tenant))), [contracts]);
+  const isFormerTenant = (t) => tenantsResilie.has(normN(t.name)) && !tenantsWithContract.has(normN(t.name));
+  // Nouveau locataire = date d'entrée dans le mois en cours.
+  const _now = new Date();
+  const isNewThisMonth = (t) => {
+    if (!t.since) return false;
+    const d = new Date(t.since);
+    return !isNaN(d.getTime()) && d.getMonth() === _now.getMonth() && d.getFullYear() === _now.getFullYear();
+  };
+  const matchSearch = (t) => !normQ || normN(t.name).includes(normQ) || normN(t.property || '').includes(normQ) || (t.phone || '').replace(/\s+/g, '').includes(q.replace(/\s+/g, '')) || normN(t.email || '').includes(normQ);
+  // Onglet « Locataires » : uniquement les ACTIFS (les sortis ont leur propre onglet).
   const filteredTenants = tenants.filter(t => {
+    if (isFormerTenant(t)) return false;
     if (tFilter === 'Avec contrat' && !tenantsWithContract.has(normN(t.name))) return false;
     if (tFilter === 'Sans contrat' && tenantsWithContract.has(normN(t.name))) return false;
-    return !normQ || normN(t.name).includes(normQ) || normN(t.property || '').includes(normQ) || (t.phone || '').replace(/\s+/g, '').includes(q.replace(/\s+/g, '')) || normN(t.email || '').includes(normQ);
+    if (tFilter === 'Nouveaux ce mois' && !isNewThisMonth(t)) return false;
+    return matchSearch(t);
   }).sort((a, b) => tSort ? normN(a.name).localeCompare(normN(b.name)) : 0);
+  // Onglet « Anciens locataires » : les sortis, filtrés par la recherche.
+  const formerTenants = tenants.filter(t => isFormerTenant(t) && matchSearch(t))
+    .sort((a, b) => normN(a.name).localeCompare(normN(b.name)));
   const filteredOwners = owners.filter(o => o.name.toLowerCase().includes(q));
   // Revenu propriétaire RECALCULÉ en direct depuis ses biens (loyers additionnés en
   // nombres) — répare aussi l'affichage des fiches dont le revenu stocké est corrompu
@@ -144,9 +161,11 @@ export default function Rental() {
 
   // Compteurs des filtres locataires (avec / sans contrat)
   const tenantFilterCount = (f) => {
-    if (f === 'Avec contrat') return tenants.filter(t => tenantsWithContract.has(normN(t.name))).length;
-    if (f === 'Sans contrat') return tenants.filter(t => !tenantsWithContract.has(normN(t.name))).length;
-    return tenants.length;
+    const actifs = tenants.filter(t => !isFormerTenant(t));
+    if (f === 'Avec contrat') return actifs.filter(t => tenantsWithContract.has(normN(t.name))).length;
+    if (f === 'Sans contrat') return actifs.filter(t => !tenantsWithContract.has(normN(t.name))).length;
+    if (f === 'Nouveaux ce mois') return actifs.filter(isNewThisMonth).length;
+    return actifs.length;
   };
 
   // ── Ouvrir les modales ─────────────────────────────────────────────────────
@@ -622,6 +641,77 @@ ${sectionsHtml}
     setImportLoading(false);
   };
 
+  // Carte d'un locataire — réutilisée pour les actifs et les anciens (sortis).
+  const renderTenantCard = (t, former = false) => {
+    const contract = former
+      ? (contracts.find(c => normN(c.tenant) === normN(t.name) && c.status === 'Résilié') || contracts.find(c => normN(c.tenant) === normN(t.name)))
+      : contracts.find(c => normN(c.tenant) === normN(t.name));
+    const rent = contract?.rent || allPropertyOptions.find(o => o.label === t.property)?.rent;
+    return (
+      <div key={t.id} className={`bg-surface rounded-2xl p-4 border shadow-sm group hover:shadow-md transition-shadow ${former ? 'border-error/30' : 'border-outline-variant/20'}`}>
+        <div className="flex items-center gap-3 mb-3">
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${t.color}`}>{t.initials}</div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-on-surface truncate">{t.name}</h3>
+            {former
+              ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-error-container text-on-error-container">Sorti{contract?.endDate ? ` le ${new Date(contract.endDate).toLocaleDateString('fr-CI')}` : ''}</span>
+              : <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${STATUS_BADGE[t.status] || ''}`}>{t.status}</span>}
+          </div>
+          <div className="flex items-center gap-1">
+            <button title="État financier du locataire" onClick={() => setFinTenant(t)}
+              className="flex items-center justify-center w-9 h-9 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary transition-colors">
+              <Icon name="account_balance_wallet" size={18} />
+            </button>
+            {canCreate && !former && (
+              <button title="Créer l'accès au portail locataire" onClick={() => createTenantAccess(t)}
+                className="flex items-center justify-center w-9 h-9 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-green-700 transition-colors">
+                <Icon name="person_add" size={18} />
+              </button>
+            )}
+            <button title="Documents du dossier" onClick={() => setDocsTenant(t)}
+              className="relative flex items-center justify-center w-9 h-9 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary transition-colors">
+              <Icon name="folder" size={18} />
+              {docCountByTenant[String(t.id)] > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-primary text-on-primary text-[10px] font-bold flex items-center justify-center">{docCountByTenant[String(t.id)]}</span>
+              )}
+            </button>
+            <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+              {!former && <IconBtn icon="qr_code" color="text-on-surface-variant" title="Portail locataire QR" onClick={() => { setQrTenant(t); setPortalToken(null); }} />}
+              {canEdit && <IconBtn icon="edit" color="text-primary" onClick={() => openEditTenant(t)} />}
+              {canDelete && <IconBtn icon="delete" color="text-error" onClick={() => setDeleteTarget({ type: 'tenant', data: t })} />}
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5 text-xs text-on-surface-variant">
+          <span className="flex items-center gap-1.5"><Icon name="mail" size={12} />{t.email || '—'}</span>
+          <span className="flex items-center gap-1.5"><Icon name="phone" size={12} />{t.phone || '—'}</span>
+          {(t.emergencyName || t.emergencyPhone) && (
+            <span className="flex items-center gap-1.5 text-error/80">
+              <Icon name="emergency" size={12} />{t.emergencyName || ''}{t.emergencyPhone ? ` — ${t.emergencyPhone}` : ''}
+            </span>
+          )}
+          <span className="flex items-center gap-1.5"><Icon name="apartment" size={12} /><span className="truncate">{t.property || '—'}</span></span>
+          {canFinance && rent && (
+            <span className="flex items-center gap-1.5 font-semibold text-primary">
+              <Icon name="payments" size={12} />{Number(rent).toLocaleString('fr-CI')} FCFA/mois
+            </span>
+          )}
+          <span className="flex items-center gap-1.5"><Icon name="calendar_today" size={12} />Depuis : {t.since || '—'}</span>
+          {contract?.endDate && (
+            <span className={`flex items-center gap-1.5 ${former ? 'text-error font-medium' : ''}`}>
+              <Icon name="event" size={12} />{former ? 'Sorti le' : 'Fin bail'} : {new Date(contract.endDate).toLocaleDateString('fr-CI')}
+            </span>
+          )}
+          {!former && t.paymentStartDate && (
+            <span className="flex items-center gap-1.5 text-amber-600 font-medium">
+              <Icon name="event_upcoming" size={12} />1er loyer : {new Date(t.paymentStartDate).toLocaleDateString('fr-CI')}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // ── Rendu ──────────────────────────────────────────────────────────────────
   return (
     <div className="px-4 md:px-6 pt-6 pb-20 max-w-7xl mx-auto">
@@ -656,7 +746,10 @@ ${sectionsHtml}
       <div className="flex items-end gap-2 mb-6">
         <div className="flex items-center gap-1 border-b border-outline-variant/30 overflow-x-auto no-scrollbar flex-1 min-w-0">
           {TABS.map(t => {
-            const count = t === 'Contrats' ? contracts.length : t === 'Locataires' ? tenants.length : owners.length;
+            const count = t === 'Contrats' ? contracts.length
+              : t === 'Locataires' ? tenants.filter(x => !isFormerTenant(x)).length
+              : t === 'Anciens locataires' ? tenants.filter(isFormerTenant).length
+              : owners.length;
             return (
               <button key={t} onClick={() => { setTab(t); setSearch(''); setCFilter('Tous'); }}
                 className={`py-3 px-5 text-sm font-semibold whitespace-nowrap transition-all border-b-2 flex items-center gap-2 ${tab === t ? 'text-primary border-primary' : 'text-on-surface-variant border-transparent hover:text-on-surface'}`}>
@@ -758,7 +851,7 @@ ${sectionsHtml}
       {/* ── LOCATAIRES ──────────────────────────────────────────────────── */}
       {tab === 'Locataires' && (
         <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar items-center">
-          {['Tous', 'Avec contrat', 'Sans contrat'].map(f => {
+          {['Tous', 'Avec contrat', 'Sans contrat', 'Nouveaux ce mois'].map(f => {
             const active = tFilter === f;
             return (
               <button key={f} onClick={() => setTFilter(f)}
@@ -777,77 +870,27 @@ ${sectionsHtml}
       )}
       {tab === 'Locataires' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredTenants.map(t => (
-            <div key={t.id} className="bg-surface rounded-2xl p-4 border border-outline-variant/20 shadow-sm group hover:shadow-md transition-shadow">
-              <div className="flex items-center gap-3 mb-3">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${t.color}`}>{t.initials}</div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-on-surface truncate">{t.name}</h3>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${STATUS_BADGE[t.status] || ''}`}>{t.status}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button title="État financier du locataire" onClick={() => setFinTenant(t)}
-                    className="flex items-center justify-center w-9 h-9 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary transition-colors">
-                    <Icon name="account_balance_wallet" size={18} />
-                  </button>
-                  {canCreate && (
-                    <button title="Créer l'accès au portail locataire" onClick={() => createTenantAccess(t)}
-                      className="flex items-center justify-center w-9 h-9 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-green-700 transition-colors">
-                      <Icon name="person_add" size={18} />
-                    </button>
-                  )}
-                  <button title="Documents du dossier" onClick={() => setDocsTenant(t)}
-                    className="relative flex items-center justify-center w-9 h-9 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary transition-colors">
-                    <Icon name="folder" size={18} />
-                    {docCountByTenant[String(t.id)] > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-primary text-on-primary text-[10px] font-bold flex items-center justify-center">{docCountByTenant[String(t.id)]}</span>
-                    )}
-                  </button>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-                    <IconBtn icon="qr_code" color="text-on-surface-variant" title="Portail locataire QR" onClick={() => { setQrTenant(t); setPortalToken(null); }} />
-                    {canEdit && <IconBtn icon="edit" color="text-primary" onClick={() => openEditTenant(t)} />}
-                    {canDelete && <IconBtn icon="delete" color="text-error" onClick={() => setDeleteTarget({ type: 'tenant', data: t })} />}
-                  </div>
-                </div>
-              </div>
-              {(() => {
-                const contract = contracts.find(c => normN(c.tenant) === normN(t.name));
-                const rent = contract?.rent || allPropertyOptions.find(o => o.label === t.property)?.rent;
-                return (
-                  <div className="flex flex-col gap-1.5 text-xs text-on-surface-variant">
-                    <span className="flex items-center gap-1.5"><Icon name="mail" size={12} />{t.email || '—'}</span>
-                    <span className="flex items-center gap-1.5"><Icon name="phone" size={12} />{t.phone || '—'}</span>
-                    {(t.emergencyName || t.emergencyPhone) && (
-                      <span className="flex items-center gap-1.5 text-error/80">
-                        <Icon name="emergency" size={12} />{t.emergencyName || ''}{t.emergencyPhone ? ` — ${t.emergencyPhone}` : ''}
-                      </span>
-                    )}
-                    <span className="flex items-center gap-1.5"><Icon name="apartment" size={12} /><span className="truncate">{t.property || '—'}</span></span>
-                    {canFinance && rent && (
-                      <span className="flex items-center gap-1.5 font-semibold text-primary">
-                        <Icon name="payments" size={12} />{Number(rent).toLocaleString('fr-CI')} FCFA/mois
-                      </span>
-                    )}
-                    <span className="flex items-center gap-1.5"><Icon name="calendar_today" size={12} />Depuis : {t.since || '—'}</span>
-                    {contract?.endDate && (
-                      <span className="flex items-center gap-1.5">
-                        <Icon name="event" size={12} />Fin bail : {new Date(contract.endDate).toLocaleDateString('fr-CI')}
-                      </span>
-                    )}
-                    {t.paymentStartDate && (
-                      <span className="flex items-center gap-1.5 text-amber-600 font-medium">
-                        <Icon name="event_upcoming" size={12} />1er loyer : {new Date(t.paymentStartDate).toLocaleDateString('fr-CI')}
-                      </span>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-          ))}
+          {filteredTenants.map(t => renderTenantCard(t, false))}
           {filteredTenants.length === 0 && (
             <div className="col-span-3 text-center py-12 text-on-surface-variant text-sm">Aucun locataire trouvé</div>
           )}
         </div>
+      )}
+
+      {/* ── ANCIENS LOCATAIRES (contrats résiliés) ──────────────────────── */}
+      {tab === 'Anciens locataires' && (
+        <>
+          <div className="mb-4 flex items-start gap-2 text-xs text-on-surface-variant bg-surface-container rounded-xl p-3 border border-outline-variant/20">
+            <Icon name="info" size={16} className="text-primary mt-0.5 flex-shrink-0" />
+            <span>Locataires dont le contrat a été <strong>résilié</strong> (plus aucun contrat actif). Leur dossier et leurs documents restent accessibles via l'icône <Icon name="folder" size={12} className="inline align-middle" />.</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {formerTenants.map(t => renderTenantCard(t, true))}
+            {formerTenants.length === 0 && (
+              <div className="col-span-3 text-center py-12 text-on-surface-variant text-sm">Aucun locataire sorti pour le moment</div>
+            )}
+          </div>
+        </>
       )}
 
       {/* ── PROPRIÉTAIRES ───────────────────────────────────────────────── */}
