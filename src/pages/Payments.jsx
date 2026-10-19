@@ -844,7 +844,7 @@ function buildGlobalReportHTML({ currentMonth, contracts = [], payments = [], ar
 }
 
 /* ── Monthly Report HTML ──────────────────────────────────────────────────── */
-function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], advance = [], contracts = [], expenses = [], properties = [], cautionsRefunded = 0) {
+function buildReportHTML(month, paid, unpaid, orgSettings, allPayments = [], advance = [], contracts = [], expenses = [], properties = [], cautionsRefunded = 0, refundedList = []) {
   const org = orgSettings || {};
   const orgLogo  = org.logo  || '';
   const orgStamp = org.stamp || '';
@@ -1408,6 +1408,43 @@ ${anticipatedSection}
         ${expenses.length > 0 ? `<tr style="font-weight:800;background:#fef2f2"><td colspan="2">Total dépenses</td><td style="text-align:right;color:#b91c1c">${Number(totalExpenses).toLocaleString('fr-FR')}</td></tr>` : ''}
       </tbody>
     </table>
+
+    ${(() => {
+      const list = refundedList || [];
+      if (!list.length) return '';
+      const sum = (f) => list.reduce((s, d) => s + (Number(f(d)) || 0), 0);
+      const totSolde   = sum(d => d.cautionAmount);
+      const totRetenu  = sum(d => d.cautionRetenu || 0);
+      const totRendu   = sum(d => (d.cautionRestitue != null ? d.cautionRestitue : d.cautionAmount));
+      const rows = list.map(d => {
+        const retenu = d.cautionRetenu || 0;
+        const rendu  = (d.cautionRestitue != null ? d.cautionRestitue : d.cautionAmount);
+        const dt     = d.cautionRefundDate ? new Date(d.cautionRefundDate).toLocaleDateString('fr-FR') : '—';
+        const motif  = (d.cautionTravaux || '').trim();
+        return `<tr>
+          <td>${d.cautionRefundTenant || d.tenantName || ''}${d.propertyName ? `<div style="font-size:11px;color:#777">${d.propertyName}</div>` : ''}</td>
+          <td style="text-align:right">${fCFA(d.cautionAmount)}</td>
+          <td style="text-align:right;color:#b45309">${retenu ? fCFA(retenu) : '—'}${motif ? `<div style="font-size:11px;color:#777;text-align:right">${motif}</div>` : ''}</td>
+          <td style="text-align:right;color:#15803d;font-weight:700">${fCFA(rendu)}</td>
+          <td style="text-align:center">${dt}</td>
+        </tr>`;
+      }).join('');
+      return `
+    <div class="synth-sub" style="color:#0369a1">Cautions restituées — le point du mois (${list.length})</div>
+    <table>
+      <thead><tr><th>Locataire / Propriété</th><th style="text-align:right">Caution soldée</th><th style="text-align:right">Retenu travaux</th><th style="text-align:right">Restitué au locataire</th><th style="text-align:center">Date</th></tr></thead>
+      <tbody>
+        ${rows}
+        <tr style="font-weight:800;background:#eff6ff">
+          <td>Total</td>
+          <td style="text-align:right;color:#0f766e">${fCFA(totSolde)}</td>
+          <td style="text-align:right;color:#b45309">${fCFA(totRetenu)}</td>
+          <td style="text-align:right;color:#15803d">${fCFA(totRendu)}</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>`;
+    })()}
 
     <div class="trend-title">Évolution du taux de recouvrement — 6 derniers mois</div>
     ${trendSVG}
@@ -2302,6 +2339,12 @@ export default function Payments() {
           nextPaymentDate,
           cautionRefunded: !!t.cautionRefunded,
           cautionRefundDate: t.cautionRefundDate || '',
+          cautionRefundTenant: t.cautionRefundTenant || '',
+          cautionRetenu: Number(t.cautionRetenu) || 0,
+          cautionTravaux: t.cautionTravaux || '',
+          cautionRestitue: (t.cautionRestitue != null && t.cautionRestitue !== '')
+            ? (Number(t.cautionRestitue) || 0)
+            : (cautionAmount - (Number(t.cautionRetenu) || 0)),
           depositVerseProprio: !!t.depositVerseProprio,
           depositVerseDate: t.depositVerseDate || '',
           departed: _resilie.has(_n(t.name)) && !_active.has(_n(t.name)),
@@ -2348,26 +2391,72 @@ export default function Payments() {
   const toRefundTotal = depositsToRefund.reduce((s, d) => s + d.cautionAmount, 0);
   // Cautions restituées dont la DATE DE RESTITUTION tombe dans le mois sélectionné
   // (c'est ça « combien restitué ce mois » dans les rapports).
-  const cautionsRefundedThisMonth = useMemo(() =>
-    depositsList.filter(d => d.cautionRefunded && depMonthLabel(d.cautionRefundDate) === selectedMonth)
-      .reduce((s, d) => s + d.cautionAmount, 0),
+  const cautionsRefundedMonthList = useMemo(() =>
+    depositsList.filter(d => d.cautionRefunded && depMonthLabel(d.cautionRefundDate) === selectedMonth),
     [depositsList, selectedMonth]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Total des cautions « soldées » ce mois (montant de la caution, pour la synthèse).
+  const cautionsRefundedThisMonth = cautionsRefundedMonthList.reduce((s, d) => s + d.cautionAmount, 0);
+  // Détail « le point » : ce qui a été réellement rendu au locataire et ce qui a
+  // été retenu pour travaux, sur le mois sélectionné.
+  const cautionsRestitueThisMonth = cautionsRefundedMonthList.reduce((s, d) => s + (d.cautionRestitue != null ? d.cautionRestitue : d.cautionAmount), 0);
+  const cautionsRetenuThisMonth   = cautionsRefundedMonthList.reduce((s, d) => s + (d.cautionRetenu || 0), 0);
   const depositsShown = depToRefund ? depositsToRefund : (depAllMonths ? depositsList : depositsThisMonth);
   const depositsTotalsShown = depToRefund
     ? { cautionHeld: toRefundTotal, cautionRefunded: 0, advanceTotal: 0, grandTotal: toRefundTotal }
     : (depAllMonths ? depositsTotals : depositsTotalsMonth);
 
-  const toggleCautionRefund = (d) => {
+  // ── Restitution de caution : modale permettant de choisir à qui on restitue,
+  //    de retenir une partie pour des travaux (avec motif) et de voir ce qui
+  //    reste à rendre au locataire. ──────────────────────────────────────────
+  const [refundModal, setRefundModal] = useState(null); // { d }
+  const [refundForm, setRefundForm]   = useState({ tenantName: '', retenu: '', travaux: '', date: '' });
+
+  const openRefund = (d) => {
+    setRefundForm({
+      tenantName: d.cautionRefundTenant || d.tenantName || '',
+      retenu:     d.cautionRetenu ? String(d.cautionRetenu) : '',
+      travaux:    d.cautionTravaux || '',
+      date:       d.cautionRefundDate || new Date().toISOString().split('T')[0],
+    });
+    setRefundModal({ d });
+  };
+
+  const saveRefund = () => {
+    const d = refundModal?.d; if (!d) return;
     const tenant = (tenants || []).find(t => String(t.id) === String(d.tenantId));
     if (!tenant) return;
-    const nowRefunded = !d.cautionRefunded;
-    if (nowRefunded && !window.confirm(`Marquer la caution de ${d.tenantName} comme restituée ?`)) return;
+    const retenu   = Math.max(0, Math.min(Number(refundForm.retenu) || 0, d.cautionAmount));
+    const restitue = Math.max(0, d.cautionAmount - retenu);
     dispatch({
       type: 'UPDATE_TENANT',
       payload: {
         ...tenant,
-        cautionRefunded: nowRefunded,
-        cautionRefundDate: nowRefunded ? new Date().toISOString().split('T')[0] : '',
+        cautionRefunded:     true,
+        cautionRefundDate:   refundForm.date || new Date().toISOString().split('T')[0],
+        cautionRefundTenant: (refundForm.tenantName || '').trim() || d.tenantName,
+        cautionRetenu:       retenu,
+        cautionTravaux:      (refundForm.travaux || '').trim(),
+        cautionRestitue:     restitue,
+      },
+    });
+    setRefundModal(null);
+  };
+
+  // Annule une restitution déjà marquée (remet la caution « à restituer »).
+  const cancelCautionRefund = (d) => {
+    const tenant = (tenants || []).find(t => String(t.id) === String(d.tenantId));
+    if (!tenant) return;
+    if (!window.confirm(`Annuler la restitution de la caution de ${d.tenantName} ? La caution repassera « à restituer ».`)) return;
+    dispatch({
+      type: 'UPDATE_TENANT',
+      payload: {
+        ...tenant,
+        cautionRefunded: false,
+        cautionRefundDate: '',
+        cautionRefundTenant: '',
+        cautionRetenu: 0,
+        cautionTravaux: '',
+        cautionRestitue: 0,
       },
     });
   };
@@ -2921,7 +3010,7 @@ export default function Payments() {
   };
 
   const handlePrintReport = () => {
-    const html = buildReportHTML(selectedMonth, reportPaid, reportUnpaid, orgSettings, payments, reportAdvance, contracts, monthExpenses, properties, cautionsRefundedThisMonth);
+    const html = buildReportHTML(selectedMonth, reportPaid, reportUnpaid, orgSettings, payments, reportAdvance, contracts, monthExpenses, properties, cautionsRefundedThisMonth, cautionsRefundedMonthList);
     const win = window.open('', '_blank', 'width=900,height=700');
     if (win) { win.document.write(html); win.document.close(); }
   };
@@ -3966,7 +4055,16 @@ export default function Payments() {
                         <div className="flex flex-col gap-1">
                           {d.cautionAmount > 0 ? (
                             d.cautionRefunded
-                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 w-fit"><Icon name="check_circle" size={13} /> Restituée{d.cautionRefundDate ? ` · ${new Date(d.cautionRefundDate).toLocaleDateString('fr-CI')}` : ''}</span>
+                              ? <div className="flex flex-col gap-0.5 w-fit">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 w-fit"><Icon name="check_circle" size={13} /> Restituée{d.cautionRefundDate ? ` · ${new Date(d.cautionRefundDate).toLocaleDateString('fr-CI')}` : ''}</span>
+                                  {d.cautionRefundTenant && d.cautionRefundTenant !== d.tenantName && (
+                                    <span className="text-[11px] text-on-surface-variant">à : {d.cautionRefundTenant}</span>
+                                  )}
+                                  {d.cautionRetenu > 0 && (
+                                    <span className="text-[11px] text-amber-700" title={d.cautionTravaux || ''}>Retenu travaux : {fmt(d.cautionRetenu)}{d.cautionTravaux ? ` (${d.cautionTravaux})` : ''}</span>
+                                  )}
+                                  <span className="text-[11px] text-green-700 font-semibold">Rendu : {fmt(d.cautionRestitue != null ? d.cautionRestitue : d.cautionAmount)}</span>
+                                </div>
                               : _isARestituer(d)
                                 ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-error/10 text-error w-fit"><Icon name="assignment_return" size={13} /> À restituer (sorti)</span>
                                 : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 w-fit"><Icon name="lock" size={13} /> Détenue</span>
@@ -3979,10 +4077,21 @@ export default function Payments() {
                       <td className="px-4 py-3.5">
                         <div className="flex flex-col gap-1.5 items-start">
                           {d.cautionAmount > 0 && (
-                            <button onClick={() => toggleCautionRefund(d)}
-                              className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors whitespace-nowrap ${d.cautionRefunded ? 'border-outline-variant text-on-surface-variant hover:bg-surface-container-high' : 'border-green-600/30 text-green-700 hover:bg-green-50'}`}>
-                              {d.cautionRefunded ? 'Annuler restitution' : 'Marquer restituée'}
-                            </button>
+                            d.cautionRefunded
+                              ? <div className="flex gap-1.5">
+                                  <button onClick={() => openRefund(d)}
+                                    className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-green-600/30 text-green-700 hover:bg-green-50 transition-colors whitespace-nowrap">
+                                    Modifier
+                                  </button>
+                                  <button onClick={() => cancelCautionRefund(d)}
+                                    className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high transition-colors whitespace-nowrap">
+                                    Annuler
+                                  </button>
+                                </div>
+                              : <button onClick={() => openRefund(d)}
+                                  className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-green-600/30 text-green-700 hover:bg-green-50 transition-colors whitespace-nowrap">
+                                  Restituer…
+                                </button>
                           )}
                           {(d.cautionAmount > 0 || d.advanceAmount > 0) && (
                             <button onClick={() => toggleDepositVerse(d)}
@@ -4571,6 +4680,97 @@ export default function Payments() {
             <p className="text-sm text-on-surface-variant">Le statut passera en <strong>«&nbsp;En retard&nbsp;»</strong> et le compteur sera incrémenté.</p>
           </div>
         )}
+      </ModalWrap>
+
+      {/* ══════════════ MODAL: Restituer une caution ══════════════ */}
+      <ModalWrap
+        open={!!refundModal}
+        onClose={() => setRefundModal(null)}
+        title="Restituer la caution"
+        size="sm"
+        footer={
+          <>
+            <Btn variant="secondary" onClick={() => setRefundModal(null)}>Annuler</Btn>
+            <Btn icon="assignment_return" onClick={saveRefund}>Valider la restitution</Btn>
+          </>
+        }
+      >
+        {refundModal && (() => {
+          const d = refundModal.d;
+          const retenu = Math.max(0, Math.min(Number(refundForm.retenu) || 0, d.cautionAmount));
+          const restitue = Math.max(0, d.cautionAmount - retenu);
+          return (
+            <div className="flex flex-col gap-4">
+              <div className="bg-surface-container rounded-xl px-4 py-3 text-sm">
+                <p className="font-semibold text-on-surface">{d.tenantName}</p>
+                <p className="text-on-surface-variant text-xs">{d.propertyName}</p>
+                <p className="text-on-surface-variant text-xs mt-1">Caution détenue : <strong className="text-on-surface">{fmt(d.cautionAmount)}</strong></p>
+              </div>
+
+              <Field label="Restituée à (nom du bénéficiaire)">
+                <input
+                  type="text"
+                  value={refundForm.tenantName}
+                  onChange={e => setRefundForm(f => ({ ...f, tenantName: e.target.value }))}
+                  placeholder={d.tenantName}
+                  className={inputCls}
+                  list="refund-tenant-names"
+                />
+                <datalist id="refund-tenant-names">
+                  {(tenants || []).map(t => <option key={t.id} value={t.name || ''} />)}
+                </datalist>
+              </Field>
+
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Montant retenu pour travaux (FCFA)">
+                  <input
+                    type="number"
+                    min="0"
+                    max={d.cautionAmount}
+                    value={refundForm.retenu}
+                    onChange={e => setRefundForm(f => ({ ...f, retenu: e.target.value }))}
+                    placeholder="0"
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label="Date de restitution">
+                  <input
+                    type="date"
+                    value={refundForm.date}
+                    onChange={e => setRefundForm(f => ({ ...f, date: e.target.value }))}
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
+
+              <Field label="Détail / motif des travaux (optionnel)">
+                <textarea
+                  rows={2}
+                  value={refundForm.travaux}
+                  onChange={e => setRefundForm(f => ({ ...f, travaux: e.target.value }))}
+                  placeholder="Ex : peinture, remise en état plomberie…"
+                  className={inputCls}
+                />
+              </Field>
+
+              <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 flex flex-col gap-1.5">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-on-surface-variant">Caution</span>
+                  <span className="font-semibold text-on-surface">{fmt(d.cautionAmount)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-on-surface-variant">− Retenu travaux</span>
+                  <span className="font-semibold text-amber-700">{fmt(retenu)}</span>
+                </div>
+                <div className="h-px bg-green-200 my-0.5" />
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-green-800">Reste à restituer</span>
+                  <span className="font-bold text-green-800 text-lg">{fmt(restitue)}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </ModalWrap>
 
       {/* ══════════════ MODAL: Modifier un paiement ══════════════ */}
