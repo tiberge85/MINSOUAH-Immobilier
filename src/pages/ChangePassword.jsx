@@ -4,6 +4,8 @@ import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 import Icon from '../components/Icon';
 import { hashPwd, verifyPwd } from '../lib/auth';
+import { updatePassword } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 
 const WELCOME_GUIDES = {
   ORGANIZATION_ADMIN: {
@@ -202,6 +204,17 @@ export default function ChangePassword() {
 
     setLoading(true);
     const hashedNext = await hashPwd(next);
+    // Synchroniser AUSSI le mot de passe Firebase Auth avec le nouveau. Sinon
+    // Firebase garde le mot de passe temporaire : à la connexion suivante,
+    // l'utilisateur saisit son nouveau mot de passe, Firebase le refuse, et il
+    // retombe sur l'authentification de secours sans vraie session Firebase.
+    // L'utilisateur vient de se connecter (session récente) donc updatePassword
+    // ne requiert pas de ré-authentification ici.
+    try {
+      if (auth.currentUser) await updatePassword(auth.currentUser, next);
+    } catch (e) {
+      console.warn('[ChangePassword] updatePassword Firebase', e?.code || e?.message);
+    }
     dispatch({ type: 'CHANGE_PASSWORD', payload: { email: user.email, newPassword: hashedNext } });
     toast('Mot de passe modifié avec succès !', 'success');
     const dest =

@@ -89,7 +89,13 @@ service cloud.firestore {
                             && (isSuperAdmin(wsId)
                                 || (isOrgAdmin(wsId)
                                     && resource.data.orgId == callerOrgId(wsId))
-                                || resource.data.id == callerMeta(wsId).userId);
+                                // Un utilisateur peut modifier SA PROPRE fiche (ex. mot de
+                                // passe à la première connexion). L'id du document est un
+                                // nombre (Date.now()) et usersByUid.userId une chaîne : on
+                                // compare en TEXTE des deux côtés, sinon la règle échoue
+                                // (nombre == chaîne) et le changement de mot de passe est
+                                // refusé → l'utilisateur reste bloqué à « Première connexion ».
+                                || string(resource.data.id) == string(callerMeta(wsId).userId));
     }
 
     // ── System settings ───────────────────────────────────────────────────────
