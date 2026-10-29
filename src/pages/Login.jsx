@@ -5,7 +5,7 @@ import { verifyPwd } from '../lib/auth';
 import { isLicenseValid } from '../lib/licenses';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, setDoc, getDocFromServer, collection, getDocs } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { auth, db, authReady } from '../lib/firebase';
 import { sendOTP, verifyOTP } from '../lib/otp';
 import { logSec, SEC } from '../lib/securityLog';
 
@@ -209,6 +209,10 @@ export default function Login() {
     setLoading(true);
 
     try {
+      // Garantir que la persistance « locale » est active AVANT de se connecter,
+      // sinon la session Firebase peut ne pas survivre au rechargement (« revient
+      // à la connexion ») sur certains navigateurs.
+      await authReady;
       const emailLow = email.trim().toLowerCase();
       let user = users.find((u) => (u.email || '').toLowerCase() === emailLow);
 

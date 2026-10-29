@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { getAuth, setPersistence, browserLocalPersistence, indexedDBLocalPersistence } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getDatabase } from 'firebase/database';
@@ -24,7 +24,22 @@ export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const rtdb = getDatabase(app);
 
-// Persist auth across browser sessions
-setPersistence(auth, browserLocalPersistence).catch(() => {});
+// Persist auth across browser sessions / reloads.
+// IMPORTANT : on EXPORTE une promesse `authReady` et on l'ATTEND avant toute
+// connexion (voir Login.jsx). Sinon, sur certains navigateurs (Safari/iOS,
+// confidentialité renforcée), signInWithEmailAndPassword pouvait partir AVANT
+// que la persistance « locale » soit active → la session Firebase n'était pas
+// stockée durablement et, au rechargement, l'utilisateur « revenait à la
+// connexion ». On tente IndexedDB (le plus robuste) puis on retombe sur
+// localStorage ; en dernier recours la session reste en mémoire (cas navigateur
+// très restreint) sans faire échouer l'application.
+export const authReady = (async () => {
+  try {
+    await setPersistence(auth, indexedDBLocalPersistence);
+  } catch {
+    try { await setPersistence(auth, browserLocalPersistence); }
+    catch (e) { console.warn('[auth persistence] indisponible — session en mémoire', e?.code || e?.message); }
+  }
+})();
 
 export default app;

@@ -9,7 +9,7 @@ import {
   EmailAuthProvider,
   reauthenticateWithCredential,
 } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { auth, authReady } from '../lib/firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -62,6 +62,7 @@ export function FirebaseAuthProvider({ children }) {
   const login = async (email, password) => {
     setError(null);
     try {
+      await authReady; // persistance locale active avant la connexion
       const cred = await signInWithEmailAndPassword(auth, email, password);
       // Update last login in Firestore
       await setDoc(doc(db, 'users', cred.user.uid), { lastLoginAt: serverTimestamp() }, { merge: true });
