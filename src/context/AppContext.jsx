@@ -793,18 +793,21 @@ export function AppProvider({ children }) {
           // navigateur. Sinon, si le localStorage ne survit pas au rechargement, la
           // reconstruction de session repart de l'agence principale et on « revient
           // toujours sur NORA ». activeOrgId est relu au démarrage (voir plus haut).
-          // IMPORTANT : on NE BLOQUE PAS le rechargement sur cette écriture — on la
-          // lance puis on recharge après un court délai (la requête part au serveur
-          // même si la page se recharge). Sinon un réseau lent faisait « tourner » le
-          // changement d'agence sans fin.
+          // On ATTEND que l'écriture soit prise en compte avant de recharger — sinon
+          // elle est annulée par le rechargement et l'agence ne change pas (on restait
+          // « bloqué sur MORIS »). Mais on BORNE l'attente (5 s max) pour ne jamais
+          // « tourner » sans fin sur un réseau lent : passé ce délai on recharge quand
+          // même (le localStorage prend le relais pour la session en cours).
           try {
             const uid = st.currentUser?.id;
             if (uid != null) {
-              updateDoc(wsDoc('users', uid), { activeOrgId: payload })
-                .catch((e) => console.warn('[SWITCH_ORG activeOrgId]', e?.code || e?.message));
+              await Promise.race([
+                updateDoc(wsDoc('users', uid), { activeOrgId: payload }).catch(() => {}),
+                new Promise((res) => setTimeout(res, 5000)),
+              ]);
             }
           } catch (e) { console.warn('[SWITCH_ORG activeOrgId]', e?.code || e?.message); }
-          setTimeout(() => window.location.reload(), 250);
+          window.location.reload();
           break;
         }
         case 'LOGOUT': {
