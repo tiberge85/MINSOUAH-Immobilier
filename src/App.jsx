@@ -1,4 +1,4 @@
-import { useState, Component } from 'react';
+import { useState, Component, lazy, Suspense } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider, useApp } from './context/AppContext';
@@ -11,34 +11,40 @@ import { auth } from './lib/firebase';
 import Layout from './components/Layout';
 import Icon from './components/Icon';
 
-// Direct imports — no lazy loading = no blank page flash during navigation
-import Login          from './pages/Login';
-import ChangePassword from './pages/ChangePassword';
-import Dashboard      from './pages/Dashboard';
-import Assets         from './pages/Assets';
-import Rental         from './pages/Rental';
-import Finance        from './pages/Finance';
-import Payments       from './pages/Payments';
-import Maintenance    from './pages/Maintenance';
-import Inbox          from './pages/Inbox';
-import TenantPortal   from './pages/TenantPortal';
-import OwnerPortal    from './pages/OwnerPortal';
-import Settings       from './pages/Settings';
-import Inspections    from './pages/Inspections';
-import ConciergePortal from './pages/ConciergePortal';
-import SuperAdmin     from './pages/SuperAdmin';
-import OrgRegistration from './pages/OrgRegistration';
-import Marketplace    from './pages/Marketplace';
-import Calendar      from './pages/Calendar';
-import Insurance     from './pages/Insurance';
-import PublicTenantPortal from './pages/PublicTenantPortal';
-import Referrers     from './pages/Referrers';
-import Prestataires  from './pages/Prestataires';
-import Reports       from './pages/Reports';
-import Bordereaux    from './pages/Bordereaux';
-import RevenusMinsouah from './pages/RevenusMinsouah';
-import PublicBordereau from './pages/PublicBordereau';
-import PublicQuittance from './pages/PublicQuittance';
+// Login reste en import direct : c'est le premier écran, on le veut instantané.
+import Login from './pages/Login';
+
+// Les autres pages sont chargées À LA DEMANDE (code-splitting). Au lieu d'un seul
+// fichier de 2 Mo à télécharger avant d'afficher quoi que ce soit, chaque page a
+// désormais son propre petit fichier chargé seulement quand on l'ouvre → l'accès
+// à la plateforme est bien plus rapide. Un court écran de chargement s'affiche le
+// temps qu'une page se télécharge la première fois (voir <Suspense> plus bas).
+const ChangePassword     = lazy(() => import('./pages/ChangePassword'));
+const Dashboard          = lazy(() => import('./pages/Dashboard'));
+const Assets             = lazy(() => import('./pages/Assets'));
+const Rental             = lazy(() => import('./pages/Rental'));
+const Finance            = lazy(() => import('./pages/Finance'));
+const Payments           = lazy(() => import('./pages/Payments'));
+const Maintenance        = lazy(() => import('./pages/Maintenance'));
+const Inbox              = lazy(() => import('./pages/Inbox'));
+const TenantPortal       = lazy(() => import('./pages/TenantPortal'));
+const OwnerPortal        = lazy(() => import('./pages/OwnerPortal'));
+const Settings           = lazy(() => import('./pages/Settings'));
+const Inspections        = lazy(() => import('./pages/Inspections'));
+const ConciergePortal    = lazy(() => import('./pages/ConciergePortal'));
+const SuperAdmin         = lazy(() => import('./pages/SuperAdmin'));
+const OrgRegistration    = lazy(() => import('./pages/OrgRegistration'));
+const Marketplace        = lazy(() => import('./pages/Marketplace'));
+const Calendar           = lazy(() => import('./pages/Calendar'));
+const Insurance          = lazy(() => import('./pages/Insurance'));
+const PublicTenantPortal = lazy(() => import('./pages/PublicTenantPortal'));
+const Referrers          = lazy(() => import('./pages/Referrers'));
+const Prestataires       = lazy(() => import('./pages/Prestataires'));
+const Reports            = lazy(() => import('./pages/Reports'));
+const Bordereaux         = lazy(() => import('./pages/Bordereaux'));
+const RevenusMinsouah    = lazy(() => import('./pages/RevenusMinsouah'));
+const PublicBordereau    = lazy(() => import('./pages/PublicBordereau'));
+const PublicQuittance    = lazy(() => import('./pages/PublicQuittance'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -270,6 +276,7 @@ function AppRoutes() {
   if (state._bootstrapping) return <BootstrapScreen />;
 
   return (
+    <Suspense fallback={<BootstrapScreen />}>
     <Routes>
       {/* Public marketplace — accessible sans connexion */}
       <Route path="/marketplace" element={<Marketplace />} />
@@ -316,6 +323,7 @@ function AppRoutes() {
       <Route path="/superadmin" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><SuperAdmin /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 
