@@ -1,4 +1,4 @@
-import { useState, useEffect, Component, lazy, Suspense } from 'react';
+import { useState, Component } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider, useApp } from './context/AppContext';
@@ -11,91 +11,37 @@ import { auth } from './lib/firebase';
 import Layout from './components/Layout';
 import Icon from './components/Icon';
 
-// Login reste en import direct : c'est le premier écran, on le veut instantané.
-import Login from './pages/Login';
-
-// Les autres pages sont chargées À LA DEMANDE (code-splitting). Au lieu d'un seul
-// fichier de 2 Mo à télécharger avant d'afficher quoi que ce soit, chaque page a
-// désormais son propre petit fichier chargé seulement quand on l'ouvre → l'accès
-// à la plateforme est bien plus rapide. Un court écran de chargement s'affiche le
-// temps qu'une page se télécharge la première fois (voir <Suspense> plus bas).
-// Fonctions d'import (réutilisées pour le lazy ET pour le préchargement en
-// arrière-plan — voir usePrefetchPages plus bas).
-const load = {
-  ChangePassword:     () => import('./pages/ChangePassword'),
-  Dashboard:          () => import('./pages/Dashboard'),
-  Assets:             () => import('./pages/Assets'),
-  Rental:             () => import('./pages/Rental'),
-  Finance:            () => import('./pages/Finance'),
-  Payments:           () => import('./pages/Payments'),
-  Maintenance:        () => import('./pages/Maintenance'),
-  Inbox:              () => import('./pages/Inbox'),
-  TenantPortal:       () => import('./pages/TenantPortal'),
-  OwnerPortal:        () => import('./pages/OwnerPortal'),
-  Settings:           () => import('./pages/Settings'),
-  Inspections:        () => import('./pages/Inspections'),
-  ConciergePortal:    () => import('./pages/ConciergePortal'),
-  SuperAdmin:         () => import('./pages/SuperAdmin'),
-  OrgRegistration:    () => import('./pages/OrgRegistration'),
-  Marketplace:        () => import('./pages/Marketplace'),
-  Calendar:           () => import('./pages/Calendar'),
-  Insurance:          () => import('./pages/Insurance'),
-  PublicTenantPortal: () => import('./pages/PublicTenantPortal'),
-  Referrers:          () => import('./pages/Referrers'),
-  Prestataires:       () => import('./pages/Prestataires'),
-  Reports:            () => import('./pages/Reports'),
-  Bordereaux:         () => import('./pages/Bordereaux'),
-  RevenusMinsouah:    () => import('./pages/RevenusMinsouah'),
-  PublicBordereau:    () => import('./pages/PublicBordereau'),
-  PublicQuittance:    () => import('./pages/PublicQuittance'),
-};
-
-const ChangePassword     = lazy(load.ChangePassword);
-const Dashboard          = lazy(load.Dashboard);
-const Assets             = lazy(load.Assets);
-const Rental             = lazy(load.Rental);
-const Finance            = lazy(load.Finance);
-const Payments           = lazy(load.Payments);
-const Maintenance        = lazy(load.Maintenance);
-const Inbox              = lazy(load.Inbox);
-const TenantPortal       = lazy(load.TenantPortal);
-const OwnerPortal        = lazy(load.OwnerPortal);
-const Settings           = lazy(load.Settings);
-const Inspections        = lazy(load.Inspections);
-const ConciergePortal    = lazy(load.ConciergePortal);
-const SuperAdmin         = lazy(load.SuperAdmin);
-const OrgRegistration    = lazy(load.OrgRegistration);
-const Marketplace        = lazy(load.Marketplace);
-const Calendar           = lazy(load.Calendar);
-const Insurance          = lazy(load.Insurance);
-const PublicTenantPortal = lazy(load.PublicTenantPortal);
-const Referrers          = lazy(load.Referrers);
-const Prestataires       = lazy(load.Prestataires);
-const Reports            = lazy(load.Reports);
-const Bordereaux         = lazy(load.Bordereaux);
-const RevenusMinsouah    = lazy(load.RevenusMinsouah);
-const PublicBordereau    = lazy(load.PublicBordereau);
-const PublicQuittance    = lazy(load.PublicQuittance);
-
-// Précharge les pages courantes en arrière-plan APRÈS le premier affichage, pour
-// que la navigation soit instantanée (plus d'écran de chargement à chaque page)
-// sans alourdir le démarrage. Les pages rares (super-admin, inscription, portails
-// publics) ne sont pas préchargées.
-function usePrefetchPages() {
-  useEffect(() => {
-    const prefetch = () => {
-      ['Dashboard', 'Assets', 'Rental', 'Payments', 'Finance', 'Settings',
-       'Reports', 'Bordereaux', 'RevenusMinsouah', 'Calendar', 'Maintenance',
-       'Inbox', 'Inspections', 'Insurance', 'Referrers', 'Prestataires']
-        .forEach((k) => { try { load[k] && load[k](); } catch { /* ignore */ } });
-    };
-    const w = window;
-    const id = w.requestIdleCallback
-      ? w.requestIdleCallback(prefetch, { timeout: 3000 })
-      : setTimeout(prefetch, 1500);
-    return () => { try { w.cancelIdleCallback ? w.cancelIdleCallback(id) : clearTimeout(id); } catch { /* ignore */ } };
-  }, []);
-}
+// Imports directs (un seul fichier). Volontairement SANS code-splitting : sur un
+// réseau instable, des pages chargées « à la demande » peuvent échouer et bloquer
+// l'appli sur « Chargement… ». Un seul fichier se charge une fois puis tout
+// fonctionne sans redépendre du réseau — c'est le choix fiable ici.
+import Login          from './pages/Login';
+import ChangePassword from './pages/ChangePassword';
+import Dashboard      from './pages/Dashboard';
+import Assets         from './pages/Assets';
+import Rental         from './pages/Rental';
+import Finance        from './pages/Finance';
+import Payments       from './pages/Payments';
+import Maintenance    from './pages/Maintenance';
+import Inbox          from './pages/Inbox';
+import TenantPortal   from './pages/TenantPortal';
+import OwnerPortal    from './pages/OwnerPortal';
+import Settings       from './pages/Settings';
+import Inspections    from './pages/Inspections';
+import ConciergePortal from './pages/ConciergePortal';
+import SuperAdmin     from './pages/SuperAdmin';
+import OrgRegistration from './pages/OrgRegistration';
+import Marketplace    from './pages/Marketplace';
+import Calendar      from './pages/Calendar';
+import Insurance     from './pages/Insurance';
+import PublicTenantPortal from './pages/PublicTenantPortal';
+import Referrers     from './pages/Referrers';
+import Prestataires  from './pages/Prestataires';
+import Reports       from './pages/Reports';
+import Bordereaux    from './pages/Bordereaux';
+import RevenusMinsouah from './pages/RevenusMinsouah';
+import PublicBordereau from './pages/PublicBordereau';
+import PublicQuittance from './pages/PublicQuittance';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -323,14 +269,10 @@ function AppRoutes() {
   const { state } = useApp();
   const user = state.currentUser;
 
-  // Précharge les pages en arrière-plan pour une navigation instantanée.
-  usePrefetchPages();
-
   // Show global bootstrap screen before routing
   if (state._bootstrapping) return <BootstrapScreen />;
 
   return (
-    <Suspense fallback={<BootstrapScreen />}>
     <Routes>
       {/* Public marketplace — accessible sans connexion */}
       <Route path="/marketplace" element={<Marketplace />} />
@@ -377,7 +319,6 @@ function AppRoutes() {
       <Route path="/superadmin" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><SuperAdmin /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
-    </Suspense>
   );
 }
 
