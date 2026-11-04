@@ -1,4 +1,4 @@
-import { useState, Component, lazy, Suspense } from 'react';
+import { useState, useEffect, Component, lazy, Suspense } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider, useApp } from './context/AppContext';
@@ -19,32 +19,83 @@ import Login from './pages/Login';
 // désormais son propre petit fichier chargé seulement quand on l'ouvre → l'accès
 // à la plateforme est bien plus rapide. Un court écran de chargement s'affiche le
 // temps qu'une page se télécharge la première fois (voir <Suspense> plus bas).
-const ChangePassword     = lazy(() => import('./pages/ChangePassword'));
-const Dashboard          = lazy(() => import('./pages/Dashboard'));
-const Assets             = lazy(() => import('./pages/Assets'));
-const Rental             = lazy(() => import('./pages/Rental'));
-const Finance            = lazy(() => import('./pages/Finance'));
-const Payments           = lazy(() => import('./pages/Payments'));
-const Maintenance        = lazy(() => import('./pages/Maintenance'));
-const Inbox              = lazy(() => import('./pages/Inbox'));
-const TenantPortal       = lazy(() => import('./pages/TenantPortal'));
-const OwnerPortal        = lazy(() => import('./pages/OwnerPortal'));
-const Settings           = lazy(() => import('./pages/Settings'));
-const Inspections        = lazy(() => import('./pages/Inspections'));
-const ConciergePortal    = lazy(() => import('./pages/ConciergePortal'));
-const SuperAdmin         = lazy(() => import('./pages/SuperAdmin'));
-const OrgRegistration    = lazy(() => import('./pages/OrgRegistration'));
-const Marketplace        = lazy(() => import('./pages/Marketplace'));
-const Calendar           = lazy(() => import('./pages/Calendar'));
-const Insurance          = lazy(() => import('./pages/Insurance'));
-const PublicTenantPortal = lazy(() => import('./pages/PublicTenantPortal'));
-const Referrers          = lazy(() => import('./pages/Referrers'));
-const Prestataires       = lazy(() => import('./pages/Prestataires'));
-const Reports            = lazy(() => import('./pages/Reports'));
-const Bordereaux         = lazy(() => import('./pages/Bordereaux'));
-const RevenusMinsouah    = lazy(() => import('./pages/RevenusMinsouah'));
-const PublicBordereau    = lazy(() => import('./pages/PublicBordereau'));
-const PublicQuittance    = lazy(() => import('./pages/PublicQuittance'));
+// Fonctions d'import (réutilisées pour le lazy ET pour le préchargement en
+// arrière-plan — voir usePrefetchPages plus bas).
+const load = {
+  ChangePassword:     () => import('./pages/ChangePassword'),
+  Dashboard:          () => import('./pages/Dashboard'),
+  Assets:             () => import('./pages/Assets'),
+  Rental:             () => import('./pages/Rental'),
+  Finance:            () => import('./pages/Finance'),
+  Payments:           () => import('./pages/Payments'),
+  Maintenance:        () => import('./pages/Maintenance'),
+  Inbox:              () => import('./pages/Inbox'),
+  TenantPortal:       () => import('./pages/TenantPortal'),
+  OwnerPortal:        () => import('./pages/OwnerPortal'),
+  Settings:           () => import('./pages/Settings'),
+  Inspections:        () => import('./pages/Inspections'),
+  ConciergePortal:    () => import('./pages/ConciergePortal'),
+  SuperAdmin:         () => import('./pages/SuperAdmin'),
+  OrgRegistration:    () => import('./pages/OrgRegistration'),
+  Marketplace:        () => import('./pages/Marketplace'),
+  Calendar:           () => import('./pages/Calendar'),
+  Insurance:          () => import('./pages/Insurance'),
+  PublicTenantPortal: () => import('./pages/PublicTenantPortal'),
+  Referrers:          () => import('./pages/Referrers'),
+  Prestataires:       () => import('./pages/Prestataires'),
+  Reports:            () => import('./pages/Reports'),
+  Bordereaux:         () => import('./pages/Bordereaux'),
+  RevenusMinsouah:    () => import('./pages/RevenusMinsouah'),
+  PublicBordereau:    () => import('./pages/PublicBordereau'),
+  PublicQuittance:    () => import('./pages/PublicQuittance'),
+};
+
+const ChangePassword     = lazy(load.ChangePassword);
+const Dashboard          = lazy(load.Dashboard);
+const Assets             = lazy(load.Assets);
+const Rental             = lazy(load.Rental);
+const Finance            = lazy(load.Finance);
+const Payments           = lazy(load.Payments);
+const Maintenance        = lazy(load.Maintenance);
+const Inbox              = lazy(load.Inbox);
+const TenantPortal       = lazy(load.TenantPortal);
+const OwnerPortal        = lazy(load.OwnerPortal);
+const Settings           = lazy(load.Settings);
+const Inspections        = lazy(load.Inspections);
+const ConciergePortal    = lazy(load.ConciergePortal);
+const SuperAdmin         = lazy(load.SuperAdmin);
+const OrgRegistration    = lazy(load.OrgRegistration);
+const Marketplace        = lazy(load.Marketplace);
+const Calendar           = lazy(load.Calendar);
+const Insurance          = lazy(load.Insurance);
+const PublicTenantPortal = lazy(load.PublicTenantPortal);
+const Referrers          = lazy(load.Referrers);
+const Prestataires       = lazy(load.Prestataires);
+const Reports            = lazy(load.Reports);
+const Bordereaux         = lazy(load.Bordereaux);
+const RevenusMinsouah    = lazy(load.RevenusMinsouah);
+const PublicBordereau    = lazy(load.PublicBordereau);
+const PublicQuittance    = lazy(load.PublicQuittance);
+
+// Précharge les pages courantes en arrière-plan APRÈS le premier affichage, pour
+// que la navigation soit instantanée (plus d'écran de chargement à chaque page)
+// sans alourdir le démarrage. Les pages rares (super-admin, inscription, portails
+// publics) ne sont pas préchargées.
+function usePrefetchPages() {
+  useEffect(() => {
+    const prefetch = () => {
+      ['Dashboard', 'Assets', 'Rental', 'Payments', 'Finance', 'Settings',
+       'Reports', 'Bordereaux', 'RevenusMinsouah', 'Calendar', 'Maintenance',
+       'Inbox', 'Inspections', 'Insurance', 'Referrers', 'Prestataires']
+        .forEach((k) => { try { load[k] && load[k](); } catch { /* ignore */ } });
+    };
+    const w = window;
+    const id = w.requestIdleCallback
+      ? w.requestIdleCallback(prefetch, { timeout: 3000 })
+      : setTimeout(prefetch, 1500);
+    return () => { try { w.cancelIdleCallback ? w.cancelIdleCallback(id) : clearTimeout(id); } catch { /* ignore */ } };
+  }, []);
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -271,6 +322,9 @@ function ProtectedRoute({ children, allowedRoles, module }) {
 function AppRoutes() {
   const { state } = useApp();
   const user = state.currentUser;
+
+  // Précharge les pages en arrière-plan pour une navigation instantanée.
+  usePrefetchPages();
 
   // Show global bootstrap screen before routing
   if (state._bootstrapping) return <BootstrapScreen />;
