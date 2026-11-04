@@ -384,11 +384,15 @@ export function AppProvider({ children }) {
               id: me.id, role: me.role, name: me.name, initials: me.initials,
               email: me.email, color: me.color, avatar: me.avatar || null,
               personId: me.personId || null, firstLogin: me.firstLogin || false,
-              orgId: me.orgId || 'default',
+              // Agence active : on privilégie activeOrgId (dernière agence choisie,
+              // persistée côté serveur) sinon l'agence principale. Corrige le
+              // « changement d'agence qui revient toujours sur l'agence principale »
+              // quand le localStorage ne conserve pas le choix.
+              orgId: me.activeOrgId || me.orgId || 'default',
               orgIds: me.orgIds || [me.orgId || 'default'],
               permissions: me.permissions || null,
             };
-            if (me.role !== 'SUPER_ADMIN') sessionOrgId = me.orgId || null;
+            if (me.role !== 'SUPER_ADMIN') sessionOrgId = me.activeOrgId || me.orgId || null;
             try { localStorage.setItem(SESSION_KEY, JSON.stringify(sessionUser)); } catch { /* quota */ }
             setState((s) => ({ ...s, currentUser: sessionUser }));
             console.warn('[AppContext] session locale absente → reconstruite depuis Firebase Auth (' + emailLow + ')');
@@ -781,6 +785,14 @@ export function AppProvider({ children }) {
             const saved = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
             localStorage.setItem(SESSION_KEY, JSON.stringify({ ...saved, orgId: payload }));
           } catch { /* ignore */ }
+          // Mémoriser l'agence active DANS LA FICHE (serveur), pas seulement dans le
+          // navigateur. Sinon, si le localStorage ne survit pas au rechargement, la
+          // reconstruction de session repart de l'agence principale et on « revient
+          // toujours sur NORA ». activeOrgId est relu au démarrage (voir plus haut).
+          try {
+            const uid = st.currentUser?.id;
+            if (uid != null) await updateDoc(wsDoc('users', uid), { activeOrgId: payload });
+          } catch (e) { console.warn('[SWITCH_ORG activeOrgId]', e?.code || e?.message); }
           window.location.reload();
           break;
         }
