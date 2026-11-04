@@ -299,10 +299,14 @@ export function AppProvider({ children }) {
 
   // Track which essential collections have received their first snapshot
   const loadedRef = useRef(new Set());
-  // 'licenses' est ESSENTIEL : sans lui, la garde de route affiche « Accès suspendu »
-  // le temps que les licences arrivent (org/licence introuvables) puis « passe » —
-  // on attend donc leur chargement avant de terminer le démarrage.
-  const ESSENTIAL = ['users', 'organizations', 'licenses', 'properties', 'contracts', 'tenants', 'payments', 'owners'];
+  // On ne BLOQUE le démarrage que sur le strict nécessaire à l'affichage de la
+  // coquille et à la garde de route : l'utilisateur, les organisations et les
+  // licences ('licenses' évite un faux « Accès suspendu » le temps qu'elles
+  // arrivent). Les données métier (biens, contrats, locataires, paiements,
+  // propriétaires) continuent de se charger en ARRIÈRE-PLAN et remplissent les
+  // pages au fur et à mesure (onSnapshot) — ça évite l'écran « Chargement des
+  // données… » qui attendait TOUTES les collections avant d'afficher l'appli.
+  const ESSENTIAL = ['users', 'organizations', 'licenses'];
 
   const checkBootstrap = useCallback(() => {
     if (ESSENTIAL.every((c) => loadedRef.current.has(c))) {
