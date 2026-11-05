@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import * as XLSX from 'xlsx';
+import { loadXLSX } from '../lib/lazyXlsx';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
@@ -106,7 +106,8 @@ export default function RevenusMinsouah() {
     };
   });
 
-  const exportExcel = () => {
+  const exportExcel = async () => {
+    const XLSX = await loadXLSX();
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailRows()), 'Commissions');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(byOwner.map(o => ({ Propriétaire: o.name, 'Nb loyers': o.n, 'Brut': o.brut, 'Commission': o.commission }))), 'Par propriétaire');

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import * as XLSX from 'xlsx';
+import { loadXLSX } from '../lib/lazyXlsx';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Legend, PieChart, Pie, Cell,
@@ -481,7 +481,8 @@ export default function Finance() {
     setDeleteTxTarget(null);
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await loadXLSX();
     const data = filteredTx.map(t => ({
       'Date': t.date || '', 'Description': t.description || t.label || '',
       'Entité': t.entity || '', 'Montant (FCFA)': t.amount || 0,

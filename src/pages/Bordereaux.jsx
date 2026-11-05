@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import * as XLSX from 'xlsx';
+import { loadXLSX } from '../lib/lazyXlsx';
 import { QRCodeCanvas } from 'qrcode.react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { useApp } from '../context/AppContext';
@@ -191,7 +191,8 @@ export default function Bordereaux() {
     'Net reversé': b.totalNet || 0,
     'Créé par': b.createdBy?.userName || '',
   }));
-  const exportExcel = () => {
+  const exportExcel = async () => {
+    const XLSX = await loadXLSX();
     const ws = XLSX.utils.json_to_sheet(listToRows(filteredList));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Bordereaux');

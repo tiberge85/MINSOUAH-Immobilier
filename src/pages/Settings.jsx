@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
-import * as XLSX from 'xlsx';
+import { loadXLSX } from '../lib/lazyXlsx';
 import { hashPwd, verifyPwd } from '../lib/auth';
 import { auth } from '../lib/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
@@ -52,7 +52,8 @@ const TENANT_COLUMNS  = ['nom','prenom','email','telephone','bien','date_entree'
 const OWNER_COLUMNS   = ['nom','prenom','email','telephone','banque','iban','statut'];
 const PROPERTY_COLUMNS = ['nom','adresse','type','loyer','surface','pieces','statut'];
 
-function downloadTemplate(cols, filename) {
+async function downloadTemplate(cols, filename) {
+  const XLSX = await loadXLSX();
   const ws = XLSX.utils.aoa_to_sheet([cols]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Modèle');
@@ -233,8 +234,9 @@ export default function Settings() {
     setImportError('');
     setImportPreview(null);
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
+        const XLSX = await loadXLSX();
         const wb = XLSX.read(ev.target.result, { type: 'binary' });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });

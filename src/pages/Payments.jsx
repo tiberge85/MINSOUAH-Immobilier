@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import * as XLSX from 'xlsx';
+import { loadXLSX } from '../lib/lazyXlsx';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import SearchSelect from '../components/SearchSelect';
@@ -2906,7 +2906,8 @@ export default function Payments() {
   };
 
   // Export Excel des arriérés recouvrés, regroupés par locataire.
-  const handleExportArrearsRecoveredExcel = () => {
+  const handleExportArrearsRecoveredExcel = async () => {
+    const XLSX = await loadXLSX();
     const rows = [];
     recoveredByTenant.forEach(g => {
       g.payments.forEach(p => {
@@ -2935,7 +2936,8 @@ export default function Payments() {
 
   // Réconciliation du mois : tous les contrats actifs vs ce qui est réellement
   // enregistré (Payé / Impayé / Aucun) → pour repérer les paiements manquants.
-  const handleExportReconciliation = () => {
+  const handleExportReconciliation = async () => {
+    const XLSX = await loadXLSX();
     const norm = s => (s || '').toLowerCase().trim();
     const selStart = new Date(selMonthDate.getFullYear(), selMonthDate.getMonth(), 1);
     const active = (contracts || []).filter(c => c.status === 'Actif' || c.status === 'Expirant');
@@ -2978,7 +2980,8 @@ export default function Payments() {
     XLSX.writeFile(wb, `Reconciliation_${selectedMonth.replace(/\s/g, '_')}.xlsx`);
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await loadXLSX();
     const monthData = payments
       .filter(p => p.month === selectedMonth)
       .map(p => ({

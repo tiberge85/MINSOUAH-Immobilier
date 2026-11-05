@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
-import * as XLSX from 'xlsx';
+import { loadXLSX } from '../lib/lazyXlsx';
 import { QRCodeSVG } from 'qrcode.react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
@@ -408,7 +408,8 @@ ${sectionsHtml}
     win.onload = () => { win.focus(); win.print(); };
   };
 
-  const exportTenants = () => {
+  const exportTenants = async () => {
+    const XLSX = await loadXLSX();
     const fmtDate = (d) => {
       if (!d) return '';
       const dt = new Date(d);
@@ -526,7 +527,8 @@ ${sectionsHtml}
   const normalize = (s) =>
     String(s || '').toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-  const downloadTemplate = () => {
+  const downloadTemplate = async () => {
+    const XLSX = await loadXLSX();
     const wb = XLSX.utils.book_new();
     // Feuille 1 : format immeuble (comme OCCUPATION DES APPARTEMENTS)
     const ws1 = XLSX.utils.aoa_to_sheet([
@@ -552,8 +554,9 @@ ${sectionsHtml}
 
   const parseImportFile = (file) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
+        const XLSX = await loadXLSX();
         const data = new Uint8Array(e.target.result);
         const wb = XLSX.read(data, { type: 'array' });
         const allMapped = [];
