@@ -172,6 +172,7 @@ export default function AnnualReport() {
   const now = new Date();
 
   const [year, setYear] = useState(now.getFullYear());
+  const [scope, setScope] = useState(''); // '' = 1re agence ; 'ALL' = consolidé ; sinon un id d'agence
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
   const [result, setResult] = useState(null);
@@ -228,12 +229,12 @@ export default function AnnualReport() {
   }
 
   async function exportExcel() {
-    if (!result) return;
+    if (!result || !view) return;
     const XLSX = await loadXLSX();
     const wb = XLSX.utils.book_new();
-    const c = result.consolidated;
+    const c = view.d;
     const synth = [
-      [`RAPPORT D'EXERCICE ${result.year} — TOUTES AGENCES`], [],
+      [`RAPPORT D'EXERCICE ${result.year} — ${view.isAll ? 'TOUTES AGENCES' : (view.label || '').toUpperCase()}`], [],
       ['— RÉSULTAT MINSOUAH —', ''],
       ['Chiffre d\'affaires (commissions)', c.minsouah.ca],
       ['Charges de fonctionnement', c.minsouah.charges],
@@ -263,20 +264,33 @@ export default function AnnualReport() {
 
     const header = ['Mois', 'Loyers encaissés', 'Impayés', 'Recouv.%', 'Commission (CA)', 'Charges', 'Résultat Minsouah', 'Reversé proprio'];
     const rowsOf = (monthly) => monthly.map(m => [m.mois, m.collecte, m.impaye, m.recouvrement, m.commission, m.charges, m.resultat, m.reverse]);
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...rowsOf(c.monthly)]), 'Mensuel consolidé');
-    result.agencies.forEach(a => {
-      const safe = (a.name || 'Agence').replace(/[\\/?*[\]:]/g, ' ').slice(0, 28) || 'Agence';
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...rowsOf(a.data.monthly)]), safe);
-    });
-    XLSX.writeFile(wb, `Rapport_exercice_${result.year}_toutes_agences.xlsx`);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...rowsOf(c.monthly)]), view.isAll ? 'Mensuel consolidé' : 'Mensuel');
+    if (view.isAll) {
+      result.agencies.forEach(a => {
+        const safe = (a.name || 'Agence').replace(/[\\/?*[\]:]/g, ' ').slice(0, 28) || 'Agence';
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...rowsOf(a.data.monthly)]), safe);
+      });
+    }
+    const slug = (view.isAll ? 'toutes_agences' : (view.label || 'agence')).replace(/[^a-zA-Z0-9]+/g, '_');
+    XLSX.writeFile(wb, `Rapport_exercice_${result.year}_${slug}.xlsx`);
   }
 
   function exportPDF() {
-    if (!result) return;
-    const html = buildReportHTML(result, state.orgSettings || {});
+    if (!result || !view) return;
+    const html = buildReportHTML(view, result.year, state.orgSettings || {});
     const win = window.open('', '_blank', 'width=1000,height=800');
     if (win) { win.document.write(html); win.document.close(); } else alert('Autorisez les pop-ups pour le PDF.');
   }
+
+  // Portée affichée/exportée : une agence précise, ou le consolidé (« ALL »).
+  const effectiveScope = (scope === 'ALL' || (scope && agencies.some(a => a.id === scope)))
+    ? scope : (agencies[0]?.id || 'ALL');
+  const view = useMemo(() => {
+    if (!result) return null;
+    if (effectiveScope === 'ALL') return { d: result.consolidated, label: 'toutes agences', agencies: result.agencies, isAll: true };
+    const a = result.agencies.find(x => x.id === effectiveScope) || result.agencies[0];
+    return { d: a.data, label: a.name, agencies: [], isAll: false };
+  }, [result, effectiveScope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex flex-col gap-md">
@@ -297,10 +311,15 @@ export default function AnnualReport() {
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
-        <div className="flex-1 min-w-[180px]">
-          <p className="text-xs text-on-surface-variant">Agences incluses</p>
-          <p className="text-sm font-semibold text-on-surface">{agencies.map(a => a.name).join(', ') || '—'}</p>
+        <div>
+          <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Agence</label>
+          <select value={effectiveScope} onChange={e => setScope(e.target.value)}
+            className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest focus:outline-none focus:border-primary min-w-[200px]">
+            {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            {agencies.length > 1 && <option value="ALL">Toutes les agences (consolidé)</option>}
+          </select>
         </div>
+        <div className="flex-1" />
         <button onClick={generate} disabled={busy || !agencies.length}
           className="inline-flex items-center gap-2 bg-primary text-on-primary font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-primary/90 disabled:opacity-50">
           {busy ? <><Icon name="progress_activity" size={18} className="animate-spin" /> Génération…</>
@@ -311,20 +330,21 @@ export default function AnnualReport() {
       {progress && <p className="text-sm text-on-surface-variant flex items-center gap-2"><Icon name="progress_activity" size={16} className="animate-spin" /> {progress}</p>}
       {error && <div className="bg-error/10 border border-error/20 text-error rounded-xl px-4 py-3 text-sm">{error}</div>}
 
-      {result && (
+      {result && view && (
         <div className="flex flex-col gap-md">
           {result.skipped?.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm">
               Agence(s) non lue(s) (accès refusé) : {result.skipped.join(', ')}. Déconnectez-vous/reconnectez-vous une fois si besoin.
             </div>
           )}
-          <div className="flex gap-sm flex-wrap">
+          <div className="flex gap-sm flex-wrap items-center">
+            <span className="text-sm text-on-surface-variant mr-1">Rapport : <b className="text-on-surface">{view.isAll ? 'Toutes les agences (consolidé)' : view.label}</b></span>
             <button onClick={exportPDF} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2 text-sm hover:bg-outline-variant/30"><Icon name="picture_as_pdf" size={18} /> Exporter PDF</button>
             <button onClick={exportExcel} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2 text-sm hover:bg-outline-variant/30"><Icon name="table_view" size={18} /> Exporter Excel</button>
           </div>
-          <AgencyCard title={`Consolidé — toutes agences (${result.year})`} d={result.consolidated} highlight />
-          <Charts d={result.consolidated} year={result.year} />
-          {result.agencies.map(a => <AgencyCard key={a.id} title={a.name} d={a.data} />)}
+          <AgencyCard title={`${view.isAll ? 'Consolidé — toutes agences' : view.label} (${result.year})`} d={view.d} highlight />
+          <Charts d={view.d} year={result.year} />
+          {view.isAll && result.agencies.map(a => <AgencyCard key={a.id} title={a.name} d={a.data} />)}
         </div>
       )}
     </div>
@@ -454,10 +474,11 @@ function svgMonthly(monthly) {
 }
 
 /* ── HTML imprimable ── */
-function buildReportHTML(result, org) {
+function buildReportHTML(view, year, org) {
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
   const logo = org.logo || ''; const company = org.companyName || 'Minsouah';
-  const c = result.consolidated; const nextYear = result.year + 1;
+  const c = view.d; const nextYear = year + 1;
+  const scopeLabel = view.isAll ? 'Bilan consolidé · Toutes agences' : `Agence : ${view.label}`;
   const objectives = buildObjectives(nextYear, c);
 
   const monthTable = (monthly) => `
@@ -493,7 +514,7 @@ function buildReportHTML(result, org) {
     </div>
     ${monthTable(a.data.monthly)}`;
 
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Rapport d'exercice ${result.year}</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Rapport d'exercice ${year}</title>
   <style>
     *{box-sizing:border-box} body{font-family:'Segoe UI',Arial,sans-serif;color:#222;margin:0;padding:28px;font-size:12px}
     .head{display:flex;align-items:center;gap:14px;border-bottom:3px solid #785a00;padding-bottom:12px;margin-bottom:16px}
@@ -515,11 +536,11 @@ function buildReportHTML(result, org) {
     @media print{body{padding:0}}
   </style></head><body>
     <div class="head">${logo ? `<img src="${logo}"/>` : ''}<div>
-      <h1>Rapport d'exercice ${result.year}</h1>
-      <p>${company} — Bilan d'activité consolidé · Toutes agences · Édité le ${today}</p>
+      <h1>Rapport d'exercice ${year}${view.isAll ? '' : ' — ' + view.label}</h1>
+      <p>${company} — ${scopeLabel} · Édité le ${today}</p>
     </div></div>
 
-    <h2>Résultat de Minsouah ${result.year}</h2>
+    <h2>Résultat de Minsouah ${year}</h2>
     <div class="note">Le chiffre d'affaires de Minsouah correspond aux <b>commissions acquises</b> — et non aux loyers encaissés pour le compte des propriétaires, qui sont présentés séparément.</div>
     <div class="kgrid">
       ${kpi('CA — commissions', fCFA(c.minsouah.ca), '#b45309')}
@@ -558,14 +579,14 @@ function buildReportHTML(result, org) {
       <div class="pat-i"><span>Cautions restituées</span><b>${fNum(c.cautions.refundedYear)}</b></div>
     </div>
 
-    ${result.agencies.length > 1 ? '<h2>Détail par agence</h2>' + result.agencies.map(agencySection).join('') : ''}
+    ${view.isAll && view.agencies.length > 1 ? '<h2>Détail par agence</h2>' + view.agencies.map(agencySection).join('') : ''}
 
     <h2>Perspectives & objectifs ${nextYear}</h2>
     <div class="obj"><ul>${objectives.map(o => `<li>${o}</li>`).join('')}</ul>
-      <p style="font-size:10px;color:#777;margin:8px 0 0">Suggestions générées à partir des chiffres de l'exercice ${result.year}. À valider et ajuster en assemblée.</p>
+      <p style="font-size:10px;color:#777;margin:8px 0 0">Suggestions générées à partir des chiffres de l'exercice ${year}. À valider et ajuster en assemblée.</p>
     </div>
 
-    <div class="foot"><span>${company} — Document confidentiel (AG ${result.year})</span><span>${today}</span></div>
+    <div class="foot"><span>${company} — Document confidentiel (AG ${year})</span><span>${today}</span></div>
     <script>window.onload=()=>window.print()</script>
   </body></html>`;
 }
