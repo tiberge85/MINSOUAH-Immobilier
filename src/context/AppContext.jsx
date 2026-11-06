@@ -416,6 +416,9 @@ export function AppProvider({ children }) {
           const ubRef = wsDoc('usersByUid', user.uid);
           await setDoc(ubRef, {
             userId: String(sessionUser.id), orgId: sessionUser.orgId || 'default', role: sessionUser.role,
+            // orgIds : toutes les agences de l'utilisateur — permet aux règles
+            // Firestore d'autoriser la lecture multi-agences (rapport d'exercice).
+            orgIds: (sessionUser.orgIds && sessionUser.orgIds.length) ? sessionUser.orgIds : [sessionUser.orgId || 'default'],
             updatedAt: new Date().toISOString(),
           }, { merge: true });
         } catch (e) { console.warn('[usersByUid sync]', e?.code || e?.message); }
@@ -776,6 +779,7 @@ export function AppProvider({ children }) {
             try {
               await setDoc(wsDoc('usersByUid', fbUid), {
                 userId: String(u.id), orgId: u.orgId || 'default', role: u.role,
+                orgIds: (u.orgIds && u.orgIds.length) ? u.orgIds : [u.orgId || 'default'],
                 updatedAt: new Date().toISOString(),
               }, { merge: true });
             } catch { /* proceed anyway */ }

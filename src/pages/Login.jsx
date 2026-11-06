@@ -97,6 +97,7 @@ export default function Login() {
         const ubRef = doc(db, 'workspaces', WS, 'usersByUid', firebaseUid);
         await setDoc(ubRef, {
           userId: String(user.id), orgId: user.orgId || 'default',
+          orgIds: (user.orgIds && user.orgIds.length) ? user.orgIds : [user.orgId || 'default'],
           role: user.role, updatedAt: new Date().toISOString(),
         }, { merge: true });
         // Wait for the write to reach the server before the page reloads.

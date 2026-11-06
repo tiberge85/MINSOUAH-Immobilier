@@ -113,10 +113,17 @@ service cloud.firestore {
     }
 
     // ── Org-scoped collections ────────────────────────────────────────────────
+    // Agences de l'utilisateur (toutes), lues depuis usersByUid.orgIds.
+    function callerOrgIds(wsId) { return callerMeta(wsId).get('orgIds', []); }
+    // Le document appartient-il à l'agence active OU à l'une des agences de
+    // l'utilisateur ? (permet le rapport d'exercice « toutes agences »).
+    function inCallerOrgs(wsId, docOrgId) {
+      return docOrgId == callerOrgId(wsId) || (docOrgId in callerOrgIds(wsId));
+    }
     function allowOrgDoc(wsId) {
       return request.auth != null
              && (isSuperAdmin(wsId) || isStaff(wsId))
-             && (isSuperAdmin(wsId) || sameOrg(wsId, orgIdOf(resource, request)));
+             && (isSuperAdmin(wsId) || inCallerOrgs(wsId, orgIdOf(resource, request)));
     }
 
     match /workspaces/{wsId}/properties/{id}    { allow read, write: if allowOrgDoc(wsId); }
