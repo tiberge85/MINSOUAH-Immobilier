@@ -58,6 +58,15 @@ const COMMENT_FIELDS = [
   { key: 'conclusion', label: 'Conclusion', ph: 'Conclusion générale du rapport…' },
 ];
 const EMPTY_COMMENTS = Object.fromEntries(COMMENT_FIELDS.map(f => [f.key, '']));
+
+// Trame de la présentation d'Assemblée Générale (15 diapositives).
+const SLIDES = [
+  { n: 1, t: 'Page de couverture' }, { n: 2, t: 'Mot du gérant' }, { n: 3, t: 'Présentation de Minsouah' },
+  { n: 4, t: 'Portefeuille immobilier' }, { n: 5, t: 'Résultats financiers' }, { n: 6, t: 'Gestion locative' },
+  { n: 7, t: 'Situation des propriétaires' }, { n: 8, t: 'Recouvrement des loyers' }, { n: 9, t: 'Reversements propriétaires' },
+  { n: 10, t: 'Maintenance et travaux' }, { n: 11, t: 'Développement commercial' }, { n: 12, t: 'Difficultés et risques' },
+  { n: 13, t: 'Évaluation des performances' }, { n: 14, t: 'Plan stratégique N+1' }, { n: 15, t: 'Recommandations et décisions' },
+];
 const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const textToHTML = (s) => esc(s).split('\n').filter(l => l.trim()).map(l => `<p>${l}</p>`).join('') || '<p style="color:#aaa">—</p>';
 const textToList = (s) => { const items = esc(s).split('\n').map(l => l.trim()).filter(Boolean); return items.length ? '<ul>' + items.map(l => `<li>${l}</li>`).join('') + '</ul>' : '<p style="color:#aaa">—</p>'; };
@@ -196,6 +205,8 @@ export default function AnnualReport() {
   const [comments, setComments] = useState(EMPTY_COMMENTS);
   const [cmtSaving, setCmtSaving] = useState(false);
   const [cmtMsg, setCmtMsg] = useState('');
+  const [slides, setSlides] = useState(SLIDES.map(s => s.n)); // diapositives sélectionnées
+  const [showSlideSel, setShowSlideSel] = useState(false);
 
   const myOrgIds = useMemo(() => {
     const ids = user?.orgIds?.length ? user.orgIds : [user?.orgId].filter(Boolean);
@@ -344,6 +355,16 @@ export default function AnnualReport() {
     if (win) { win.document.write(html); win.document.close(); } else alert('Autorisez les pop-ups pour le PDF.');
   }
 
+  function exportSlidesPDF() {
+    if (!result || !view) return;
+    const sel = SLIDES.filter(s => slides.includes(s.n)).map(s => s.n);
+    if (!sel.length) { alert('Sélectionnez au moins une diapositive.'); return; }
+    const html = buildSlidesHTML(view, result.year, state.orgSettings || {}, comments, sel);
+    const win = window.open('', '_blank', 'width=1100,height=750');
+    if (win) { win.document.write(html); win.document.close(); } else alert('Autorisez les pop-ups pour le PDF.');
+  }
+  const toggleSlide = (n) => setSlides(s => s.includes(n) ? s.filter(x => x !== n) : [...s, n]);
+
   return (
     <div className="flex flex-col gap-md">
       <div>
@@ -394,7 +415,23 @@ export default function AnnualReport() {
             <button onClick={exportPDF} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2 text-sm hover:bg-outline-variant/30"><Icon name="picture_as_pdf" size={18} /> Synthèse PDF</button>
             <button onClick={exportExcel} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2 text-sm hover:bg-outline-variant/30"><Icon name="table_view" size={18} /> Exporter Excel</button>
             <button onClick={exportFullPDF} className="inline-flex items-center gap-2 bg-primary text-on-primary font-semibold rounded-lg px-4 py-2 text-sm hover:bg-primary/90"><Icon name="description" size={18} /> Rapport complet (PDF)</button>
+            <button onClick={exportSlidesPDF} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2 text-sm hover:bg-outline-variant/30"><Icon name="slideshow" size={18} /> Présentation AG (PDF)</button>
+            <button onClick={() => setShowSlideSel(v => !v)} className="inline-flex items-center gap-1 text-primary text-sm font-semibold px-2 py-2 hover:underline"><Icon name="tune" size={16} /> Diapos ({slides.length}/15)</button>
           </div>
+
+          {showSlideSel && (
+            <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 p-md">
+              <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Diapositives à inclure dans la présentation AG</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
+                {SLIDES.map(s => (
+                  <label key={s.n} className="flex items-center gap-2 text-sm text-on-surface cursor-pointer">
+                    <input type="checkbox" checked={slides.includes(s.n)} onChange={() => toggleSlide(s.n)} className="accent-primary" />
+                    <span className="text-on-surface-variant">{s.n}.</span> {s.t}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           <AgencyCard title={`${view.isAll ? 'Consolidé — toutes agences' : view.label} (${result.year})`} d={view.d} highlight />
           <Charts d={view.d} year={result.year} />
           {view.isAll && result.agencies.map(a => <AgencyCard key={a.id} title={a.name} d={a.data} />)}
@@ -763,6 +800,74 @@ function buildFullReportHTML(view, year, org, comments) {
       ${sec(18, 'Annexes statistiques — évolution mensuelle', mTable(c.monthly))}
       <div class="foot"><span>${company} — Rapport annuel de gestion ${year} (${scopeName})</span><span>${today}</span></div>
     </div>
+    <script>window.onload=()=>window.print()</script>
+  </body></html>`;
+}
+
+/* ── PRÉSENTATION AG (diapositives paysage, une par page) ── */
+function buildSlidesHTML(view, year, org, comments, selected) {
+  const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const logo = org.logo || ''; const company = org.companyName || 'Minsouah';
+  const c = view.d; const nextYear = year + 1; const cm = comments || {};
+  const scopeName = view.isAll ? 'Toutes les agences (consolidé)' : view.label;
+  const objectives = buildObjectives(nextYear, c);
+
+  const bk = (l, v, color) => `<div class="bk"><div class="bk-l">${l}</div><div class="bk-v" style="color:${color || '#222'}">${v}</div></div>`;
+  const grid = (items) => `<div class="bkgrid">${items.join('')}</div>`;
+  const txtBlock = (s) => `<div class="stxt">${textToHTML(s)}</div>`;
+  const listBlock = (s) => `<div class="stxt">${textToList(s)}</div>`;
+
+  const body = {
+    2: txtBlock(cm.motGerant),
+    3: txtBlock(cm.presentation) + grid([bk('Biens gérés', fNum(c.patrimoine.properties), '#785a00'), bk('Propriétaires', fNum(c.patrimoine.owners), '#0369a1'), bk('Locataires', fNum(c.patrimoine.tenants), '#0f766e')]),
+    4: grid([bk('Biens / Unités', `${c.patrimoine.properties} / ${c.patrimoine.units}`, '#785a00'), bk('Occupation', c.patrimoine.occupancy + '%', '#0369a1'), bk('Unités vacantes', fNum(c.patrimoine.vacant), '#b45309'), bk('Mandats actifs', fNum(c.patrimoine.activeContracts), '#15803d')]),
+    5: grid([bk('CA (commissions)', fCFA(c.minsouah.ca), '#b45309'), bk('Charges', fCFA(c.minsouah.charges), '#b91c1c'), bk('Résultat Minsouah', fCFA(c.minsouah.resultat), c.minsouah.resultat >= 0 ? '#15803d' : '#b91c1c')]) + `<div style="margin-top:10px">${svgMonthly(c.monthly)}</div>`,
+    6: grid([bk('Mandats actifs', fNum(c.patrimoine.activeContracts), '#15803d'), bk('Mandats résiliés', fNum(c.patrimoine.resilieContracts), '#b91c1c'), bk('Nouveaux contrats', fNum(c.patrimoine.newContracts), '#0369a1'), bk('Occupation', c.patrimoine.occupancy + '%', '#785a00')]),
+    7: grid([bk('Loyers collectés', fCFA(c.ownersFunds.collected), '#15803d'), bk('Net dû proprios', fCFA(c.ownersFunds.netDu), '#0f766e'), bk('Reversé', fCFA(c.ownersFunds.reversed), '#0369a1'), bk('En attente', fCFA(c.ownersFunds.pending), '#b45309')]),
+    8: grid([bk('Encaissé', fCFA(c.recovery.collecte), '#15803d'), bk('Impayés', fCFA(c.recovery.impaye), '#b91c1c'), bk('Taux de recouvrement', c.recovery.taux + '%', '#785a00')]),
+    9: grid([bk('Reversé (validé)', fCFA(c.ownersFunds.reversed), '#0369a1'), bk('En attente', fCFA(c.ownersFunds.pending), '#b45309')]),
+    10: grid([bk('Demandes', fNum(c.maintenance.total), '#222'), bk('Réalisées', fNum(c.maintenance.done), '#15803d'), bk('En attente', fNum(c.maintenance.pending), '#b45309'), bk('Coût (devis)', fCFA(c.maintenance.cost), '#b91c1c')]),
+    11: `<div class="warn">Suivi commercial (prospects, visites, conversion) : <b>données non disponibles</b> — module de prospection non encore alimenté.</div>`,
+    12: listBlock(cm.difficultes),
+    13: txtBlock(cm.evaluation),
+    14: listBlock(cm.planAction) + `<div class="obj"><p style="font-weight:700;margin:0 0 4px">Suggestions (chiffres ${year}) :</p><ul>${objectives.map(o => `<li>${o}</li>`).join('')}</ul></div>`,
+    15: txtBlock(cm.recommandations),
+  };
+  const titleOf = (n) => (n === 14 ? `Plan stratégique ${nextYear}` : (SLIDES.find(s => s.n === n)?.t || ''));
+
+  const slideHTML = (n) => {
+    if (n === 1) return `<section class="slide cover">
+        ${logo ? `<img src="${logo}"/>` : ''}
+        <h1>${company}</h1>
+        <h2>Assemblée Générale — Exercice ${year}</h2>
+        <p>${scopeName} · ${today}</p>
+      </section>`;
+    return `<section class="slide">
+      <div class="shead"><span>${company} — ${scopeName}</span><span>Exercice ${year}</span></div>
+      <h3>${n}. ${titleOf(n)}</h3>
+      <div class="sbody">${body[n] || '<p style="color:#aaa">—</p>'}</div>
+    </section>`;
+  };
+
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Présentation AG ${year} — ${scopeName}</title>
+  <style>
+    @page{size:A4 landscape;margin:0}
+    *{box-sizing:border-box} body{font-family:'Segoe UI',Arial,sans-serif;color:#222;margin:0;background:#eee}
+    .slide{width:297mm;height:209mm;padding:26px 34px;background:#fff;page-break-after:always;display:flex;flex-direction:column;position:relative}
+    .slide.cover{align-items:center;justify-content:center;text-align:center;background:linear-gradient(135deg,#fffaf0,#fff)}
+    .cover img{height:92px;margin-bottom:20px} .cover h1{font-size:46px;color:#785a00;margin:0} .cover h2{font-size:26px;color:#333;margin:10px 0 0} .cover p{color:#777;margin-top:18px;font-size:16px}
+    .shead{display:flex;justify-content:space-between;font-size:12px;color:#999;border-bottom:2px solid #785a00;padding-bottom:6px}
+    h3{font-size:28px;color:#785a00;margin:18px 0 14px}
+    .sbody{flex:1;font-size:16px}
+    .bkgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:12px}
+    .bk{border:1px solid #eee;border-radius:12px;padding:16px 18px;background:#fafafa}
+    .bk-l{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#999} .bk-v{font-size:26px;font-weight:800;margin-top:4px}
+    .stxt p{margin:6px 0;line-height:1.5;font-size:16px} .stxt ul{padding-left:22px} .stxt li{margin:6px 0;font-size:16px}
+    .warn{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:10px;padding:14px 18px;font-size:16px}
+    .obj{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 16px;margin-top:10px;font-size:14px} .obj li{margin:3px 0}
+    @media screen{.slide{margin:12px auto;box-shadow:0 2px 12px rgba(0,0,0,.15)}}
+  </style></head><body>
+    ${selected.map(slideHTML).join('')}
     <script>window.onload=()=>window.print()</script>
   </body></html>`;
 }
