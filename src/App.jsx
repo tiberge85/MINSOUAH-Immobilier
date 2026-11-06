@@ -43,6 +43,7 @@ import RevenusMinsouah from './pages/RevenusMinsouah';
 import PublicBordereau from './pages/PublicBordereau';
 import PublicQuittance from './pages/PublicQuittance';
 import AnnualReport   from './pages/AnnualReport';
+import Prospection    from './pages/Prospection';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -315,6 +316,7 @@ function AppRoutes() {
         <Route path="prestataires" element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'TECHNICIAN']} module="prestataires"><Prestataires /></ProtectedRoute>} />
         <Route path="reports" element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE', 'TECHNICIAN', 'ACCOUNTANT']} module="reports"><Reports /></ProtectedRoute>} />
         <Route path="rapport-exercice" element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'ADMIN', 'SUPER_ADMIN']}><AnnualReport /></ProtectedRoute>} />
+        <Route path="prospection" element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'ADMIN', 'AGENT', 'MANAGER', 'SUPER_ADMIN']}><Prospection /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
 

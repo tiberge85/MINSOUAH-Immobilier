@@ -36,6 +36,7 @@ const navItems = [
   { path: '/concierge',   label: 'Mon Espace',        icon: 'supervised_user_circle',  mobileIcon: 'supervised_user_circle', roles: ['CONCIERGE'] },
   { path: '/inbox',       label: 'Messagerie',        icon: 'support_agent',           mobileIcon: 'mail' },
   { path: '/reports',     label: 'Rapports',          icon: 'description',             mobileIcon: 'description' },
+  { path: '/prospection',      label: 'Prospection',        icon: 'group_add',          mobileIcon: 'group_add', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'AGENT', 'MANAGER', 'SUPER_ADMIN'] },
   { path: '/rapport-exercice', label: "Rapport d'exercice", icon: 'assessment',        mobileIcon: 'assessment', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'SUPER_ADMIN'] },
 ];
 

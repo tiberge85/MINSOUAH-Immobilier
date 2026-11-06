@@ -4,6 +4,7 @@ import { db } from '../lib/firebase';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import { loadXLSX } from '../lib/lazyXlsx';
+import { loadPptx } from '../lib/lazyPptx';
 import { computeMonthMetrics, MM_MONTH_NAMES } from '../lib/monthMetrics';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
 
@@ -100,7 +101,7 @@ function compTableHTML(d, p, year) {
 }
 
 /* Bilan annuel d'UNE agence à partir de ses données brutes. */
-function computeAgencyYear({ year, payments, transactions, contracts, tenants, properties, owners, bordereaux, tickets }) {
+function computeAgencyYear({ year, payments, transactions, contracts, tenants, properties, owners, bordereaux, tickets, prospects }) {
   const months = MM_MONTH_NAMES.map((name, i) => ({ name, idx: i, label: `${name} ${year}` }));
 
   const monthly = months.map((mo) => {
@@ -178,7 +179,20 @@ function computeAgencyYear({ year, payments, transactions, contracts, tenants, p
     .reduce((s, t) => s + (Number(t.cautionRestitue != null ? t.cautionRestitue : t.cautionAmount) || 0), 0);
   const cautions = { held: cautionHeld, refundedYear: cautionRefundedYear };
 
-  return { monthly, minsouah, recovery, ownersFunds, patrimoine, maintenance, cautions };
+  // Commercial (prospection) — prospects créés dans l'exercice.
+  const converti = (p) => /converti|gagn|sign/i.test(String(p.status || ''));
+  const yearProspects = (prospects || []).filter(p => !(p.createdAt || p.date) || inYear(p.createdAt || p.date, year));
+  const nP = yearProspects.length;
+  const commercial = {
+    prospects: nP,
+    proprio: yearProspects.filter(p => /propri/i.test(String(p.type || ''))).length,
+    locataire: yearProspects.filter(p => /locat/i.test(String(p.type || ''))).length,
+    visites: yearProspects.reduce((s, p) => s + (Number(p.nbVisites) || 0), 0),
+    mandats: yearProspects.filter(converti).length,
+    conversion: nP > 0 ? Math.round((yearProspects.filter(converti).length / nP) * 100) : 0,
+  };
+
+  return { monthly, minsouah, recovery, ownersFunds, patrimoine, maintenance, cautions, commercial };
 }
 
 function consolidate(agenciesData, key = 'data') {
@@ -201,7 +215,9 @@ function consolidate(agenciesData, key = 'data') {
   patrimoine.occupancy = patrimoine.units > 0 ? Math.round((patrimoine.occupied / patrimoine.units) * 100) : 0;
   const maintenance = add('maintenance', ['total', 'done', 'pending', 'cost']);
   const cautions = add('cautions', ['held', 'refundedYear']);
-  return { monthly, minsouah, recovery, ownersFunds, patrimoine, maintenance, cautions };
+  const commercial = add('commercial', ['prospects', 'proprio', 'locataire', 'visites', 'mandats']);
+  commercial.conversion = commercial.prospects > 0 ? Math.round((commercial.mandats / commercial.prospects) * 100) : 0;
+  return { monthly, minsouah, recovery, ownersFunds, patrimoine, maintenance, cautions, commercial };
 }
 
 /* Objectifs N+1 — fondés sur le CA (commissions), pas sur les loyers. */
@@ -262,7 +278,7 @@ export default function AnnualReport() {
       for (const ag of agencies) {
         setProgress(`Lecture des données — ${ag.name}…`);
         try {
-          const [payments, transactions, contracts, tenants, properties, owners, bordereaux, tickets] = await Promise.all([
+          const [payments, transactions, contracts, tenants, properties, owners, bordereaux, tickets, prospects] = await Promise.all([
             fetchOrgCollection('payments', ag.id),
             fetchOrgCollection('transactions', ag.id),
             fetchOrgCollection('contracts', ag.id),
@@ -271,8 +287,9 @@ export default function AnnualReport() {
             fetchOrgCollection('owners', ag.id),
             fetchOrgCollection('bordereaux', ag.id),
             fetchOrgCollection('tickets', ag.id),
+            fetchOrgCollection('prospects', ag.id).catch(() => []),
           ]);
-          const raw = { payments, transactions, contracts, tenants, properties, owners, bordereaux, tickets };
+          const raw = { payments, transactions, contracts, tenants, properties, owners, bordereaux, tickets, prospects };
           const data = computeAgencyYear({ year, ...raw });
           const dataPrev = computeAgencyYear({ year: year - 1, ...raw });
           agenciesData.push({ id: ag.id, name: ag.name, data, dataPrev });
@@ -421,6 +438,69 @@ export default function AnnualReport() {
   }
   const toggleSlide = (n) => setSlides(s => s.includes(n) ? s.filter(x => x !== n) : [...s, n]);
 
+  // Export Word (.doc) : le rapport complet, ouvrable et éditable dans Word.
+  function exportWord() {
+    if (!result || !view) return;
+    const html = buildFullReportHTML(view, result.year, state.orgSettings || {}, comments);
+    const blob = new Blob(['﻿' + html], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `Rapport_annuel_${result.year}_${(view.label || 'agence').replace(/[^a-zA-Z0-9]+/g, '_')}.doc`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
+  // Export PowerPoint (.pptx) éditable (pptxgenjs chargé à la demande).
+  async function exportPptx() {
+    if (!result || !view) return;
+    setCmtMsg('Génération PowerPoint…');
+    try {
+      const Pptx = await loadPptx();
+      const pptx = new Pptx();
+      pptx.defineLayout({ name: 'WIDE', width: 13.33, height: 7.5 });
+      pptx.layout = 'WIDE';
+      const c = view.d; const nextYear = result.year + 1; const cm = comments || {};
+      const org = state.orgSettings || {}; const company = org.companyName || 'Minsouah';
+      const scopeName = view.isAll ? 'Toutes les agences (consolidé)' : view.label;
+      const BR = '785A00';
+      const sel = SLIDES.filter(s => slides.includes(s.n)).map(s => s.n);
+      const titleSlide = (n, title) => {
+        const s = pptx.addSlide();
+        s.addShape('rect', { x: 0, y: 0, w: '100%', h: 0.9, fill: { color: BR } });
+        s.addText(`${n}. ${title}`, { x: 0.4, y: 0.15, w: 12.5, h: 0.6, color: 'FFFFFF', fontSize: 24, bold: true });
+        s.addText(`${company} — ${scopeName} · Exercice ${result.year}`, { x: 0.4, y: 7.05, w: 12.5, h: 0.3, fontSize: 10, color: '999999' });
+        return s;
+      };
+      const kpiRows = (s, pairs, y0 = 1.3) => pairs.forEach((p, i) => {
+        const col = i % 3, row = Math.floor(i / 3); const x = 0.5 + col * 4.25, y = y0 + row * 1.5;
+        s.addShape('roundRect', { x, y, w: 3.95, h: 1.3, rectRadius: 0.1, fill: { color: 'F7F5EF' }, line: { color: 'EEE8DA' } });
+        s.addText(p[0], { x: x + 0.2, y: y + 0.15, w: 3.6, h: 0.3, fontSize: 11, color: '999999' });
+        s.addText(String(p[1]), { x: x + 0.2, y: y + 0.5, w: 3.6, h: 0.6, fontSize: 20, bold: true, color: p[2] || '222222' });
+      });
+      const textSlide = (n, title, txt) => titleSlide(n, title).addText(String(txt || '—'), { x: 0.5, y: 1.3, w: 12.3, h: 5.5, fontSize: 16, color: '333333', valign: 'top' });
+      const listSlide = (n, title, txt) => { const s = titleSlide(n, title); const items = String(txt || '').split('\n').map(l => l.trim()).filter(Boolean); s.addText(items.length ? items.map(t => ({ text: t, options: { bullet: true } })) : [{ text: '—' }], { x: 0.6, y: 1.3, w: 12, h: 5.5, fontSize: 16, color: '333333', valign: 'top' }); };
+
+      for (const n of sel) {
+        if (n === 1) { const s = pptx.addSlide(); s.background = { color: 'FFFAF0' }; s.addText(company, { x: 0.5, y: 2.3, w: 12.3, h: 1, fontSize: 44, bold: true, color: BR, align: 'center' }); s.addText(`Assemblée Générale — Exercice ${result.year}`, { x: 0.5, y: 3.6, w: 12.3, h: 0.6, fontSize: 24, color: '333333', align: 'center' }); s.addText(scopeName, { x: 0.5, y: 4.4, w: 12.3, h: 0.5, fontSize: 16, color: '777777', align: 'center' }); continue; }
+        if (n === 2) { textSlide(2, 'Mot du gérant', cm.motGerant); continue; }
+        if (n === 3) { const s = titleSlide(3, 'Présentation de Minsouah'); s.addText(String(cm.presentation || '—'), { x: 0.5, y: 1.2, w: 12.3, h: 2.4, fontSize: 15, color: '333333', valign: 'top' }); kpiRows(s, [['Biens gérés', fNum(c.patrimoine.properties)], ['Propriétaires', fNum(c.patrimoine.owners)], ['Locataires', fNum(c.patrimoine.tenants)]], 4.2); continue; }
+        if (n === 4) { kpiRows(titleSlide(4, 'Portefeuille immobilier'), [['Biens / Unités', `${c.patrimoine.properties} / ${c.patrimoine.units}`], ['Occupation', c.patrimoine.occupancy + '%'], ['Unités vacantes', fNum(c.patrimoine.vacant)], ['Mandats actifs', fNum(c.patrimoine.activeContracts)]]); continue; }
+        if (n === 5) { kpiRows(titleSlide(5, 'Résultats financiers'), [['CA (commissions)', fCFA(c.minsouah.ca), 'B45309'], ['Charges', fCFA(c.minsouah.charges), 'B91C1C'], ['Résultat Minsouah', fCFA(c.minsouah.resultat), c.minsouah.resultat >= 0 ? '15803D' : 'B91C1C'], ['Recouvrement', c.recovery.taux + '%', '785A00']]); continue; }
+        if (n === 6) { kpiRows(titleSlide(6, 'Gestion locative'), [['Mandats actifs', fNum(c.patrimoine.activeContracts)], ['Mandats résiliés', fNum(c.patrimoine.resilieContracts)], ['Nouveaux contrats', fNum(c.patrimoine.newContracts)], ['Occupation', c.patrimoine.occupancy + '%']]); continue; }
+        if (n === 7) { kpiRows(titleSlide(7, 'Situation des propriétaires'), [['Loyers collectés', fCFA(c.ownersFunds.collected)], ['Net dû proprios', fCFA(c.ownersFunds.netDu)], ['Reversé', fCFA(c.ownersFunds.reversed)], ['En attente', fCFA(c.ownersFunds.pending)]]); continue; }
+        if (n === 8) { kpiRows(titleSlide(8, 'Recouvrement des loyers'), [['Encaissé', fCFA(c.recovery.collecte), '15803D'], ['Impayés', fCFA(c.recovery.impaye), 'B91C1C'], ['Taux de recouvrement', c.recovery.taux + '%', '785A00']]); continue; }
+        if (n === 9) { kpiRows(titleSlide(9, 'Reversements propriétaires'), [['Reversé (validé)', fCFA(c.ownersFunds.reversed)], ['En attente', fCFA(c.ownersFunds.pending)]]); continue; }
+        if (n === 10) { kpiRows(titleSlide(10, 'Maintenance et travaux'), [['Demandes', fNum(c.maintenance.total)], ['Réalisées', fNum(c.maintenance.done)], ['En attente', fNum(c.maintenance.pending)], ['Coût (devis)', fCFA(c.maintenance.cost)]]); continue; }
+        if (n === 11) { const s = titleSlide(11, 'Développement commercial'); const cc = c.commercial; if (cc && cc.prospects > 0) { kpiRows(s, [['Prospects', fNum(cc.prospects)], ['Visites', fNum(cc.visites)], ['Mandats obtenus', fNum(cc.mandats)], ['Taux de conversion', cc.conversion + '%']]); } else { s.addText('Données commerciales non disponibles.', { x: 0.5, y: 1.5, w: 12, h: 1, fontSize: 16, color: '9A3412' }); } continue; }
+        if (n === 12) { listSlide(12, 'Difficultés et risques', cm.difficultes); continue; }
+        if (n === 13) { textSlide(13, 'Évaluation des performances', cm.evaluation); continue; }
+        if (n === 14) { const s = titleSlide(14, `Plan stratégique ${nextYear}`); const items = String(cm.planAction || '').split('\n').map(l => l.trim()).filter(Boolean); const objs = buildObjectives(nextYear, c); s.addText([...items, ...objs].map(t => ({ text: t, options: { bullet: true } })), { x: 0.6, y: 1.3, w: 12, h: 5.5, fontSize: 14, color: '333333', valign: 'top' }); continue; }
+        if (n === 15) { textSlide(15, 'Recommandations et décisions', cm.recommandations); continue; }
+      }
+      await pptx.writeFile({ fileName: `Presentation_AG_${result.year}_${(view.label || 'agence').replace(/[^a-zA-Z0-9]+/g, '_')}.pptx` });
+      setCmtMsg('');
+    } catch (e) { setCmtMsg('Échec PowerPoint : ' + (e?.message || e)); setTimeout(() => setCmtMsg(''), 5000); }
+  }
+
   return (
     <div className="flex flex-col gap-md">
       <div>
@@ -471,7 +551,9 @@ export default function AnnualReport() {
             <button onClick={exportPDF} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2 text-sm hover:bg-outline-variant/30"><Icon name="picture_as_pdf" size={18} /> Synthèse PDF</button>
             <button onClick={exportExcel} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2 text-sm hover:bg-outline-variant/30"><Icon name="table_view" size={18} /> Exporter Excel</button>
             <button onClick={exportFullPDF} className="inline-flex items-center gap-2 bg-primary text-on-primary font-semibold rounded-lg px-4 py-2 text-sm hover:bg-primary/90"><Icon name="description" size={18} /> Rapport complet (PDF)</button>
+            <button onClick={exportWord} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2 text-sm hover:bg-outline-variant/30"><Icon name="article" size={18} /> Word</button>
             <button onClick={exportSlidesPDF} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2 text-sm hover:bg-outline-variant/30"><Icon name="slideshow" size={18} /> Présentation AG (PDF)</button>
+            <button onClick={exportPptx} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2 text-sm hover:bg-outline-variant/30"><Icon name="co_present" size={18} /> PowerPoint</button>
             <button onClick={() => setShowSlideSel(v => !v)} className="inline-flex items-center gap-1 text-primary text-sm font-semibold px-2 py-2 hover:underline"><Icon name="tune" size={16} /> Diapos ({slides.length}/15)</button>
           </div>
 
@@ -606,6 +688,16 @@ function AgencyCard({ title, d, highlight }) {
         { label: 'Cautions détenues', value: fCFA(d.cautions.held) },
         { label: 'Cautions restituées', value: fCFA(d.cautions.refundedYear) },
       ]} />
+      {d.commercial && d.commercial.prospects > 0 && (
+        <Block title="Développement commercial" color="bg-teal-100 text-teal-800" items={[
+          { label: 'Prospects', value: fNum(d.commercial.prospects), cls: 'text-blue-700' },
+          { label: 'Propriétaires', value: fNum(d.commercial.proprio) },
+          { label: 'Locataires', value: fNum(d.commercial.locataire) },
+          { label: 'Visites', value: fNum(d.commercial.visites) },
+          { label: 'Mandats obtenus', value: fNum(d.commercial.mandats), cls: 'text-green-700' },
+          { label: 'Taux de conversion', value: d.commercial.conversion + '%', cls: 'text-primary' },
+        ]} />
+      )}
     </div>
   );
 }
@@ -869,7 +961,9 @@ function buildFullReportHTML(view, year, org, comments) {
   S[9] = `<div class="kgrid">${kpi('Loyers encaissés', fCFA(c.recovery.collecte), '#15803d')}${kpi('Impayés (cumul exercice)', fCFA(c.recovery.impaye), '#b91c1c')}${kpi('Taux de recouvrement', c.recovery.taux + '%', '#785a00')}${kpi('Cautions détenues', fCFA(c.cautions.held), '#222')}</div>`;
   S[10] = `<div class="kgrid">${kpi('Reversé (bordereaux validés)', fCFA(c.ownersFunds.reversed), '#0369a1')}${kpi('En attente', fCFA(c.ownersFunds.pending), '#b45309')}</div>`;
   S[11] = `<div class="kgrid">${kpi('Demandes de maintenance', fNum(c.maintenance.total), '#222')}${kpi('Réalisées', fNum(c.maintenance.done), '#15803d')}${kpi('En attente', fNum(c.maintenance.pending), '#b45309')}${kpi('Coût (devis)', fCFA(c.maintenance.cost), '#b91c1c')}</div>`;
-  S[12] = `<div class="note" style="background:#fff7ed;border-color:#fed7aa;color:#9a3412">Suivi commercial (prospects, visites, taux de conversion) : <b>données non disponibles</b> — le module de prospection n'est pas encore alimenté.</div>`;
+  S[12] = (c.commercial && c.commercial.prospects > 0)
+    ? `<div class="kgrid">${kpi('Prospects', fNum(c.commercial.prospects), '#0369a1')}${kpi('Prospects propriétaires', fNum(c.commercial.proprio))}${kpi('Prospects locataires', fNum(c.commercial.locataire))}${kpi('Visites', fNum(c.commercial.visites))}${kpi('Mandats / contrats obtenus', fNum(c.commercial.mandats), '#15803d')}${kpi('Taux de conversion', c.commercial.conversion + '%', '#785a00')}</div>`
+    : `<div class="note" style="background:#fff7ed;border-color:#fed7aa;color:#9a3412">Suivi commercial (prospects, visites, taux de conversion) : <b>données non disponibles</b> — saisissez vos prospects dans le menu « Prospection ».</div>`;
 
   return `<!doctype html><html><head><meta charset="utf-8"><title>Rapport annuel ${year} — ${scopeName}</title>
   <style>
