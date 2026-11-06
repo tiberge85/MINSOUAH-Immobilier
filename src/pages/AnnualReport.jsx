@@ -71,6 +71,34 @@ const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').
 const textToHTML = (s) => esc(s).split('\n').filter(l => l.trim()).map(l => `<p>${l}</p>`).join('') || '<p style="color:#aaa">—</p>';
 const textToList = (s) => { const items = esc(s).split('\n').map(l => l.trim()).filter(Boolean); return items.length ? '<ul>' + items.map(l => `<li>${l}</li>`).join('') + '</ul>' : '<p style="color:#aaa">—</p>'; };
 
+// Comparaison exercice N vs N-1.
+const hasPrevData = (p) => !!p && (p.minsouah.ca + p.recovery.collecte + p.patrimoine.properties + p.ownersFunds.reversed) > 0;
+function cmpRows(d, p) {
+  const pctDelta = (n, o) => o > 0 ? Math.round(((n - o) / o) * 100) : (n > 0 ? null : 0); // null = non calculable
+  const defs = [
+    { label: 'CA (commissions)', n: d.minsouah.ca, o: p.minsouah.ca, t: 'fcfa' },
+    { label: 'Résultat Minsouah', n: d.minsouah.resultat, o: p.minsouah.resultat, t: 'fcfa' },
+    { label: 'Charges', n: d.minsouah.charges, o: p.minsouah.charges, t: 'fcfa' },
+    { label: 'Loyers encaissés', n: d.recovery.collecte, o: p.recovery.collecte, t: 'fcfa' },
+    { label: 'Impayés', n: d.recovery.impaye, o: p.recovery.impaye, t: 'fcfa' },
+    { label: 'Reversé propriétaires', n: d.ownersFunds.reversed, o: p.ownersFunds.reversed, t: 'fcfa' },
+    { label: 'Biens gérés', n: d.patrimoine.properties, o: p.patrimoine.properties, t: 'num' },
+    { label: 'Mandats actifs', n: d.patrimoine.activeContracts, o: p.patrimoine.activeContracts, t: 'num' },
+    { label: 'Taux de recouvrement', n: d.recovery.taux, o: p.recovery.taux, t: 'pct' },
+    { label: "Taux d'occupation", n: d.patrimoine.occupancy, o: p.patrimoine.occupancy, t: 'pct' },
+  ];
+  return defs.map(r => ({ ...r, delta: r.n - r.o, pct: r.t === 'pct' ? (r.n - r.o) : pctDelta(r.n, r.o) }));
+}
+const cmpVal = (v, t) => t === 'pct' ? v + '%' : (t === 'num' ? fNum(v) : fCFA(v));
+const cmpDelta = (r) => (r.delta >= 0 ? '+' : '') + (r.t === 'pct' ? r.delta + ' pts' : (r.t === 'num' ? fNum(r.delta) : fCFA(r.delta)));
+const cmpEvol = (r) => r.t === 'pct' ? ((r.pct >= 0 ? '+' : '') + r.pct + ' pts') : (r.pct === null ? 'n/d' : (r.pct >= 0 ? '+' : '') + r.pct + '%');
+function compTableHTML(d, p, year) {
+  const rows = cmpRows(d, p);
+  return `<table><thead><tr><th>Indicateur</th><th class="r">${year}</th><th class="r">${year - 1}</th><th class="r">Écart</th><th class="r">Évolution</th></tr></thead>
+    <tbody>${rows.map(r => `<tr><td>${r.label}</td><td class="r">${cmpVal(r.n, r.t)}</td><td class="r" style="color:#777">${cmpVal(r.o, r.t)}</td>
+      <td class="r">${cmpDelta(r)}</td><td class="r" style="color:${r.pct === null ? '#777' : (r.pct >= 0 ? '#15803d' : '#b91c1c')};font-weight:700">${cmpEvol(r)}</td></tr>`).join('')}</tbody></table>`;
+}
+
 /* Bilan annuel d'UNE agence à partir de ses données brutes. */
 function computeAgencyYear({ year, payments, transactions, contracts, tenants, properties, owners, bordereaux, tickets }) {
   const months = MM_MONTH_NAMES.map((name, i) => ({ name, idx: i, label: `${name} ${year}` }));
@@ -153,18 +181,18 @@ function computeAgencyYear({ year, payments, transactions, contracts, tenants, p
   return { monthly, minsouah, recovery, ownersFunds, patrimoine, maintenance, cautions };
 }
 
-function consolidate(agenciesData) {
+function consolidate(agenciesData, key = 'data') {
   const monthly = MM_MONTH_NAMES.map((name, i) => {
     const acc = { mois: name, collecte: 0, impaye: 0, commission: 0, charges: 0, resultat: 0, reverse: 0 };
     agenciesData.forEach(a => {
-      const m = a.data.monthly[i];
+      const m = a[key].monthly[i];
       acc.collecte += m.collecte; acc.impaye += m.impaye; acc.commission += m.commission;
       acc.charges += m.charges; acc.resultat += m.resultat; acc.reverse += m.reverse;
     });
     acc.recouvrement = (acc.collecte + acc.impaye) > 0 ? Math.round((acc.collecte / (acc.collecte + acc.impaye)) * 100) : 0;
     return acc;
   });
-  const add = (grp, keys) => keys.reduce((o, k) => { o[k] = agenciesData.reduce((s, a) => s + a.data[grp][k], 0); return o; }, {});
+  const add = (grp, keys) => keys.reduce((o, k) => { o[k] = agenciesData.reduce((s, a) => s + a[key][grp][k], 0); return o; }, {});
   const minsouah = add('minsouah', ['ca', 'charges', 'resultat']);
   const ownersFunds = add('ownersFunds', ['collected', 'netDu', 'reversed', 'pending']);
   const recovery = add('recovery', ['collecte', 'impaye']);
@@ -207,6 +235,8 @@ export default function AnnualReport() {
   const [cmtMsg, setCmtMsg] = useState('');
   const [slides, setSlides] = useState(SLIDES.map(s => s.n)); // diapositives sélectionnées
   const [showSlideSel, setShowSlideSel] = useState(false);
+  const [status, setStatus] = useState('Brouillon');
+  const [history, setHistory] = useState([]);
 
   const myOrgIds = useMemo(() => {
     const ids = user?.orgIds?.length ? user.orgIds : [user?.orgId].filter(Boolean);
@@ -242,8 +272,10 @@ export default function AnnualReport() {
             fetchOrgCollection('bordereaux', ag.id),
             fetchOrgCollection('tickets', ag.id),
           ]);
-          const data = computeAgencyYear({ year, payments, transactions, contracts, tenants, properties, owners, bordereaux, tickets });
-          agenciesData.push({ id: ag.id, name: ag.name, data });
+          const raw = { payments, transactions, contracts, tenants, properties, owners, bordereaux, tickets };
+          const data = computeAgencyYear({ year, ...raw });
+          const dataPrev = computeAgencyYear({ year: year - 1, ...raw });
+          agenciesData.push({ id: ag.id, name: ag.name, data, dataPrev });
         } catch (e) {
           console.warn('[AnnualReport] agence ignorée', ag.name, e?.code || e?.message);
           skipped.push(ag.name);
@@ -252,7 +284,7 @@ export default function AnnualReport() {
       if (!agenciesData.length) {
         setError("Aucune donnée d'agence lisible. Vérifiez que la règle multi-agences est déployée."); setBusy(false); return;
       }
-      setResult({ year, agencies: agenciesData, consolidated: consolidate(agenciesData), skipped });
+      setResult({ year, agencies: agenciesData, consolidated: consolidate(agenciesData, 'data'), consolidatedPrev: consolidate(agenciesData, 'dataPrev'), skipped });
       setProgress('');
     } catch (e) { setError(e?.message || 'Erreur lors de la génération.'); }
     finally { setBusy(false); }
@@ -317,9 +349,9 @@ export default function AnnualReport() {
     ? scope : (agencies[0]?.id || 'ALL');
   const view = useMemo(() => {
     if (!result) return null;
-    if (effectiveScope === 'ALL') return { d: result.consolidated, label: 'toutes agences', agencies: result.agencies, isAll: true };
+    if (effectiveScope === 'ALL') return { d: result.consolidated, dPrev: result.consolidatedPrev, label: 'toutes agences', agencies: result.agencies, isAll: true };
     const a = result.agencies.find(x => x.id === effectiveScope) || result.agencies[0];
-    return { d: a.data, label: a.name, agencies: [], isAll: false };
+    return { d: a.data, dPrev: a.dataPrev, label: a.name, agencies: [], isAll: false };
   }, [result, effectiveScope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Commentaires éditables : par AGENCE + exercice (pas en mode consolidé).
@@ -327,17 +359,41 @@ export default function AnnualReport() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!commentId) { setComments(EMPTY_COMMENTS); return; }
+      if (!commentId) { setComments(EMPTY_COMMENTS); setStatus('Brouillon'); setHistory([]); return; }
       try {
         const snap = await getDoc(doc(db, 'workspaces', WS, 'annualReports', commentId));
-        if (!cancelled) setComments(snap.exists() ? { ...EMPTY_COMMENTS, ...snap.data() } : EMPTY_COMMENTS);
-      } catch { if (!cancelled) setComments(EMPTY_COMMENTS); }
+        if (cancelled) return;
+        const data = snap.exists() ? snap.data() : {};
+        setComments({ ...EMPTY_COMMENTS, ...data });
+        setStatus(data.status || 'Brouillon');
+        setHistory(Array.isArray(data.history) ? data.history : []);
+      } catch { if (!cancelled) { setComments(EMPTY_COMMENTS); setStatus('Brouillon'); setHistory([]); } }
     })();
     return () => { cancelled = true; };
   }, [commentId]);
 
-  async function saveComments() {
+  const locked = status === 'Validé' || status === 'Archivé';
+  const STATUS_STYLE = {
+    'Brouillon': 'bg-surface-container-high text-on-surface-variant',
+    'Soumis à validation': 'bg-amber-100 text-amber-800',
+    'Validé': 'bg-green-100 text-green-700',
+    'Archivé': 'bg-blue-100 text-blue-800',
+  };
+
+  async function changeStatus(newStatus) {
     if (!commentId) return;
+    const entry = { status: newStatus, at: new Date().toISOString(), by: user?.name || user?.email || 'Administrateur' };
+    const newHist = [...history, entry];
+    try {
+      await setDoc(doc(db, 'workspaces', WS, 'annualReports', commentId),
+        { status: newStatus, history: newHist, orgId: effectiveScope, year, updatedAt: entry.at }, { merge: true });
+      setStatus(newStatus); setHistory(newHist);
+      setCmtMsg(`Statut : ${newStatus}`); setTimeout(() => setCmtMsg(''), 4000);
+    } catch (e) { setCmtMsg('Échec : ' + (e?.code || e?.message)); }
+  }
+
+  async function saveComments() {
+    if (!commentId || locked) return;
     setCmtSaving(true); setCmtMsg('');
     try {
       const payload = {}; COMMENT_FIELDS.forEach(f => { payload[f.key] = comments[f.key] || ''; });
@@ -433,31 +489,65 @@ export default function AnnualReport() {
             </div>
           )}
           <AgencyCard title={`${view.isAll ? 'Consolidé — toutes agences' : view.label} (${result.year})`} d={view.d} highlight />
+          <Comparison d={view.d} dPrev={view.dPrev} year={result.year} />
           <Charts d={view.d} year={result.year} />
           {view.isAll && result.agencies.map(a => <AgencyCard key={a.id} title={a.name} d={a.data} />)}
 
           {!view.isAll ? (
             <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 p-md flex flex-col gap-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <h3 className="font-bold text-on-surface text-sm flex items-center gap-2"><Icon name="edit_note" size={18} className="text-primary" /> Commentaires du rapport — {view.label} {result.year}</h3>
-                <div className="flex items-center gap-2">
+                <h3 className="font-bold text-on-surface text-sm flex items-center gap-2">
+                  <Icon name="edit_note" size={18} className="text-primary" /> Commentaires du rapport — {view.label} {result.year}
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${STATUS_STYLE[status] || 'bg-surface-container-high'}`}>{status}</span>
+                </h3>
+                <div className="flex items-center gap-2 flex-wrap">
                   {cmtMsg && <span className="text-xs text-on-surface-variant">{cmtMsg}</span>}
-                  <button onClick={saveComments} disabled={cmtSaving} className="inline-flex items-center gap-1.5 bg-primary text-on-primary font-semibold rounded-lg px-3 py-1.5 text-xs hover:bg-primary/90 disabled:opacity-50">
-                    {cmtSaving ? <><Icon name="progress_activity" size={14} className="animate-spin" /> …</> : <><Icon name="save" size={14} /> Enregistrer</>}
-                  </button>
+                  {!locked && (
+                    <button onClick={saveComments} disabled={cmtSaving} className="inline-flex items-center gap-1.5 bg-primary text-on-primary font-semibold rounded-lg px-3 py-1.5 text-xs hover:bg-primary/90 disabled:opacity-50">
+                      {cmtSaving ? <><Icon name="progress_activity" size={14} className="animate-spin" /> …</> : <><Icon name="save" size={14} /> Enregistrer</>}
+                    </button>
+                  )}
                 </div>
               </div>
-              <p className="text-xs text-on-surface-variant">Ces textes sont repris dans le « Rapport complet (PDF) ». Les chiffres, eux, sont calculés automatiquement et non modifiables.</p>
+              {/* Workflow de validation */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {status === 'Brouillon' && <button onClick={() => changeStatus('Soumis à validation')} className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-amber-300 text-amber-800 hover:bg-amber-50">Soumettre à validation</button>}
+                {status === 'Soumis à validation' && <>
+                  <button onClick={() => changeStatus('Validé')} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-green-100 text-green-700 hover:bg-green-200">Valider</button>
+                  <button onClick={() => changeStatus('Brouillon')} className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high">Renvoyer en brouillon</button>
+                </>}
+                {status === 'Validé' && <>
+                  <button onClick={() => changeStatus('Archivé')} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200">Archiver</button>
+                  <button onClick={() => changeStatus('Brouillon')} className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high">Rouvrir (modifier)</button>
+                </>}
+                {status === 'Archivé' && <button onClick={() => changeStatus('Brouillon')} className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high">Rouvrir (modifier)</button>}
+              </div>
+              <p className="text-xs text-on-surface-variant">{locked
+                ? 'Rapport verrouillé (validé/archivé). Cliquez « Rouvrir » pour modifier les textes.'
+                : 'Ces textes sont repris dans le « Rapport complet (PDF) ». Les chiffres, eux, sont calculés automatiquement et non modifiables.'}</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {COMMENT_FIELDS.map(f => (
                   <div key={f.key} className="flex flex-col gap-1">
                     <label className="text-xs font-semibold text-on-surface">{f.label}</label>
                     <textarea rows={(f.key === 'difficultes' || f.key === 'planAction' || f.key === 'evaluation') ? 4 : 3}
                       value={comments[f.key] || ''} onChange={e => setComments(c => ({ ...c, [f.key]: e.target.value }))} placeholder={f.ph}
-                      className="w-full border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest focus:outline-none focus:border-primary resize-y" />
+                      disabled={locked}
+                      className={`w-full border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest focus:outline-none focus:border-primary resize-y ${locked ? 'opacity-60 cursor-not-allowed' : ''}`} />
                   </div>
                 ))}
               </div>
+              {history.length > 0 && (
+                <div className="mt-1 border-t border-outline-variant/20 pt-2">
+                  <p className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Historique des validations</p>
+                  <ul className="flex flex-col gap-0.5">
+                    {history.slice().reverse().map((h, i) => (
+                      <li key={i} className="text-xs text-on-surface-variant">
+                        <span className="font-semibold text-on-surface">{h.status}</span> — {h.at ? new Date(h.at).toLocaleString('fr-FR') : ''}{h.by ? ` · ${h.by}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           ) : (
             <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-xl px-4 py-3 text-sm">
@@ -516,6 +606,35 @@ function AgencyCard({ title, d, highlight }) {
         { label: 'Cautions détenues', value: fCFA(d.cautions.held) },
         { label: 'Cautions restituées', value: fCFA(d.cautions.refundedYear) },
       ]} />
+    </div>
+  );
+}
+
+/* ── Comparaison N vs N-1 (écran) ── */
+function Comparison({ d, dPrev, year }) {
+  if (!hasPrevData(dPrev)) return null;
+  const rows = cmpRows(d, dPrev);
+  return (
+    <div className="rounded-xl shadow-card border border-outline-variant/20 overflow-hidden">
+      <div className="px-md py-2.5 bg-secondary text-on-primary font-bold text-sm">Comparaison {year} vs {year - 1}</div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-surface-container-high">
+            <tr>{['Indicateur', year, year - 1, 'Écart', 'Évolution'].map(h => <th key={h} className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wider text-on-surface-variant">{h}</th>)}</tr>
+          </thead>
+          <tbody className="divide-y divide-outline-variant/20">
+            {rows.map(r => (
+              <tr key={r.label} className="hover:bg-surface-container-low">
+                <td className="px-3 py-2 font-medium text-on-surface">{r.label}</td>
+                <td className="px-3 py-2">{cmpVal(r.n, r.t)}</td>
+                <td className="px-3 py-2 text-on-surface-variant">{cmpVal(r.o, r.t)}</td>
+                <td className="px-3 py-2">{cmpDelta(r)}</td>
+                <td className={`px-3 py-2 font-semibold ${r.pct === null ? 'text-on-surface-variant' : (r.pct >= 0 ? 'text-green-700' : 'text-red-700')}`}>{cmpEvol(r)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -777,13 +896,14 @@ function buildFullReportHTML(view, year, org, comments) {
       ${logo ? `<img src="${logo}"/>` : ''}
       <h1>${company}</h1>
       <h2>Rapport annuel de gestion — Exercice ${year}</h2>
-      <p>${scopeName}<br/>Document préparé pour l'Assemblée Générale · ${today}</p>
+      <p>${scopeName}<br/>Document préparé pour l'Assemblée Générale · ${today}${cm.status ? `<br/><b>Statut : ${esc(cm.status)}</b>` : ''}</p>
     </div>
     <div class="wrap">
       ${sec(1, 'Présentation', `<div class="txt">${textToHTML(cm.presentation)}</div>`)}
       ${sec(2, 'Mot du gérant', `<div class="txt">${textToHTML(cm.motGerant)}</div>`)}
       ${sec(3, "Rappel des objectifs de l'exercice", `<div class="txt">${textToHTML(cm.rappelObjectifs)}</div>`)}
       ${sec(4, 'Synthèse de l\'exercice', `<div class="kgrid">${kpi('CA (commissions)', fCFA(c.minsouah.ca), '#b45309')}${kpi('Résultat Minsouah', fCFA(c.minsouah.resultat), c.minsouah.resultat >= 0 ? '#15803d' : '#b91c1c')}${kpi('Loyers collectés (proprios)', fCFA(c.ownersFunds.collected), '#15803d')}${kpi('Recouvrement', c.recovery.taux + '%', '#785a00')}</div>`)}
+      ${hasPrevData(view.dPrev) ? sec('4b', `Comparaison ${year} vs ${year - 1}`, compTableHTML(c, view.dPrev, year)) : ''}
       ${sec(5, 'Bilan des activités immobilières', S[5])}
       ${sec(6, 'Bilan financier de Minsouah', S[6])}
       ${sec(7, 'Situation des propriétaires', S[7])}
