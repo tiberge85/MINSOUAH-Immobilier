@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { useState, useMemo, useEffect } from 'react';
+import { collection, getDocs, query, where, doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
@@ -45,6 +45,22 @@ function parseAnyDate(v) {
 const inYear = (v, year) => { const d = parseAnyDate(v); return !!d && d.getFullYear() === year; };
 const unitCount = (p) => (p?.isBuilding ? (Array.isArray(p.units) ? p.units.length : 0) || 1 : 1);
 const doneStatus = (s) => /resolu|résolu|clotur|clôtur|termin|fait|réalis|realis|ferm/i.test(String(s || ''));
+
+// Sections qualitatives du rapport complet (saisies par le gérant, par agence+exercice).
+const COMMENT_FIELDS = [
+  { key: 'motGerant', label: 'Mot du gérant', ph: "Message d'introduction du gérant pour l'assemblée…" },
+  { key: 'presentation', label: "Présentation de l'agence", ph: 'Présentation générale, faits marquants de l’exercice…' },
+  { key: 'rappelObjectifs', label: "Rappel des objectifs de l'exercice", ph: 'Objectifs fixés en début d’exercice…' },
+  { key: 'difficultes', label: 'Difficultés rencontrées', ph: 'Une difficulté par ligne (financière, technique, juridique…)' },
+  { key: 'evaluation', label: 'Évaluation globale des performances', ph: 'Analyse : financier, commercial, opérationnel, gouvernance…' },
+  { key: 'recommandations', label: 'Recommandations du gérant', ph: 'Mesures correctives proposées…' },
+  { key: 'planAction', label: "Plan d'action — année suivante", ph: 'Un objectif par ligne (intitulé, cible, échéance…)' },
+  { key: 'conclusion', label: 'Conclusion', ph: 'Conclusion générale du rapport…' },
+];
+const EMPTY_COMMENTS = Object.fromEntries(COMMENT_FIELDS.map(f => [f.key, '']));
+const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const textToHTML = (s) => esc(s).split('\n').filter(l => l.trim()).map(l => `<p>${l}</p>`).join('') || '<p style="color:#aaa">—</p>';
+const textToList = (s) => { const items = esc(s).split('\n').map(l => l.trim()).filter(Boolean); return items.length ? '<ul>' + items.map(l => `<li>${l}</li>`).join('') + '</ul>' : '<p style="color:#aaa">—</p>'; };
 
 /* Bilan annuel d'UNE agence à partir de ses données brutes. */
 function computeAgencyYear({ year, payments, transactions, contracts, tenants, properties, owners, bordereaux, tickets }) {
@@ -177,6 +193,9 @@ export default function AnnualReport() {
   const [progress, setProgress] = useState('');
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  const [comments, setComments] = useState(EMPTY_COMMENTS);
+  const [cmtSaving, setCmtSaving] = useState(false);
+  const [cmtMsg, setCmtMsg] = useState('');
 
   const myOrgIds = useMemo(() => {
     const ids = user?.orgIds?.length ? user.orgIds : [user?.orgId].filter(Boolean);
@@ -292,6 +311,39 @@ export default function AnnualReport() {
     return { d: a.data, label: a.name, agencies: [], isAll: false };
   }, [result, effectiveScope]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Commentaires éditables : par AGENCE + exercice (pas en mode consolidé).
+  const commentId = effectiveScope !== 'ALL' ? `${effectiveScope}__${year}` : null;
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!commentId) { setComments(EMPTY_COMMENTS); return; }
+      try {
+        const snap = await getDoc(doc(db, 'workspaces', WS, 'annualReports', commentId));
+        if (!cancelled) setComments(snap.exists() ? { ...EMPTY_COMMENTS, ...snap.data() } : EMPTY_COMMENTS);
+      } catch { if (!cancelled) setComments(EMPTY_COMMENTS); }
+    })();
+    return () => { cancelled = true; };
+  }, [commentId]);
+
+  async function saveComments() {
+    if (!commentId) return;
+    setCmtSaving(true); setCmtMsg('');
+    try {
+      const payload = {}; COMMENT_FIELDS.forEach(f => { payload[f.key] = comments[f.key] || ''; });
+      await setDoc(doc(db, 'workspaces', WS, 'annualReports', commentId),
+        { ...payload, orgId: effectiveScope, year, updatedAt: new Date().toISOString() }, { merge: true });
+      setCmtMsg('Commentaires enregistrés ✓');
+    } catch (e) { setCmtMsg("Échec de l'enregistrement : " + (e?.code || e?.message)); }
+    finally { setCmtSaving(false); setTimeout(() => setCmtMsg(''), 4000); }
+  }
+
+  function exportFullPDF() {
+    if (!result || !view) return;
+    const html = buildFullReportHTML(view, result.year, state.orgSettings || {}, comments);
+    const win = window.open('', '_blank', 'width=1000,height=800');
+    if (win) { win.document.write(html); win.document.close(); } else alert('Autorisez les pop-ups pour le PDF.');
+  }
+
   return (
     <div className="flex flex-col gap-md">
       <div>
@@ -339,12 +391,42 @@ export default function AnnualReport() {
           )}
           <div className="flex gap-sm flex-wrap items-center">
             <span className="text-sm text-on-surface-variant mr-1">Rapport : <b className="text-on-surface">{view.isAll ? 'Toutes les agences (consolidé)' : view.label}</b></span>
-            <button onClick={exportPDF} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2 text-sm hover:bg-outline-variant/30"><Icon name="picture_as_pdf" size={18} /> Exporter PDF</button>
+            <button onClick={exportPDF} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2 text-sm hover:bg-outline-variant/30"><Icon name="picture_as_pdf" size={18} /> Synthèse PDF</button>
             <button onClick={exportExcel} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2 text-sm hover:bg-outline-variant/30"><Icon name="table_view" size={18} /> Exporter Excel</button>
+            <button onClick={exportFullPDF} className="inline-flex items-center gap-2 bg-primary text-on-primary font-semibold rounded-lg px-4 py-2 text-sm hover:bg-primary/90"><Icon name="description" size={18} /> Rapport complet (PDF)</button>
           </div>
           <AgencyCard title={`${view.isAll ? 'Consolidé — toutes agences' : view.label} (${result.year})`} d={view.d} highlight />
           <Charts d={view.d} year={result.year} />
           {view.isAll && result.agencies.map(a => <AgencyCard key={a.id} title={a.name} d={a.data} />)}
+
+          {!view.isAll ? (
+            <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 p-md flex flex-col gap-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h3 className="font-bold text-on-surface text-sm flex items-center gap-2"><Icon name="edit_note" size={18} className="text-primary" /> Commentaires du rapport — {view.label} {result.year}</h3>
+                <div className="flex items-center gap-2">
+                  {cmtMsg && <span className="text-xs text-on-surface-variant">{cmtMsg}</span>}
+                  <button onClick={saveComments} disabled={cmtSaving} className="inline-flex items-center gap-1.5 bg-primary text-on-primary font-semibold rounded-lg px-3 py-1.5 text-xs hover:bg-primary/90 disabled:opacity-50">
+                    {cmtSaving ? <><Icon name="progress_activity" size={14} className="animate-spin" /> …</> : <><Icon name="save" size={14} /> Enregistrer</>}
+                  </button>
+                </div>
+              </div>
+              <p className="text-xs text-on-surface-variant">Ces textes sont repris dans le « Rapport complet (PDF) ». Les chiffres, eux, sont calculés automatiquement et non modifiables.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {COMMENT_FIELDS.map(f => (
+                  <div key={f.key} className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-on-surface">{f.label}</label>
+                    <textarea rows={(f.key === 'difficultes' || f.key === 'planAction' || f.key === 'evaluation') ? 4 : 3}
+                      value={comments[f.key] || ''} onChange={e => setComments(c => ({ ...c, [f.key]: e.target.value }))} placeholder={f.ph}
+                      className="w-full border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest focus:outline-none focus:border-primary resize-y" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-xl px-4 py-3 text-sm">
+              Les commentaires du rapport complet (mot du gérant, difficultés, plan d'action…) se saisissent <b>par agence</b>. Choisissez une agence ci-dessus pour les renseigner et générer son rapport complet.
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -587,6 +669,100 @@ function buildReportHTML(view, year, org) {
     </div>
 
     <div class="foot"><span>${company} — Document confidentiel (AG ${year})</span><span>${today}</span></div>
+    <script>window.onload=()=>window.print()</script>
+  </body></html>`;
+}
+
+/* ── RAPPORT COMPLET (18 sections) : chiffres calculés + commentaires du gérant ── */
+function buildFullReportHTML(view, year, org, comments) {
+  const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const logo = org.logo || ''; const company = org.companyName || 'Minsouah';
+  const c = view.d; const nextYear = year + 1; const cm = comments || {};
+  const scopeName = view.isAll ? 'Toutes les agences (consolidé)' : view.label;
+  const objectives = buildObjectives(nextYear, c);
+
+  const mTable = (monthly) => `<table><thead><tr>
+      <th>Mois</th><th class="r">Encaissé</th><th class="r">Impayés</th><th class="c">Recouv.</th>
+      <th class="r">Commission</th><th class="r">Charges</th><th class="r">Résultat</th><th class="r">Reversé</th>
+    </tr></thead><tbody>${monthly.map(m => `<tr><td>${m.mois}</td>
+      <td class="r" style="color:#15803d">${fNum(m.collecte)}</td><td class="r" style="color:#b91c1c">${fNum(m.impaye)}</td>
+      <td class="c">${m.recouvrement}%</td><td class="r" style="color:#b45309">${fNum(m.commission)}</td>
+      <td class="r" style="color:#b91c1c">${fNum(m.charges)}</td><td class="r">${fNum(m.resultat)}</td>
+      <td class="r" style="color:#0369a1">${fNum(m.reverse)}</td></tr>`).join('')}</tbody></table>`;
+
+  const kpi = (l, v, color) => `<div class="k"><div class="l">${l}</div><div class="v" style="color:${color || '#222'}">${v}</div></div>`;
+  const sec = (n, titre, body) => `<section class="sec"><h2><span class="num">${n}</span>${titre}</h2>${body}</section>`;
+
+  const S = {};
+  S[5] = `<div class="pat">
+      <div class="pat-i"><span>Biens gérés</span><b>${fNum(c.patrimoine.properties)}</b></div>
+      <div class="pat-i"><span>Unités</span><b>${fNum(c.patrimoine.units)}</b></div>
+      <div class="pat-i"><span>Occupation</span><b>${c.patrimoine.occupancy}%</b></div>
+      <div class="pat-i"><span>Unités vacantes</span><b>${fNum(c.patrimoine.vacant)}</b></div>
+      <div class="pat-i"><span>Mandats actifs</span><b>${fNum(c.patrimoine.activeContracts)}</b></div>
+      <div class="pat-i"><span>Mandats résiliés</span><b>${fNum(c.patrimoine.resilieContracts)}</b></div>
+      <div class="pat-i"><span>Nouveaux contrats</span><b>${fNum(c.patrimoine.newContracts)}</b></div>
+      <div class="pat-i"><span>Propriétaires</span><b>${fNum(c.patrimoine.owners)}</b></div>
+    </div>`;
+  S[6] = `<div class="note">Le chiffre d'affaires de Minsouah correspond aux <b>commissions acquises</b> — pas aux loyers encaissés pour le compte des propriétaires.</div>
+    <div class="kgrid">${kpi('CA — commissions', fCFA(c.minsouah.ca), '#b45309')}${kpi('Charges de fonctionnement', fCFA(c.minsouah.charges), '#b91c1c')}${kpi('Résultat Minsouah', fCFA(c.minsouah.resultat), c.minsouah.resultat >= 0 ? '#15803d' : '#b91c1c')}${kpi('Taux de recouvrement', c.recovery.taux + '%', '#785a00')}</div>
+    ${mTable(c.monthly)}<div style="margin-top:10px">${svgMonthly(c.monthly)}</div>`;
+  S[7] = `<div class="kgrid">${kpi('Loyers collectés', fCFA(c.ownersFunds.collected), '#15803d')}${kpi('Net dû aux propriétaires', fCFA(c.ownersFunds.netDu), '#0f766e')}${kpi('Reversé (validé)', fCFA(c.ownersFunds.reversed), '#0369a1')}${kpi('En attente de reversement', fCFA(c.ownersFunds.pending), '#b45309')}</div>
+    <p style="font-size:11px;color:#555">Propriétaires suivis : <b>${fNum(c.patrimoine.owners)}</b>. Les fonds des propriétaires sont présentés séparément du résultat de Minsouah.</p>`;
+  S[8] = `<div class="kgrid">${kpi('Occupation', c.patrimoine.occupancy + '%', '#0369a1')}${kpi('Locataires', fNum(c.patrimoine.tenants), '#222')}${kpi('Mandats actifs', fNum(c.patrimoine.activeContracts), '#222')}${kpi('Mandats résiliés', fNum(c.patrimoine.resilieContracts), '#b91c1c')}</div>`;
+  S[9] = `<div class="kgrid">${kpi('Loyers encaissés', fCFA(c.recovery.collecte), '#15803d')}${kpi('Impayés (cumul exercice)', fCFA(c.recovery.impaye), '#b91c1c')}${kpi('Taux de recouvrement', c.recovery.taux + '%', '#785a00')}${kpi('Cautions détenues', fCFA(c.cautions.held), '#222')}</div>`;
+  S[10] = `<div class="kgrid">${kpi('Reversé (bordereaux validés)', fCFA(c.ownersFunds.reversed), '#0369a1')}${kpi('En attente', fCFA(c.ownersFunds.pending), '#b45309')}</div>`;
+  S[11] = `<div class="kgrid">${kpi('Demandes de maintenance', fNum(c.maintenance.total), '#222')}${kpi('Réalisées', fNum(c.maintenance.done), '#15803d')}${kpi('En attente', fNum(c.maintenance.pending), '#b45309')}${kpi('Coût (devis)', fCFA(c.maintenance.cost), '#b91c1c')}</div>`;
+  S[12] = `<div class="note" style="background:#fff7ed;border-color:#fed7aa;color:#9a3412">Suivi commercial (prospects, visites, taux de conversion) : <b>données non disponibles</b> — le module de prospection n'est pas encore alimenté.</div>`;
+
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Rapport annuel ${year} — ${scopeName}</title>
+  <style>
+    *{box-sizing:border-box} body{font-family:'Segoe UI',Arial,sans-serif;color:#222;margin:0;font-size:12px}
+    .cover{height:96vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;border-bottom:4px solid #785a00;page-break-after:always}
+    .cover img{height:80px;margin-bottom:18px} .cover h1{font-size:34px;color:#785a00;margin:0} .cover h2{font-size:20px;color:#444;margin:8px 0 0;border:none;padding:0}
+    .cover p{color:#777;margin-top:16px}
+    .wrap{padding:28px}
+    .sec{margin-bottom:18px}
+    h2{font-size:15px;color:#785a00;margin:18px 0 8px;border-left:4px solid #785a00;padding-left:8px;display:flex;align-items:center;gap:8px}
+    h2 .num{background:#785a00;color:#fff;border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+    .note{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 12px;font-size:11px;color:#1e40af;margin:8px 0}
+    .kgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0}
+    .k{border:1px solid #eee;border-radius:8px;padding:8px 10px;background:#fafafa} .k .l{font-size:9px;text-transform:uppercase;color:#999} .k .v{font-size:15px;font-weight:800;margin-top:2px}
+    table{width:100%;border-collapse:collapse;margin-top:6px;font-size:11px} th,td{border:1px solid #e5e5e5;padding:5px 7px} th{background:#785a00;color:#fff;text-align:left;font-size:10px;text-transform:uppercase}
+    td.r,th.r{text-align:right} td.c,th.c{text-align:center} tbody tr:nth-child(even){background:#faf8f2}
+    .pat{display:grid;grid-template-columns:repeat(4,1fr);gap:6px} .pat-i{border:1px solid #eee;border-radius:6px;padding:6px 8px;display:flex;justify-content:space-between;background:#f7fafc} .pat-i span{color:#777;font-size:10px} .pat-i b{font-size:12px}
+    .txt p{margin:4px 0;line-height:1.45} .txt ul{margin:4px 0;padding-left:20px} .txt li{margin:3px 0}
+    .obj{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 16px} .obj li{margin:4px 0}
+    .foot{margin-top:24px;border-top:1px solid #ddd;padding-top:8px;color:#999;font-size:10px;display:flex;justify-content:space-between}
+    @media print{.wrap{padding:0 10px}}
+  </style></head><body>
+    <div class="cover">
+      ${logo ? `<img src="${logo}"/>` : ''}
+      <h1>${company}</h1>
+      <h2>Rapport annuel de gestion — Exercice ${year}</h2>
+      <p>${scopeName}<br/>Document préparé pour l'Assemblée Générale · ${today}</p>
+    </div>
+    <div class="wrap">
+      ${sec(1, 'Présentation', `<div class="txt">${textToHTML(cm.presentation)}</div>`)}
+      ${sec(2, 'Mot du gérant', `<div class="txt">${textToHTML(cm.motGerant)}</div>`)}
+      ${sec(3, "Rappel des objectifs de l'exercice", `<div class="txt">${textToHTML(cm.rappelObjectifs)}</div>`)}
+      ${sec(4, 'Synthèse de l\'exercice', `<div class="kgrid">${kpi('CA (commissions)', fCFA(c.minsouah.ca), '#b45309')}${kpi('Résultat Minsouah', fCFA(c.minsouah.resultat), c.minsouah.resultat >= 0 ? '#15803d' : '#b91c1c')}${kpi('Loyers collectés (proprios)', fCFA(c.ownersFunds.collected), '#15803d')}${kpi('Recouvrement', c.recovery.taux + '%', '#785a00')}</div>`)}
+      ${sec(5, 'Bilan des activités immobilières', S[5])}
+      ${sec(6, 'Bilan financier de Minsouah', S[6])}
+      ${sec(7, 'Situation des propriétaires', S[7])}
+      ${sec(8, 'Situation locative', S[8])}
+      ${sec(9, 'Recouvrement et impayés', S[9])}
+      ${sec(10, 'Reversements propriétaires', S[10])}
+      ${sec(11, 'Maintenance et travaux', S[11])}
+      ${sec(12, 'Bilan commercial', S[12])}
+      ${sec(13, 'Difficultés rencontrées', `<div class="txt">${textToList(cm.difficultes)}</div>`)}
+      ${sec(14, 'Évaluation globale des performances', `<div class="txt">${textToHTML(cm.evaluation)}</div>`)}
+      ${sec(15, 'Recommandations du gérant', `<div class="txt">${textToHTML(cm.recommandations)}</div>`)}
+      ${sec(16, `Plan d'action ${nextYear}`, `<div class="txt">${textToList(cm.planAction)}</div><div class="obj" style="margin-top:8px"><p style="font-weight:700;margin:0 0 4px">Suggestions automatiques (à partir des chiffres ${year}) :</p><ul>${objectives.map(o => `<li>${o}</li>`).join('')}</ul></div>`)}
+      ${sec(17, 'Conclusion', `<div class="txt">${textToHTML(cm.conclusion)}</div>`)}
+      ${sec(18, 'Annexes statistiques — évolution mensuelle', mTable(c.monthly))}
+      <div class="foot"><span>${company} — Rapport annuel de gestion ${year} (${scopeName})</span><span>${today}</span></div>
+    </div>
     <script>window.onload=()=>window.print()</script>
   </body></html>`;
 }
