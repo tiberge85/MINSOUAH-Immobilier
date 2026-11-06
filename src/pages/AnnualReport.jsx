@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import { loadXLSX } from '../lib/lazyXlsx';
 import { computeMonthMetrics, MM_MONTH_NAMES } from '../lib/monthMetrics';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
 
@@ -322,6 +323,7 @@ export default function AnnualReport() {
             <button onClick={exportExcel} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2 text-sm hover:bg-outline-variant/30"><Icon name="table_view" size={18} /> Exporter Excel</button>
           </div>
           <AgencyCard title={`Consolidé — toutes agences (${result.year})`} d={result.consolidated} highlight />
+          <Charts d={result.consolidated} year={result.year} />
           {result.agencies.map(a => <AgencyCard key={a.id} title={a.name} d={a.data} />)}
         </div>
       )}
@@ -377,6 +379,78 @@ function AgencyCard({ title, d, highlight }) {
       ]} />
     </div>
   );
+}
+
+/* ── Graphiques d'analyse (écran) ── */
+function Charts({ d, year }) {
+  const data = d.monthly.map(m => ({
+    mois: m.mois.slice(0, 3),
+    'Encaissé': m.collecte, 'Impayés': m.impaye,
+    'Commission': m.commission, 'Charges': m.charges, 'Résultat': m.resultat,
+    'Reversé': m.reverse, 'Recouvrement': m.recouvrement,
+  }));
+  const kFmt = (v) => Math.round((Number(v) || 0) / 1000) + 'k';
+  const fcfa = (v) => Number(v || 0).toLocaleString('fr-FR') + ' FCFA';
+  const box = 'bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 p-md';
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-md">
+      <div className={box}>
+        <p className="font-semibold text-sm mb-2 text-on-surface">Loyers encaissés vs impayés — {year}</p>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={data}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="mois" fontSize={11} /><YAxis fontSize={10} tickFormatter={kFmt} /><Tooltip formatter={fcfa} /><Legend />
+            <Bar dataKey="Encaissé" fill="#15803d" /><Bar dataKey="Impayés" fill="#dc2626" /></BarChart>
+        </ResponsiveContainer>
+      </div>
+      <div className={box}>
+        <p className="font-semibold text-sm mb-2 text-on-surface">CA (commissions), charges & résultat Minsouah</p>
+        <ResponsiveContainer width="100%" height={220}>
+          <LineChart data={data}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="mois" fontSize={11} /><YAxis fontSize={10} tickFormatter={kFmt} /><Tooltip formatter={fcfa} /><Legend />
+            <Line dataKey="Commission" stroke="#b45309" strokeWidth={2} dot={false} /><Line dataKey="Charges" stroke="#dc2626" strokeWidth={2} dot={false} /><Line dataKey="Résultat" stroke="#15803d" strokeWidth={2} dot={false} /></LineChart>
+        </ResponsiveContainer>
+      </div>
+      <div className={box}>
+        <p className="font-semibold text-sm mb-2 text-on-surface">Reversements propriétaires (validés)</p>
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={data}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="mois" fontSize={11} /><YAxis fontSize={10} tickFormatter={kFmt} /><Tooltip formatter={fcfa} />
+            <Bar dataKey="Reversé" fill="#0369a1" /></BarChart>
+        </ResponsiveContainer>
+      </div>
+      <div className={box}>
+        <p className="font-semibold text-sm mb-2 text-on-surface">Taux de recouvrement mensuel (%)</p>
+        <ResponsiveContainer width="100%" height={200}>
+          <LineChart data={data}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="mois" fontSize={11} /><YAxis fontSize={10} domain={[0, 100]} /><Tooltip formatter={(v) => v + '%'} />
+            <Line dataKey="Recouvrement" stroke="#785a00" strokeWidth={2} /></LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+/* Graphique SVG inline (encaissé vs impayé + ligne recouvrement) pour le PDF. */
+function svgMonthly(monthly) {
+  const W = 760, H = 220, pad = 34;
+  const max = Math.max(1, ...monthly.map(m => Math.max(m.collecte, m.impaye)));
+  const bw = (W - pad * 2) / monthly.length;
+  const chartH = H - pad * 2;
+  const bars = monthly.map((m, i) => {
+    const x = pad + i * bw;
+    const h1 = (m.collecte / max) * chartH, h2 = (m.impaye / max) * chartH;
+    return `<rect x="${(x + 2).toFixed(1)}" y="${(H - pad - h1).toFixed(1)}" width="${(bw / 2 - 3).toFixed(1)}" height="${h1.toFixed(1)}" fill="#15803d"/>` +
+           `<rect x="${(x + bw / 2).toFixed(1)}" y="${(H - pad - h2).toFixed(1)}" width="${(bw / 2 - 3).toFixed(1)}" height="${h2.toFixed(1)}" fill="#dc2626"/>` +
+           `<text x="${(x + bw / 2).toFixed(1)}" y="${H - pad + 12}" font-size="9" text-anchor="middle" fill="#777">${m.mois.slice(0, 3)}</text>`;
+  }).join('');
+  // ligne recouvrement (0-100%)
+  const pts = monthly.map((m, i) => `${(pad + i * bw + bw / 2).toFixed(1)},${(H - pad - (m.recouvrement / 100) * chartH).toFixed(1)}`).join(' ');
+  return `<svg width="100%" viewBox="0 0 ${W} ${H}" style="max-width:760px">
+    <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#ccc"/>
+    ${bars}
+    <polyline points="${pts}" fill="none" stroke="#785a00" stroke-width="2"/>
+    <g font-size="9">
+      <rect x="${pad}" y="8" width="10" height="10" fill="#15803d"/><text x="${pad + 14}" y="17" fill="#555">Encaissé</text>
+      <rect x="${pad + 80}" y="8" width="10" height="10" fill="#dc2626"/><text x="${pad + 94}" y="17" fill="#555">Impayés</text>
+      <line x1="${pad + 160}" y1="13" x2="${pad + 175}" y2="13" stroke="#785a00" stroke-width="2"/><text x="${pad + 180}" y="17" fill="#555">Recouvrement %</text>
+    </g>
+  </svg>`;
 }
 
 /* ── HTML imprimable ── */
@@ -464,6 +538,7 @@ function buildReportHTML(result, org) {
 
     <h2>Évolution mensuelle — consolidé</h2>
     ${monthTable(c.monthly)}
+    <div style="margin-top:12px">${svgMonthly(c.monthly)}</div>
 
     <h2>Patrimoine & activité — consolidé</h2>
     <div class="pat">
