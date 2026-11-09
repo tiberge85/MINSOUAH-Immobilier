@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { doc, setDoc, deleteDoc, updateDoc, getDocFromServer } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, deleteUser, signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
-import { hashPwd } from '../lib/auth';
 import { createLicensePayload } from '../lib/licenses';
 import { PLANS, getPlan } from '../lib/planLimits';
 import { validateEmailFull } from '../lib/disposableEmails';
@@ -131,7 +130,12 @@ export default function OrgRegistration() {
 
     const { orgId, orgData, adminId, adminData, license, now } = pendingDataRef.current;
 
-    // Write usersByUid first — needed for isSuperAdmin/isOrgAdmin rules
+    // Ordre imposé par les règles : agence (createdByUid = moi) → licence
+    // d'essai → fiche admin → usersByUid (qui doit refléter la fiche admin).
+    await setDoc(wsDoc('organizations', orgId), orgData);
+    await setDoc(wsDoc('licenses', license.key), { ...license, id: license.key });
+    await setDoc(wsDoc('users', adminId), adminData);
+
     const ubRef = doc(db, 'workspaces', WS, 'usersByUid', fbUser.uid);
     await setDoc(ubRef, {
       userId: String(adminId),
@@ -140,16 +144,6 @@ export default function OrgRegistration() {
       updatedAt: now,
     }, { merge: true });
     await getDocFromServer(ubRef);
-    console.log('[commit] usersByUid confirmed');
-
-    await setDoc(wsDoc('organizations', orgId), orgData);
-    console.log('[commit] organization OK');
-
-    await setDoc(wsDoc('licenses', license.key), { ...license, id: license.key });
-    console.log('[commit] license OK');
-
-    await setDoc(wsDoc('users', adminId), adminData);
-    console.log('[commit] user OK');
 
     if (pendingOrgDocRef.current) deleteDoc(pendingOrgDocRef.current).catch(() => {});
 
@@ -289,7 +283,6 @@ export default function OrgRegistration() {
       const adminId = Date.now() + 1;
       const now     = new Date().toISOString();
       const initials = adminForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-      const hashedPwd = await hashPwd(adminForm.password);
       const license   = createLicensePayload({ orgId, plan: 'trial' });
 
       pendingDataRef.current = {
@@ -298,11 +291,14 @@ export default function OrgRegistration() {
           id: orgId, name: orgForm.name.trim(), address: orgForm.address,
           phone: orgForm.phone, email: orgForm.email || emailLow,
           plan: 'trial', active: true, createdAt: now, licenseKey: license.key,
+          // Exigé par les règles Firestore : seul le créateur peut ensuite créer
+          // la licence d'essai et la fiche admin de CETTE agence.
+          createdByUid: fbUser.uid,
         },
         adminId,
         adminData: {
           id: adminId, name: adminForm.name.trim(), email: emailLow,
-          password: hashedPwd, role: 'ORGANIZATION_ADMIN', orgId, initials,
+          role: 'ORGANIZATION_ADMIN', orgId, initials,
           color: 'bg-primary-container text-on-primary-container',
           personId: null, firstLogin: false, suspended: false, createdAt: now,
           lastLogin: null, failedAttempts: 0, lockedUntil: null,

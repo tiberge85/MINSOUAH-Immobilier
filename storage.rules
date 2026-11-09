@@ -2,82 +2,116 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
+    // Rôle et agence de l'appelant : lus dans Firestore (workspaces/minsouah/usersByUid),
+    // la même source que les règles Firestore. L'ancienne version lisait
+    // /users/{uid} à la racine, qui n'existe pas : aucun rôle n'était jamais reconnu.
     function isAuth()  { return request.auth != null; }
-    function uid()     { return request.auth.uid; }
-
-    function userRole() {
-      return firestore.get(/databases/(default)/documents/users/$(uid())).data.role;
+    function nonAnon() {
+      return isAuth() && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+    function meta() {
+      return firestore.get(/databases/(default)/documents/workspaces/minsouah/usersByUid/$(request.auth.uid)).data;
+    }
+    function role()  { return meta().get('role', ''); }
+    function inOrg(orgId) {
+      return meta().get('orgId', '') == orgId || orgId in meta().get('orgIds', []);
     }
 
-    function isManager()   { return isAuth() && userRole() in ['ADMIN','MANAGER']; }
-    function isStaff()     { return isAuth() && userRole() in ['ADMIN','MANAGER','ACCOUNTANT','TECHNICIAN','CONCIERGE']; }
+    function isSuperAdmin() { return nonAnon() && role() == 'SUPER_ADMIN'; }
+    function isManager(orgId) {
+      return isSuperAdmin()
+             || (nonAnon() && inOrg(orgId)
+                 && role() in ['ORGANIZATION_ADMIN', 'ADMIN', 'AGENT', 'MANAGER']);
+    }
+    function isStaff(orgId) {
+      return isSuperAdmin()
+             || (nonAnon() && inOrg(orgId)
+                 && role() in ['ORGANIZATION_ADMIN', 'ADMIN', 'AGENT', 'MANAGER',
+                               'ACCOUNTANT', 'TECHNICIAN', 'CONCIERGE']);
+    }
+    function isMember(orgId) { return isSuperAdmin() || (nonAnon() && inOrg(orgId)); }
 
-    function isImage()       { return request.resource.contentType.matches('image/.*'); }
-    function isDocument()    { return request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf'; }
-    function maxSize(mb)     { return request.resource.size <= mb * 1024 * 1024; }
+    function isImage()    { return request.resource.contentType.matches('image/.*'); }
+    function isDocument() {
+      return request.resource.contentType.matches('image/.*')
+             || request.resource.contentType == 'application/pdf';
+    }
+    function isOfficeOrDocument() {
+      return isDocument()
+             || request.resource.contentType.matches('application/vnd[.]openxmlformats-officedocument[.].*')
+             || request.resource.contentType in ['application/msword', 'application/vnd.ms-excel', 'text/csv'];
+    }
+    function maxSize(mb) { return request.resource.size <= mb * 1024 * 1024; }
 
     // ── Avatars utilisateurs ──────────────────────────────────────────────────
     match /orgs/{orgId}/profiles/{fileName} {
-      allow read:  if isAuth();
-      allow write: if isAuth() && isImage() && maxSize(5);
+      allow read:   if isMember(orgId);
+      allow create, update: if isMember(orgId) && isImage() && maxSize(5);
+      allow delete: if isMember(orgId);
     }
 
     // ── Photos de biens immobiliers ───────────────────────────────────────────
     match /orgs/{orgId}/properties/{propId}/{fileName} {
-      allow read:  if isAuth();
-      allow write: if isManager() && isImage() && maxSize(10);
+      allow read:   if isStaff(orgId);
+      allow create, update: if isManager(orgId) && isImage() && maxSize(10);
+      allow delete: if isManager(orgId);
     }
 
     // ── Documents de contrats (PDF, scans) ────────────────────────────────────
     match /orgs/{orgId}/contracts/{contractId}/{fileName} {
-      allow read:  if isAuth();
-      allow write: if isManager() && isDocument() && maxSize(20);
+      allow read:   if isStaff(orgId);
+      allow create, update: if isManager(orgId) && isDocument() && maxSize(20);
+      allow delete: if isManager(orgId);
     }
 
     // ── Quittances et reçus générés ───────────────────────────────────────────
     match /orgs/{orgId}/receipts/{fileName} {
-      allow read:  if isAuth();
-      allow write: if isStaff() && isDocument() && maxSize(10);
+      allow read:   if isStaff(orgId);
+      allow create, update: if isStaff(orgId) && isDocument() && maxSize(10);
+      allow delete: if isManager(orgId);
     }
 
     // ── Photos et rapports de maintenance ─────────────────────────────────────
     match /orgs/{orgId}/maintenance/{ticketId}/{fileName} {
-      allow read:  if isAuth();
-      allow write: if isStaff() && isDocument() && maxSize(20);
+      allow read:   if isStaff(orgId);
+      allow create, update: if isStaff(orgId) && isDocument() && maxSize(20);
+      allow delete: if isManager(orgId);
     }
 
     // ── États des lieux (photos, PDF) ─────────────────────────────────────────
     match /orgs/{orgId}/inspections/{inspId}/{fileName} {
-      allow read:  if isAuth();
-      allow write: if isStaff() && isDocument() && maxSize(20);
+      allow read:   if isStaff(orgId);
+      allow create, update: if isStaff(orgId) && isDocument() && maxSize(20);
+      allow delete: if isManager(orgId);
     }
 
     // ── Documents locataires (CNI, justificatifs) ─────────────────────────────
     match /orgs/{orgId}/tenants/{tenantId}/{fileName} {
-      allow read:  if isManager();
-      allow write: if isManager() && isDocument() && maxSize(10);
+      allow read:   if isManager(orgId);
+      allow create, update: if isManager(orgId) && isDocument() && maxSize(10);
+      allow delete: if isManager(orgId);
     }
 
     // ── Documents généraux ────────────────────────────────────────────────────
     match /orgs/{orgId}/documents/{fileName} {
-      allow read:  if isStaff();
-      allow write: if isManager() && maxSize(25);
+      allow read:   if isStaff(orgId);
+      allow create, update: if isManager(orgId) && isOfficeOrDocument() && maxSize(25);
+      allow delete: if isManager(orgId);
     }
 
     // ── Pièces jointes des rapports ───────────────────────────────────────────
-    // Écriture par tout utilisateur connecté (la permission "créer un rapport" est
-    // gérée dans l'app + Firestore) ; lecture par tout utilisateur connecté.
     match /orgs/{orgId}/reports/{reportId}/{fileName} {
-      allow read:  if isAuth();
-      allow write: if isAuth() && maxSize(25);
+      allow read:   if isStaff(orgId);
+      allow create, update: if isStaff(orgId) && isOfficeOrDocument() && maxSize(25);
+      allow delete: if isStaff(orgId);
     }
 
     // ── Photos marketplace (annonces publiques) ───────────────────────────────
-    // Lecture publique (anonymous OK). Écriture : tout utilisateur connecté
-    // (le contrôle métier "super admin seulement" est dans l'UI + Firestore rules).
+    // Lecture publique ; écriture réservée au SUPER_ADMIN (comme les annonces).
     match /listings/{listingId}/{fileName} {
-      allow read:  if true;
-      allow write: if isAuth() && isImage() && maxSize(10);
+      allow read:   if true;
+      allow create, update: if isSuperAdmin() && isImage() && maxSize(10);
+      allow delete: if isSuperAdmin();
     }
   }
 }

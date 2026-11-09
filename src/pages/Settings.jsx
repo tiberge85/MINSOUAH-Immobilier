@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import { loadXLSX } from '../lib/lazyXlsx';
-import { hashPwd, verifyPwd } from '../lib/auth';
 import { auth } from '../lib/firebase';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
+import { provisionAccount, sendResetLink, authErrorMessage } from '../lib/authAccounts';
 import { getPlan } from '../lib/planLimits';
 import { getDaysRemaining, getLicenseStatusInfo } from '../lib/licenses';
 import { MODULES, ACTIONS, FULL_ACCESS_ROLES, fullPermissions, effectivePermissions } from '../lib/permissions';
@@ -215,14 +215,17 @@ export default function Settings() {
   /* ── Password ── */
   const handlePwChange = async (e) => {
     e.preventDefault();
-    const dbUser = (state.users || []).find(u => u.email === currentUser?.email);
-    const ok = await verifyPwd(pwForm.current, dbUser?.password);
-    if (!ok) { setPwError('Mot de passe actuel incorrect.'); return; }
     if (pwForm.next.length < 8) { setPwError('Au moins 8 caractères requis.'); return; }
     if (pwForm.next !== pwForm.confirm) { setPwError('Les mots de passe ne correspondent pas.'); return; }
+    const fbUser = auth.currentUser;
+    if (!fbUser || fbUser.isAnonymous) { setPwError('Session expirée. Reconnectez-vous.'); return; }
+    try {
+      await reauthenticateWithCredential(fbUser, EmailAuthProvider.credential(fbUser.email, pwForm.current));
+    } catch { setPwError('Mot de passe actuel incorrect.'); return; }
+    try { await updatePassword(fbUser, pwForm.next); }
+    catch (err) { setPwError(authErrorMessage(err)); return; }
     setPwError('');
-    const hashed = await hashPwd(pwForm.next);
-    dispatch({ type: 'CHANGE_PASSWORD', payload: { email: currentUser.email, newPassword: hashed } });
+    dispatch({ type: 'CHANGE_PASSWORD', payload: { email: currentUser.email } });
     setPwForm({ current: '', next: '', confirm: '' });
     showToast('Mot de passe mis à jour');
   };
@@ -1222,17 +1225,9 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
     }
     const initials = getInitials(newUser.name);
     const roleInfo = ROLE_MAP[newUser.role] || ROLE_MAP.TENANT;
-    // Firebase Auth needs plain-text password — create account before hashing
-    let firebaseUid = null;
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, newUser.email.trim().toLowerCase(), newUser.password);
-      firebaseUid = cred.user.uid;
-    } catch (fbErr) {
-      if (fbErr?.code !== 'auth/email-already-in-use') {
-        console.warn('Firebase Auth createUser:', fbErr?.code, fbErr?.message);
-      }
-    }
-    const hashedPw = await hashPwd(newUser.password);
+    // Le compte Firebase Auth est créé par ADD_USER via une application
+    // secondaire : l'administrateur reste connecté (avant, il était déconnecté et
+    // basculé sur le nouveau compte). Aucun mot de passe n'est stocké en base.
     const permissions = rolePermissionsApply(newUser.role)
       ? (newUser.permissions || fullPermissions())
       : null;
@@ -1240,12 +1235,12 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
       type: 'ADD_USER',
       payload: {
         ...newUser,
-        password: hashedPw,
+        password: undefined,
+        plainPassword: newUser.password,
         email: newUser.email.trim().toLowerCase(),
         initials,
         color: roleInfo.color,
         firstLogin: true,
-        firebaseUid,
         permissions,
       },
     });
@@ -1265,13 +1260,18 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
     showToast(`Compte de ${u.name} supprimé`);
   };
 
+  // Réinitialisation : Firebase envoie à l'utilisateur un lien pour choisir un
+  // nouveau mot de passe (l'ancien mot de passe Firebase cesse alors de marcher).
+  // Si le compte Firebase n'existait pas encore (ancien compte), il est créé.
   const handleResetPassword = async (u) => {
-    const tmpPw = 'Tmp' + Math.random().toString(36).slice(2, 8);
-    const hashedTmp = await hashPwd(tmpPw);
-    dispatch({ type: 'CHANGE_PASSWORD', payload: { email: u.email, newPassword: hashedTmp } });
-    dispatch({ type: 'UPDATE_USER', payload: { ...u, firstLogin: true, password: hashedTmp } });
-    showToast(`Nouveau mot de passe pour ${u.name} : ${tmpPw}`);
-    alert(`Mot de passe temporaire de ${u.name} :\n\n${tmpPw}\n\nCommuniquez-le à l'utilisateur. Il devra le changer à sa prochaine connexion.`);
+    try {
+      const res = await provisionAccount(u.email, { sendLink: true });
+      showToast(res.linkSent
+        ? `Lien de réinitialisation envoyé à ${u.email}`
+        : `Compte prêt, mais l'e-mail n'a pas pu partir — réessayez.`);
+    } catch (err) {
+      showToast(`Échec : ${authErrorMessage(err)}`);
+    }
   };
 
   const openEdit = (u) => {

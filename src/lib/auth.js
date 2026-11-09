@@ -58,7 +58,10 @@ function sha256HexJS(bytes) {
 
 export async function hashPwd(plain) {
   if (!plain) return '';
-  if (plain.startsWith('sha256:')) return plain;
+  // NB : on ne renvoie JAMAIS l'entrée telle quelle si elle « ressemble » à un
+  // hash — sinon coller un hash volé dans le champ mot de passe suffisait à se
+  // connecter (pass-the-hash). Ce module n'est plus utilisé pour l'authentification :
+  // Firebase Auth est la seule source de vérité des mots de passe.
   const data = new TextEncoder().encode(PEPPER + plain);
   // Prefer the native crypto (fast, constant-time); fall back to pure JS when
   // crypto.subtle is unavailable (non-secure origin).

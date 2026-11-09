@@ -9,6 +9,7 @@ import TenantDocuments from '../components/TenantDocuments';
 import TenantFinancialStatement from '../components/TenantFinancialStatement';
 import { openContractReport } from '../lib/contractReport';
 import { can } from '../lib/permissions';
+import { randomPassword } from '../lib/authAccounts';
 
 const TABS = ['Contrats', 'Locataires', 'Anciens locataires', 'Propriétaires'];
 const CONTRACT_STATUSES = ['Tous', 'Actif', 'Expirant', 'Brouillon', 'Résilié'];
@@ -266,7 +267,7 @@ export default function Rental() {
     const emailLow = email.trim().toLowerCase();
     const alreadyExists = (state.users || []).some(u => u.email.toLowerCase() === emailLow);
     if (alreadyExists) return;
-    const tmpPw = 'Bienv' + Math.random().toString(36).slice(2, 7);
+    const tmpPw = randomPassword(10);
     setCreateAccountPrompt({ name, email: emailLow, role, tmpPw, personId });
   };
 
@@ -275,7 +276,7 @@ export default function Rental() {
     const { name, email, role, tmpPw, personId } = createAccountPrompt;
     const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     const colorMap = { TENANT: 'bg-secondary-container text-on-secondary-container', OWNER: 'bg-tertiary-container text-on-tertiary-container' };
-    dispatch({ type: 'ADD_USER', payload: { name, email, password: tmpPw, role, initials, color: colorMap[role] || 'bg-primary-container text-on-primary-container', firstLogin: true, personId: personId ?? null } });
+    dispatch({ type: 'ADD_USER', payload: { name, email, plainPassword: tmpPw, role, initials, color: colorMap[role] || 'bg-primary-container text-on-primary-container', firstLogin: true, personId: personId ?? null } });
     alert(`Compte créé pour ${name}\n\nEmail : ${email}\nMot de passe temporaire : ${tmpPw}\n\nCommuniquez ces identifiants à l'utilisateur.`);
     setCreateAccountPrompt(null);
   };

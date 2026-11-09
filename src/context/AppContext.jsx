@@ -1,11 +1,11 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
-  collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc,
+  collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, deleteField,
   writeBatch, getDocs, query, where, getDocFromServer, increment, runTransaction,
 } from 'firebase/firestore';
-import { onAuthStateChanged, signInAnonymously, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signInAnonymously, signOut, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { hashPwd, verifyPwd } from '../lib/auth';
+import { provisionAccount, randomToken } from '../lib/authAccounts';
 import { checkLimit } from '../lib/planLimits';
 import { createLicensePayload } from '../lib/licenses';
 import { sendEmail } from '../lib/email';
@@ -110,7 +110,6 @@ async function releaseBordereauPayments(bord) {
 export const DEFAULT_ADMIN = {
   id: 1,
   email: 'admin@minsouah.ci',
-  password: 'admin123',
   role: 'ORGANIZATION_ADMIN',
   orgId: 'default',
   name: 'Administrateur',
@@ -137,7 +136,6 @@ export const ROLE_MIGRATION = {
 export const DEFAULT_SUPER_ADMIN = {
   id: 'superadmin',
   email: 'superadmin_minsouah@ramyaci.tech',
-  password: 'Minsouah@SuperAdmin2025',
   role: 'SUPER_ADMIN',
   orgId: null,
   name: 'Super Administrateur',
@@ -379,10 +377,9 @@ export function AppProvider({ children }) {
       try { justLoggedOut = !!sessionStorage.getItem('_minsouah_loggedout'); if (justLoggedOut) sessionStorage.removeItem('_minsouah_loggedout'); } catch { /* ignore */ }
       if (!sessionUser && !justLoggedOut && user && !user.isAnonymous && user.email) {
         try {
-          const snap = await getDocs(wsCol('users'));
           const emailLow = user.email.toLowerCase();
-          const me = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-            .find(u => (u.email || '').toLowerCase() === emailLow);
+          const snap = await getDocs(query(wsCol('users'), where('email', '==', emailLow)));
+          const me = snap.docs.map(d => ({ id: d.id, ...d.data() }))[0];
           if (me && !me.suspended) {
             sessionUser = {
               id: me.id, role: me.role, name: me.name, initials: me.initials,
@@ -411,6 +408,18 @@ export function AppProvider({ children }) {
       // relire (getDocFromServer) ou de forcer un nouveau jeton (getIdToken(true)),
       // qui n'ajoutaient que 1 à 3 s d'attente à CHAQUE connexion. Le filet de
       // sécurité scheduleHeal rattrape la rare course restante.
+      // Une session applicative portée par une connexion Firebase ANONYME n'est
+      // plus acceptée (c'était le chemin d'élévation de privilèges) : ce cas
+      // venait de l'ancienne vérification locale du mot de passe. On renvoie
+      // proprement à l'écran de connexion.
+      if (sessionUser && user?.isAnonymous) {
+        console.warn('[AppContext] session sans authentification Firebase réelle → reconnexion requise');
+        try { localStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
+        sessionUser = null;
+        sessionOrgId = null;
+        setState((s) => ({ ...s, currentUser: null }));
+      }
+
       if (sessionUser) {
         try {
           const ubRef = wsDoc('usersByUid', user.uid);
@@ -484,14 +493,31 @@ export function AppProvider({ children }) {
       // organizations + licenses: always unfiltered (super admin sees all)
       sub('organizations');
       sub('licenses');
-      sub('users');
+      // users : le SUPER_ADMIN voit tout ; le personnel voit SON agence ; les
+      // autres (locataire, propriétaire) ne lisent que leur propre fiche.
+      const STAFF_ROLES = ['ORGANIZATION_ADMIN', 'ADMIN', 'AGENT', 'MANAGER', 'CONCIERGE', 'TECHNICIAN', 'ACCOUNTANT'];
+      if (isSuper) sub('users');
+      else if (sessionUser && STAFF_ROLES.includes(sessionUser.role)) sub('users', true);
+      else if (sessionUser?.email && user && !user.isAnonymous) {
+        unsubs.push(onSnapshot(
+          query(wsCol('users'), where('email', '==', user.email.toLowerCase())),
+          (snap) => {
+            setState((s) => ({ ...s, users: snap.docs.map((d) => d.data()) }));
+            if (!loadedRef.current.has('users')) { loadedRef.current.add('users'); checkBootstrap(); }
+          },
+          () => { if (!loadedRef.current.has('users')) { loadedRef.current.add('users'); checkBootstrap(); } },
+        ));
+      } else if (!loadedRef.current.has('users')) { loadedRef.current.add('users'); checkBootstrap(); }
       // entity collections: filtered by orgId for non-admin users
       ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
         'tickets', 'inspections', 'conversations', 'monthClosures',
         'insurances', 'budgets', 'referrers', 'prestataires', 'bordereaux', 'commissionRates',
         'tenantDocuments', 'reports'].forEach(c => sub(c, true));
 
-      sub('tenantPortals'); // publicly readable portal tokens
+      // Portails locataires : liste réservée au personnel, filtrée par agence
+      // (chaque portail reste lisible seul par son lien public).
+      if (isSuper || (sessionUser && STAFF_ROLES.includes(sessionUser.role))) sub('tenantPortals', true);
+      else if (!loadedRef.current.has('tenantPortals')) { loadedRef.current.add('tenantPortals'); checkBootstrap(); }
 
       // Listings + client profiles (marketplace — no org filter)
       sub('listings');
@@ -576,17 +602,12 @@ export function AppProvider({ children }) {
     if (seededRef.current) return;
     seededRef.current = true;
 
-    const existingSA = state.users.find(u => u.role === 'SUPER_ADMIN');
-    if (!existingSA) {
-      // No SUPER_ADMIN yet — create it
-      hashPwd(DEFAULT_SUPER_ADMIN.password).then((hashed) => {
-        setDoc(wsDoc('users', DEFAULT_SUPER_ADMIN.id), { ...DEFAULT_SUPER_ADMIN, password: hashed }).catch(console.error);
-      });
-    } else if (existingSA.email !== DEFAULT_SUPER_ADMIN.email) {
-      // Email changed in code — update Firestore to match
-      setDoc(wsDoc('users', existingSA.id), { email: DEFAULT_SUPER_ADMIN.email }, { merge: true }).catch(console.error);
-    }
-
+    // SÉCURITÉ : le compte SUPER_ADMIN n'est plus jamais créé depuis le
+    // navigateur (son mot de passe par défaut était lisible dans le bundle). Il
+    // se crée une seule fois, à la main, dans la console Firebase.
+    // Seul le SUPER_ADMIN migre les anciens noms de rôles (les règles refusent
+    // de toute façon cette écriture aux autres).
+    if (state.currentUser?.role !== 'SUPER_ADMIN') return;
     // Migrate legacy role names (ADMIN→ORGANIZATION_ADMIN, MANAGER→AGENT, etc.)
     state.users.forEach(u => {
       const newRole = ROLE_MIGRATION[u.role];
@@ -1205,7 +1226,8 @@ export function AppProvider({ children }) {
         // ── TENANT PORTALS (public QR portal) ─────────────────────────────────────
         case 'GENERATE_TENANT_PORTAL': {
           const { tenantId, tenantName, propertyName, payments: pmts } = payload;
-          const token = `${orgId}_${tenantId}_${Math.random().toString(36).slice(2, 10)}`;
+          // Jeton opaque de 128 bits (crypto) — plus de préfixe agence/locataire devinable.
+          const token = randomToken(16);
           const id = token;
           const portalDoc = {
             id, token, tenantId, tenantName, propertyName, orgId,
@@ -1481,8 +1503,17 @@ export function AppProvider({ children }) {
             failedAttempts: 0, lockedUntil: null,
             suspended: false, createdAt: new Date().toISOString(), lastLogin: null,
           };
-          // Remove firebaseUid from the stored user document
-          const { firebaseUid, ...userDocPayload } = newUser;
+          // Aucun mot de passe (ni hash) n'est stocké dans Firestore : le compte
+          // Firebase Auth est créé ici (application secondaire → l'admin reste
+          // connecté). `plainPassword` = mot de passe initial communiqué par l'admin ;
+          // sans lui, l'utilisateur reçoit un lien pour choisir son mot de passe.
+          const { firebaseUid: givenUid, password: _legacyPwd, plainPassword, ...userDocPayload } = newUser;
+          userDocPayload.email = String(userDocPayload.email || '').trim().toLowerCase();
+          let firebaseUid = givenUid || null;
+          if (!firebaseUid) {
+            const res = await provisionAccount(userDocPayload.email, { password: plainPassword || null });
+            firebaseUid = res.uid;
+          }
           await setDoc(wsDoc('users', id), userDocPayload);
           // Write usersByUid for Firestore Rules enforcement
           if (firebaseUid) {
@@ -1527,11 +1558,13 @@ export function AppProvider({ children }) {
           break;
         }
         case 'CHANGE_PASSWORD': {
-          const { email, newPassword } = payload;
+          const { email } = payload;
           const targetUser = st.users.find((u) => u.email === email);
           if (targetUser) {
+            // Le mot de passe lui-même est changé dans Firebase Auth (voir
+            // ChangePassword / Settings) ; on purge l'ancien hash stocké.
             await updateDoc(wsDoc('users', targetUser.id), {
-              password: newPassword, firstLogin: false, failedAttempts: 0, lockedUntil: null,
+              password: deleteField(), firstLogin: false, failedAttempts: 0, lockedUntil: null,
             });
             // Consume any verified reset-OTP used to authorize this write (no-op otherwise)
             await deleteDoc(wsDoc('otps', targetUser.id)).catch(() => {});
@@ -1544,10 +1577,11 @@ export function AppProvider({ children }) {
           break;
         }
         case 'UPGRADE_PASSWORD': {
-          const { email, hashedPassword } = payload;
+          const { email } = payload;
           const targetUser = st.users.find((u) => u.email === email);
           if (targetUser) {
-            await updateDoc(wsDoc('users', targetUser.id), { password: hashedPassword }).catch(() => {});
+            // Obsolète : plus aucun hash n'est stocké. On purge l'éventuel ancien.
+            await updateDoc(wsDoc('users', targetUser.id), { password: deleteField() }).catch(() => {});
           }
           break;
         }
@@ -1625,10 +1659,13 @@ export function AppProvider({ children }) {
         case 'PLATFORM_RESET': {
           const { password } = payload || {};
           // Verify SUPER_ADMIN password server-side as a second check
-          const superAdmin = st.users.find(u => u.role === 'SUPER_ADMIN');
-          if (superAdmin && password) {
-            const ok = await verifyPwd(password, superAdmin.password);
-            if (!ok) throw new Error('Mot de passe SUPER_ADMIN incorrect');
+          if (st.currentUser?.role !== 'SUPER_ADMIN' || !auth.currentUser?.email || !password) {
+            throw new Error('Mot de passe SUPER_ADMIN requis');
+          }
+          try {
+            await reauthenticateWithCredential(auth.currentUser, EmailAuthProvider.credential(auth.currentUser.email, password));
+          } catch {
+            throw new Error('Mot de passe SUPER_ADMIN incorrect');
           }
 
           // 1. Wipe entity collections entirely

@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
-import { verifyPwd } from '../lib/auth';
 import { isLicenseValid } from '../lib/licenses';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, setDoc, getDocFromServer, collection, getDocs } from 'firebase/firestore';
+import { authErrorMessage } from '../lib/authAccounts';
+import { signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth';
+import { doc, setDoc, getDoc, getDocFromServer, collection, getDocs, query, where } from 'firebase/firestore';
 import { auth, db, authReady } from '../lib/firebase';
 import { sendOTP, verifyOTP } from '../lib/otp';
 import { logSec, SEC } from '../lib/securityLog';
@@ -74,8 +74,6 @@ export default function Login() {
       </div>
     );
   }
-
-  const users = state.users || [];
 
   // ── Helpers ────────────────────────────────────────────────────────────
   const startCooldown = (seconds = 60) => {
@@ -215,112 +213,54 @@ export default function Login() {
       // à la connexion ») sur certains navigateurs.
       await authReady;
       const emailLow = email.trim().toLowerCase();
-      let user = users.find((u) => (u.email || '').toLowerCase() === emailLow);
 
-      // Repli : si la liste locale n'est pas encore chargée (ou incomplète),
-      // on interroge Firebase DIRECTEMENT avant de dire « aucun compte ».
-      // Évite l'erreur « Aucun compte trouvé » quand on valide trop tôt.
-      let diag = '';
-      if (!user) {
-        try {
-          const snap = await getDocs(collection(db, 'workspaces', WS, 'users'));
-          const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          user = all.find(u => (u.email || '').toLowerCase() === emailLow);
-          diag = `${snap.size} compte(s) lus · ws=${WS}`;
-        } catch (fetchErr) {
-          diag = `lecture bloquée: ${fetchErr?.code || fetchErr?.message || 'inconnue'}`;
-          console.warn('[Login] repli Firestore users échoué', fetchErr);
-        }
-      }
-
-      // DERNIER RECOURS : si la liste des comptes est illisible (auth anonyme HS
-      // ou règles Firestore), on s'authentifie DIRECTEMENT avec l'email + mot de
-      // passe via Firebase, puis on relit la fiche avec cette session authentifiée.
-      // Ça permet de se connecter même quand la lecture pré-connexion est bloquée.
-      if (!user) {
-        try {
-          await signInWithEmailAndPassword(auth, emailLow, password);
-          const snap = await getDocs(collection(db, 'workspaces', WS, 'users'));
-          const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          user = all.find(u => (u.email || '').toLowerCase() === emailLow);
-        } catch (authErr) {
-          console.warn('[Login] auth directe Firebase échouée', authErr?.code || authErr?.message);
-        }
-      }
-
-      if (!user) { setError(`Aucun compte trouvé avec cet email.${diag ? ` [${diag}]` : ''}`); return; }
-      if (user.suspended) { setError("Ce compte a été suspendu. Contactez l'administrateur."); return; }
-
-      if (user.role !== 'SUPER_ADMIN') {
-        const userOrg = (state.organizations || []).find(o => o.id === user.orgId);
-        // Ne bloquer que si l'organisation est désactivée ET n'a AUCUNE licence valide.
-        // Une organisation est auto-désactivée quand une licence expire, mais n'était
-        // jamais réactivée quand une nouvelle licence valide était ajoutée — ce qui
-        // bloquait à tort toute l'équipe (ex. une agence dont l'essai a été renouvelé).
-        const hasValidLicense = (state.licenses || [])
-          .some(l => l.orgId === user.orgId && isLicenseValid(l));
-        if (userOrg && userOrg.active === false && !hasValidLicense) {
-          setError("Votre organisation est suspendue. Contactez le support Minsouah.");
-          return;
-        }
-      }
-
-      if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
-        const remaining = Math.ceil((new Date(user.lockedUntil) - Date.now()) / 60000);
-        setError(`Compte temporairement bloqué. Réessayez dans ${remaining} min.`);
-        return;
-      }
-
+      // 1) Authentification Firebase — SEULE source de vérité du mot de passe.
+      //    (Avant : la liste complète des comptes, hash compris, était lue AVANT
+      //    connexion et le mot de passe vérifié dans le navigateur.)
       let firebaseUid = null;
-
       try {
         const cred = await signInWithEmailAndPassword(auth, emailLow, password);
         firebaseUid = cred.user.uid;
-      } catch (fbErr) {
-        // Firebase sign-in failed for ANY reason (wrong Firebase password, no
-        // Firebase account, unknown/other error code…). The app's stored
-        // password hash is the source of truth for admin/self resets (which do
-        // NOT touch Firebase Auth), so ALWAYS fall back to verifying it. Accept
-        // login when EITHER the Firebase password OR the local hash matches.
-        let ok = false;
+      } catch (authErr) {
+        const msg = authErrorMessage(authErr);
+        setError(msg === 'Email ou mot de passe incorrect.'
+          ? "Email ou mot de passe incorrect. Si votre administrateur a réinitialisé votre accès, utilisez « Mot de passe oublié ? »."
+          : msg);
+        await logSec({ action: SEC.LOGIN_FAIL, userEmail: emailLow, details: authErr?.code || 'auth' }).catch(() => {});
+        return;
+      }
+
+      // 2) Lecture de SA fiche (autorisée par les règles : même e-mail que le jeton).
+      let user = null;
+      try {
+        const snap = await getDocs(query(collection(db, 'workspaces', WS, 'users'), where('email', '==', emailLow)));
+        const found = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        user = found[0] || null;
+      } catch (fetchErr) {
+        console.warn('[Login] lecture du profil échouée', fetchErr?.code || fetchErr?.message);
+      }
+
+      const refuse = async (msg) => { await signOut(auth).catch(() => {}); setError(msg); };
+
+      if (!user) { await refuse("Aucun profil Minsouah n'est associé à ce compte. Contactez votre administrateur."); return; }
+      if (user.suspended) { await refuse("Ce compte a été suspendu. Contactez l'administrateur."); return; }
+
+      if (user.role !== 'SUPER_ADMIN' && user.orgId) {
+        // Ne bloquer que si l'organisation est désactivée ET n'a AUCUNE licence valide.
         try {
-          ok = await verifyPwd(password, user.password);
-        } catch (hashErr) {
-          console.warn('[Login] hash verify failed', hashErr);
-          setError("Vérification impossible dans ce contexte. Ouvrez l'application en HTTPS (https://…) puis réessayez.");
-          return;
-        }
-        if (!ok) {
-          dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: emailLow, success: false } });
-          const attempts = (user.failedAttempts || 0) + 1;
-          await logSec({ action: SEC.LOGIN_FAIL, userId: user.id, userEmail: emailLow, role: user.role, details: `Attempt ${attempts}` });
-          setError(attempts >= 5
-            ? 'Compte bloqué pour 15 minutes après 5 tentatives échouées.'
-            : `Mot de passe incorrect. ${5 - attempts} tentative(s) restante(s).`);
-          return;
-        }
-        // Hash verified — ensure a Firebase Auth account exists for this password
-        try {
-          const newCred = await createUserWithEmailAndPassword(auth, emailLow, password);
-          firebaseUid = newCred.user.uid;
-        } catch (createErr) {
-          if (createErr.code === 'auth/email-already-in-use') {
-            // A Firebase account exists but with a different password. The user
-            // proved identity via the local hash — retry sign-in just in case.
-            try {
-              const retryCred = await signInWithEmailAndPassword(auth, emailLow, password);
-              firebaseUid = retryCred.user.uid;
-            } catch {
-              console.warn('[Login] Firebase Auth password out of sync for', emailLow, '— logging in via local hash.');
-            }
+          const orgSnap = await getDoc(doc(db, 'workspaces', WS, 'organizations', user.orgId));
+          const userOrg = orgSnap.exists() ? orgSnap.data() : null;
+          if (userOrg && userOrg.active === false) {
+            const licSnap = await getDocs(query(collection(db, 'workspaces', WS, 'licenses'), where('orgId', '==', user.orgId)));
+            const hasValidLicense = licSnap.docs.some(d => isLicenseValid(d.data()));
+            if (!hasValidLicense) { await refuse('Votre organisation est suspendue. Contactez le support Minsouah.'); return; }
           }
-          // Other create errors ignored — user still gets in-app access via the hash
+        } catch (orgErr) {
+          console.warn('[Login] vérification organisation', orgErr?.code || orgErr?.message);
         }
       }
 
       // ── 2FA: opt-in for any role via twoFaEnabled flag ──────────────────────
-      // SUPER_ADMIN 2FA is not forced — it must be explicitly enabled in their
-      // user doc (twoFaEnabled: true) once email delivery is confirmed working.
       const needs2FA = !!user.twoFaEnabled;
       if (needs2FA) {
         pendingLoginRef.current = { user, firebaseUid };

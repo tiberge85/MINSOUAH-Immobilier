@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 import Icon from '../components/Icon';
-import { hashPwd, verifyPwd } from '../lib/auth';
-import { updatePassword } from 'firebase/auth';
+import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
+import { authErrorMessage } from '../lib/authAccounts';
 import { auth } from '../lib/firebase';
 
 const WELCOME_GUIDES = {
@@ -180,14 +180,6 @@ export default function ChangePassword() {
     e.preventDefault();
     setError('');
 
-    if (!isFirstLogin) {
-      const dbUser = (state.users || []).find(u => u.email === user.email);
-      const ok = await verifyPwd(current, dbUser?.password);
-      if (!ok) {
-        setError('Mot de passe actuel incorrect.');
-        return;
-      }
-    }
 
     if (next.length < 8) {
       setError('Le nouveau mot de passe doit contenir au moins 8 caractères.');
@@ -203,19 +195,33 @@ export default function ChangePassword() {
     }
 
     setLoading(true);
-    const hashedNext = await hashPwd(next);
     // Synchroniser AUSSI le mot de passe Firebase Auth avec le nouveau. Sinon
     // Firebase garde le mot de passe temporaire : à la connexion suivante,
     // l'utilisateur saisit son nouveau mot de passe, Firebase le refuse, et il
     // retombe sur l'authentification de secours sans vraie session Firebase.
     // L'utilisateur vient de se connecter (session récente) donc updatePassword
     // ne requiert pas de ré-authentification ici.
+    // Firebase Auth est la seule source de vérité : un échec ici est BLOQUANT.
     try {
-      if (auth.currentUser) await updatePassword(auth.currentUser, next);
+      const fbUser = auth.currentUser;
+      if (!fbUser || fbUser.isAnonymous) throw Object.assign(new Error('no-session'), { code: 'auth/requires-recent-login' });
+      if (!isFirstLogin) {
+        try {
+          await reauthenticateWithCredential(fbUser, EmailAuthProvider.credential(fbUser.email, current));
+        } catch {
+          setError('Mot de passe actuel incorrect.');
+          setLoading(false);
+          return;
+        }
+      }
+      await updatePassword(fbUser, next);
     } catch (e) {
       console.warn('[ChangePassword] updatePassword Firebase', e?.code || e?.message);
+      setError(authErrorMessage(e));
+      setLoading(false);
+      return;
     }
-    dispatch({ type: 'CHANGE_PASSWORD', payload: { email: user.email, newPassword: hashedNext } });
+    dispatch({ type: 'CHANGE_PASSWORD', payload: { email: user.email } });
     toast('Mot de passe modifié avec succès !', 'success');
     const dest =
       user.role === 'TENANT' ? '/portal/tenant' :

@@ -16,7 +16,6 @@ import { validateEmailFull } from '../lib/disposableEmails';
 import { useApp } from '../context/AppContext';
 import { getPlan, PLANS, fmtLimit } from '../lib/planLimits';
 import { getLicenseStatusInfo, getDaysRemaining, createLicensePayload } from '../lib/licenses';
-import { verifyPwd, hashPwd } from '../lib/auth';
 import { sendEmail } from '../lib/email';
 import { logSec, SEC, SEV } from '../lib/securityLog';
 import { createBackup, listBackups, restoreBackup, deleteBackupMeta } from '../lib/backup';
@@ -406,7 +405,6 @@ export default function SuperAdmin() {
     try {
       const orgId = `org_${Date.now()}`;
       const initials = adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-      const hashedPwd = await hashPwd(adminPassword);
       const trialDays = Number(createOrgForm.trialDays) || 7;
       const license = createLicensePayload({ orgId, plan: 'trial', trialDays });
 
@@ -417,7 +415,7 @@ export default function SuperAdmin() {
       // firebaseUid in payload triggers usersByUid write inside ADD_USER
       await dispatch({ type: 'ADD_USER', payload: {
         name: adminName.trim(), email: emailLow,
-        password: hashedPwd, role: 'ORGANIZATION_ADMIN', orgId, initials,
+        role: 'ORGANIZATION_ADMIN', orgId, initials,
         color: 'bg-primary-container text-on-primary-container', firstLogin: false,
         emailVerificationRequired: true, firebaseUid,
       }});
