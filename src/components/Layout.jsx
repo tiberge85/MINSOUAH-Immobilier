@@ -41,8 +41,8 @@ const navItems = [
   { path: '/inbox',       label: 'Messagerie',        icon: 'support_agent',           mobileIcon: 'mail' },
   { path: '/reports',     label: 'Rapports',          icon: 'description',             mobileIcon: 'description' },
   { path: '/prospection',      label: 'Prospection',        icon: 'group_add',          mobileIcon: 'group_add', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'AGENT', 'MANAGER', 'SUPER_ADMIN'] },
-  { path: '/reconnaissance',   label: 'Reconnaissance',     icon: 'workspace_premium',  mobileIcon: 'workspace_premium', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
-  { path: '/mes-distinctions', label: 'Mes distinctions',   icon: 'workspace_premium',  mobileIcon: 'workspace_premium', roles: ['TENANT'] },
+  { path: '/reconnaissance',   label: 'Reconnaissance',     icon: 'military_tech',  mobileIcon: 'military_tech', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { path: '/mes-distinctions', label: 'Mes distinctions',   icon: 'military_tech',  mobileIcon: 'military_tech', roles: ['TENANT'] },
   { path: '/rapport-exercice', label: "Rapport d'exercice", icon: 'assessment',        mobileIcon: 'assessment', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'SUPER_ADMIN'] },
 ];
 
@@ -147,7 +147,7 @@ export default function Layout() {
         .filter(a => a.status === 'publiee')
         .sort((a, b) => (b.year || 0) - (a.year || 0))
         .map(a => ({
-          id: `award-${a.id}`, icon: 'workspace_premium', color: 'text-primary', bg: 'bg-primary/10',
+          id: `award-${a.id}`, icon: 'military_tech', color: 'text-primary', bg: 'bg-primary/10',
           label: '🏅 Nouvelle distinction', sub: `${a.label || 'Distinction'} — ${a.year || ''}`, path: '/mes-distinctions',
         }));
       setAwardNotifs(list);
@@ -271,6 +271,57 @@ export default function Layout() {
             </span>
           </div>
           <div className="flex items-center gap-1 sm:gap-2">
+            {/* Cloche de notifications (distinctions, etc.) */}
+            <div className="relative" ref={notifRef}>
+              <button
+                onClick={() => setShowNotif(v => !v)}
+                className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-surface-container-high text-on-surface-variant transition-colors relative"
+                title="Notifications"
+              >
+                <Icon name="notifications" size={18} />
+                {notifications.length > 0 && (
+                  <span className="absolute top-1 right-1 w-4 h-4 bg-error text-on-error text-[9px] font-bold rounded-full flex items-center justify-center">
+                    {notifications.length > 9 ? '9+' : notifications.length}
+                  </span>
+                )}
+              </button>
+              {showNotif && (
+                <div className="fixed right-4 top-16 sm:top-20 w-96 max-w-[calc(100vw-1rem)] bg-surface rounded-2xl shadow-xl border border-outline-variant/20 z-[200] overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-outline-variant/10">
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-on-surface text-sm">Notifications</p>
+                      {notifications.length > 0 && <span className="text-xs bg-error text-on-error px-2 py-0.5 rounded-full font-bold">{notifications.length}</span>}
+                    </div>
+                    {notifications.length > 0 && (
+                      <button onClick={() => markRead(notifications.map(n => n.id))} className="text-xs text-primary hover:text-primary/70 font-semibold transition-colors">Tout marquer lu</button>
+                    )}
+                  </div>
+                  <div className="max-h-[28rem] overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="text-center py-8 text-on-surface-variant">
+                        <Icon name="check_circle" size={32} className="opacity-30 mb-2 text-green-600" />
+                        <p className="text-xs">Aucune nouvelle notification</p>
+                      </div>
+                    ) : notifications.map(n => (
+                      <button key={n.id}
+                        onClick={() => { markRead([n.id]); setShowNotif(false); navigate(n.path); }}
+                        className="w-full flex items-start gap-3 px-4 py-3 hover:bg-surface-container transition-colors border-b border-outline-variant/10 last:border-0 text-left cursor-pointer">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${n.bg}`}>
+                          <Icon name={n.icon} size={16} className={n.color} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-on-surface leading-snug">{n.label}</p>
+                          <p className="text-xs text-on-surface mt-0.5 break-words leading-snug">{n.sub}</p>
+                        </div>
+                        <button onClick={e => { e.stopPropagation(); markRead([n.id]); }} className="text-on-surface-variant hover:text-primary transition-colors flex-shrink-0 mt-1 p-0.5" title="Marquer comme lu">
+                          <Icon name="close" size={14} />
+                        </button>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             <button
               onClick={toggleDark}
               className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-surface-container-high text-on-surface-variant transition-colors"

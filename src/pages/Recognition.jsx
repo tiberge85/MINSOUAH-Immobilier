@@ -215,7 +215,7 @@ export default function Recognition() {
   return (
     <div className="flex flex-col gap-md">
       <div>
-        <h2 className="font-bold text-on-surface text-lg flex items-center gap-2"><Icon name="workspace_premium" size={22} className="text-primary" /> Minsouah Reconnaissance</h2>
+        <h2 className="font-bold text-on-surface text-lg flex items-center gap-2"><Icon name="military_tech" size={22} className="text-primary" /> Minsouah Reconnaissance</h2>
         <p className="text-sm text-on-surface-variant mt-0.5 italic">« Votre sérieux mérite d'être reconnu. » {agencyName ? `— ${agencyName}` : ''}</p>
       </div>
 
@@ -308,7 +308,7 @@ export default function Recognition() {
 
       {!results && (
         <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 p-lg text-center text-on-surface-variant">
-          <Icon name="workspace_premium" size={40} className="opacity-30 mb-2" />
+          <Icon name="military_tech" size={40} className="opacity-30 mb-2" />
           <p>Choisissez une année et cliquez sur <b>« Lancer l'évaluation »</b>.</p>
           <p className="text-xs mt-1">Le moteur analyse les paiements réels de chaque locataire et propose une distinction, soumise à votre validation avant publication.</p>
         </div>

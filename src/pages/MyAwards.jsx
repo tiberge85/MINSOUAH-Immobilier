@@ -76,7 +76,7 @@ export default function MyAwards() {
   return (
     <div className="flex flex-col gap-md max-w-3xl mx-auto w-full">
       <div className="text-center">
-        <h2 className="font-bold text-on-surface text-xl flex items-center justify-center gap-2"><Icon name="workspace_premium" size={24} className="text-primary" /> Mes distinctions</h2>
+        <h2 className="font-bold text-on-surface text-xl flex items-center justify-center gap-2"><Icon name="military_tech" size={24} className="text-primary" /> Mes distinctions</h2>
         <p className="text-sm text-on-surface-variant mt-1 italic">« Votre sérieux mérite d'être reconnu. »</p>
       </div>
       {msg && <div className="bg-surface-container-high text-on-surface rounded-xl px-4 py-2 text-sm text-center">{msg}</div>}
