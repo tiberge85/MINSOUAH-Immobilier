@@ -3,7 +3,7 @@ import { collection, query, where, onSnapshot, doc, setDoc, writeBatch, addDoc }
 import { db } from '../lib/firebase';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
-import { evaluateAll, AWARD_DEFS, AWARD_BY_KEY, DEFAULT_AWARD_RULES, AWARD_RULE_FIELDS, resolveAwardRules } from '../lib/recognition';
+import { evaluateAll, AWARD_DEFS, AWARD_BY_KEY, DEFAULT_AWARD_RULES, AWARD_RULE_FIELDS, resolveAwardRules, isActiveTenant } from '../lib/recognition';
 import { buildCertificate, certificateHTML } from '../lib/certificate';
 
 const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
@@ -86,9 +86,11 @@ export default function Recognition() {
   function runEvaluation() {
     setBusy(true); setMsg('');
     try {
-      const res = evaluateAll({ tenants: state.tenants || [], contracts: state.contracts || [], payments: state.payments || [], year, rules, now });
+      const contracts = state.contracts || [];
+      const activeTenants = (state.tenants || []).filter(t => isActiveTenant(t, contracts));
+      const res = evaluateAll({ tenants: activeTenants, contracts, payments: state.payments || [], year, rules, now });
       setResults(res);
-      setMsg(`Évaluation terminée : ${res.length} locataire(s) analysé(s).`);
+      setMsg(`Évaluation terminée : ${res.length} locataire(s) actif(s) analysé(s).`);
       setTimeout(() => setMsg(''), 4000);
     } catch (e) { setMsg('Erreur : ' + (e?.message || e)); }
     finally { setBusy(false); }
@@ -451,6 +453,7 @@ export default function Recognition() {
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
                               <div><p className="font-semibold text-on-surface mb-1">Statistiques {year}</p>
                                 <ul className="text-on-surface-variant space-y-0.5">
+                                  <li>Début de contrat : {r.stats.contractStart} · Ancienneté : {r.anciennete} an(s)</li>
                                   <li>Période évaluée : {r.stats.periode} <span className="text-on-surface-variant/70">(depuis la 1ʳᵉ quittance)</span></li>
                                   <li>Échéances exigibles : {r.stats.nbExigible}</li>
                                   <li>Payées : {r.stats.nbPaid} · En retard (régularisés) : {r.stats.nbLate}</li>

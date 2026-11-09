@@ -86,7 +86,22 @@ export function resolveAwardRules(rules) {
 
 const norm = (s) => (s || '').toString().toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const nameMatch = (a, b) => { a = norm(a); b = norm(b); if (!a || !b) return false; if (a === b) return true; const s = a.length <= b.length ? a : b, l = a.length <= b.length ? b : a; return s.length >= 4 && l.includes(s); };
-const parseDate = (v) => { if (!v) return null; if (v instanceof Date) return isNaN(v) ? null : v; const s = String(v).trim(); const m = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/); if (m) { let [, d, mo, y] = m; if (y.length === 2) y = '20' + y; const dt = new Date(+y, +mo - 1, +d); return isNaN(dt) ? null : dt; } const dt = new Date(s); return isNaN(dt) ? null : dt; };
+const parseDate = (v) => {
+  if (!v) return null;
+  if (v instanceof Date) return isNaN(v) ? null : v;
+  // Timestamp Firestore ({seconds} ou .toDate()), ou epoch numérique.
+  if (typeof v === 'object') {
+    if (typeof v.toDate === 'function') { const d = v.toDate(); return isNaN(d) ? null : d; }
+    if (v.seconds != null) { const d = new Date(v.seconds * 1000); return isNaN(d) ? null : d; }
+    return null;
+  }
+  if (typeof v === 'number') { const d = new Date(v); return isNaN(d) ? null : d; }
+  const s = String(v).trim();
+  const m = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/);
+  if (m) { let [, d, mo, y] = m; if (y.length === 2) y = '20' + y; const dt = new Date(+y, +mo - 1, +d); return isNaN(dt) ? null : dt; }
+  const dt = new Date(s); return isNaN(dt) ? null : dt;
+};
+const dateFR = (d) => d ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}` : '—';
 const monthLabel = (m, y) => `${MONTHS_FR[m]} ${y}`;
 
 /** Indice de mois (0-11) d'un libellé « Mois AAAA » s'il appartient à l'année, sinon null. */
@@ -105,6 +120,16 @@ function contractsOfTenant(tenant, contracts) {
     (c.tenantId != null && String(c.tenantId) === String(tenant.id)) || nameMatch(c.tenant, tenant.name));
 }
 
+/** Un locataire est ACTIF s'il n'est pas marqué inactif ET possède un contrat
+ *  en cours (Actif ou Expirant). Les locataires partis/résiliés sont exclus. */
+export function isActiveTenant(tenant, contracts) {
+  if (!tenant) return false;
+  if (tenant.status && tenant.status !== 'Actif') return false;
+  return (contracts || []).some(c =>
+    (c.status === 'Actif' || c.status === 'Expirant') &&
+    ((c.tenantId != null && String(c.tenantId) === String(tenant.id)) || nameMatch(c.tenant, tenant.name)));
+}
+
 /** Paiements d'un locataire (par id ou par nom), hors annulés. */
 function paymentsOfTenant(tenant, payments) {
   return (payments || []).filter(p => p.status !== 'Annulé' &&
@@ -120,11 +145,18 @@ export function evaluateTenantYear({ tenant, contracts, payments, year, rules, n
   const myContracts = contractsOfTenant(tenant, contracts);
   const myPayments = paymentsOfTenant(tenant, payments);
 
-  // Ancienneté : depuis le plus ancien début de contrat (ou date d'entrée locataire).
-  const starts = myContracts.map(c => parseDate(c.startDate || c.since || c.createdAt)).filter(Boolean);
-  const entry = parseDate(tenant.since) || parseDate(tenant.createdAt);
-  if (entry) starts.push(entry);
-  const firstStart = starts.length ? new Date(Math.min(...starts.map(d => d.getTime()))) : null;
+  // Ancienneté : calculée à partir de la DATE DE DÉBUT DU CONTRAT (le contrat
+  // donne la durée). On prend le plus ancien début de contrat ; à défaut, la
+  // date d'entrée/paiement du locataire. (La date de création en base n'est
+  // utilisée qu'en dernier recours, car c'est la saisie, pas le vrai bail.)
+  const contractStarts = myContracts.map(c => parseDate(c.startDate || c.since)).filter(Boolean);
+  let firstStart = contractStarts.length ? new Date(Math.min(...contractStarts.map(d => d.getTime()))) : null;
+  if (!firstStart) firstStart = parseDate(tenant.since) || parseDate(tenant.paymentStartDate) || null;
+  if (!firstStart) {
+    const fallback = myContracts.map(c => parseDate(c.createdAt)).filter(Boolean);
+    if (fallback.length) firstStart = new Date(Math.min(...fallback.map(d => d.getTime())));
+    else firstStart = parseDate(tenant.createdAt) || null;
+  }
   const refEnd = new Date(year, 11, 31);
   const anciennete = firstStart ? Math.max(0, Math.floor((refEnd - firstStart) / (365.25 * 24 * 3600 * 1000))) : 0;
 
@@ -180,7 +212,7 @@ export function evaluateTenantYear({ tenant, contracts, payments, year, rules, n
   const hasUnresolved = myPayments.some(p => p.status === 'Impayé' || p.status === 'En retard');
 
   const periode = exigibleMonths.length ? `${MONTHS_FR[exigibleMonths[0]]} → ${MONTHS_FR[exigibleMonths[exigibleMonths.length - 1]]} ${year}` : '—';
-  const stats = { nbExigible, nbPaid, nbLate, nbPartial, nbUnpaid, soldeDu, rent, anciennete, fullYear, periode };
+  const stats = { nbExigible, nbPaid, nbLate, nbPartial, nbUnpaid, soldeDu, rent, anciennete, fullYear, periode, contractStart: dateFR(firstStart) };
 
   if (nbExigible === 0) {
     return { eligible: null, label: 'Non évaluable', score: 0, fullYear: false, stats, anciennete,

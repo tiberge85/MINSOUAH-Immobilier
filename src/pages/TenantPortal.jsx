@@ -330,6 +330,12 @@ export default function TenantPortal() {
     return unsub;
   }, [selectedId]);
 
+  const awardsByYear = useMemo(() => {
+    const m = {};
+    awards.forEach(a => { (m[a.year] = m[a.year] || []).push(a); });
+    return Object.entries(m).sort((a, b) => Number(b[0]) - Number(a[0]));
+  }, [awards]);
+
   const awardBaseUrl = (typeof window !== 'undefined') ? (window.location.origin + window.location.pathname) : '';
   async function viewAwardPDF(a) {
     try {
@@ -571,6 +577,7 @@ export default function TenantPortal() {
     { id: 'payments', label: 'Paiements', icon: 'payments' },
     { id: 'tickets', label: 'Maintenance', icon: 'engineering' },
     { id: 'edl', label: 'État lieux', icon: 'home_work' },
+    { id: 'awards', label: 'Distinctions', icon: 'verified' },
     { id: 'docs', label: 'Documents', icon: 'folder' },
     { id: 'messages', label: 'Messages', icon: 'chat' },
   ];
@@ -1098,6 +1105,50 @@ export default function TenantPortal() {
                 ? <TenantDocuments tenantId={tenant.id} tenantName={tenantName} />
                 : <p className="text-body-sm text-on-surface-variant">Sélectionnez un locataire.</p>}
             </div>
+          </>
+        )}
+
+        {/* ── DISTINCTIONS (Minsouah Reconnaissance), classées par année ── */}
+        {activeTab === 'awards' && (
+          <>
+            <div className="text-center">
+              <h3 className="font-bold text-on-surface flex items-center justify-center gap-2"><Icon name="verified" size={20} className="text-primary" /> Mes distinctions</h3>
+              <p className="text-body-sm text-on-surface-variant italic">« Votre sérieux mérite d'être reconnu. »</p>
+            </div>
+            {awardMsg && <div className="bg-surface-container-high rounded-xl px-4 py-2 text-sm text-center">{awardMsg}</div>}
+
+            {awards.length === 0 ? (
+              <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-8 text-center">
+                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3"><Icon name="emoji_events" size={32} className="text-primary" /></div>
+                <h4 className="font-bold text-on-surface">Votre reconnaissance se construit !</h4>
+                <p className="text-on-surface-variant text-sm mt-2">Vous n'avez pas encore de distinction. Chaque loyer réglé à temps vous en rapproche — continuez ainsi ! 💪</p>
+              </div>
+            ) : awardsByYear.map(([yr, list]) => (
+              <div key={yr} className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-on-surface-variant uppercase tracking-wider">Exercice {yr}</span>
+                  <span className="flex-1 h-px bg-outline-variant/30" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {list.map(a => {
+                    const def = AWARD_BY_KEY[a.award_type]; const color = AWARD_THEME[a.award_type] || '#785a00';
+                    return (
+                      <div key={a.id} className="bg-surface-container-lowest rounded-2xl border overflow-hidden" style={{ borderColor: color + '33' }}>
+                        <div className="p-4 text-center" style={{ background: color + '12' }}>
+                          <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-1 text-xl" style={{ background: color + '22' }}>{def?.emoji || '🏅'}</div>
+                          <p className="font-black" style={{ color }}>{def?.label || a.label}</p>
+                          <p className="text-[11px] text-on-surface-variant">Certificat N° {a.certificate_number}</p>
+                        </div>
+                        <div className="p-3 flex gap-2">
+                          <button onClick={() => viewAwardPDF(a)} className="flex-1 inline-flex items-center justify-center gap-1 bg-primary text-on-primary rounded-lg px-2 py-2 text-xs font-semibold"><Icon name="visibility" size={15} /> Voir / PDF</button>
+                          <button onClick={() => shareAward(a)} className="flex-1 inline-flex items-center justify-center gap-1 bg-green-100 text-green-700 rounded-lg px-2 py-2 text-xs font-semibold"><Icon name="share" size={15} /> Partager</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </>
         )}
       </div>
