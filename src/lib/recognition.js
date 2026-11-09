@@ -5,7 +5,8 @@
    Fonction PURE et EXPLICABLE : pour un locataire et une année, on calcule à
    partir des données financières réelles (paiements validés uniquement) les
    statistiques de l'exercice, puis on attribue AU PLUS UNE distinction (la plus
-   élevée) selon une hiérarchie non contradictoire et des seuils paramétrables.
+   élevée) selon une hiérarchie non contradictoire et des CRITÈRES PARAMÉTRABLES
+   renseignés par l'administrateur (page Reconnaissance → Paramètres des critères).
 
    Règles de calcul (cahier des charges) :
      • Seuls les paiements « Payé » (validés) comptent ; « Annulé » exclus.
@@ -27,7 +28,56 @@ export const AWARD_DEFS = [
 ];
 export const AWARD_BY_KEY = Object.fromEntries(AWARD_DEFS.map(a => [a.key, a]));
 
+// Ancien format (compatibilité) — toujours exporté.
 export const DEFAULT_RULES = { fideleYears: 2, partenaireYears: 4, regularMaxLate: 2 };
+
+/* Critères paramétrables PAR distinction (valeurs par défaut).
+   Chaque champ est réglable dans l'app :
+     enabled         : distinction activée (sinon jamais attribuée)
+     minYears        : ancienneté minimale (années de présence)
+     maxLate         : nombre de retards (loyers payés après échéance) tolérés
+     maxPartial      : nombre de paiements partiels tolérés
+     maxUnpaid       : nombre d'impayés tolérés
+     requireFullYear : exige 12 mois complets, tous payés à temps
+     requireSolde    : exige une année entièrement soldée (aucun reste dû)
+     noUnresolved    : exige aucun impayé/retard résiduel dans l'historique  */
+export const DEFAULT_AWARD_RULES = {
+  PARTENAIRE: { enabled: true, minYears: 4, maxLate: 0,  maxPartial: 0, maxUnpaid: 0, requireFullYear: false, requireSolde: true, noUnresolved: true },
+  EXCELLENCE: { enabled: true, minYears: 0, maxLate: 0,  maxPartial: 0, maxUnpaid: 0, requireFullYear: true,  requireSolde: true, noUnresolved: false },
+  EXEMPLAIRE: { enabled: true, minYears: 0, maxLate: 0,  maxPartial: 0, maxUnpaid: 0, requireFullYear: false, requireSolde: true, noUnresolved: false },
+  FIDELE:     { enabled: true, minYears: 2, maxLate: 99, maxPartial: 0, maxUnpaid: 0, requireFullYear: false, requireSolde: true, noUnresolved: false },
+  REGULIER:   { enabled: true, minYears: 0, maxLate: 2,  maxPartial: 0, maxUnpaid: 0, requireFullYear: false, requireSolde: true, noUnresolved: false },
+};
+
+export const AWARD_RULE_FIELDS = [
+  { key: 'enabled',         label: 'Distinction activée',            type: 'bool' },
+  { key: 'minYears',        label: 'Ancienneté minimale (années)',    type: 'num' },
+  { key: 'maxLate',         label: 'Retards tolérés',                 type: 'num' },
+  { key: 'maxPartial',      label: 'Paiements partiels tolérés',      type: 'num' },
+  { key: 'maxUnpaid',       label: 'Impayés tolérés',                 type: 'num' },
+  { key: 'requireFullYear', label: 'Exiger 12 mois complets',         type: 'bool' },
+  { key: 'requireSolde',    label: 'Exiger année soldée',             type: 'bool' },
+  { key: 'noUnresolved',    label: 'Aucun impayé résiduel (historique)', type: 'bool' },
+];
+
+/** Normalise n'importe quelle entrée (nouveau format par distinction, ancien
+ *  format plat, ou vide) vers un jeu de critères complet par distinction. */
+export function resolveAwardRules(rules) {
+  const out = {};
+  for (const k of Object.keys(DEFAULT_AWARD_RULES)) out[k] = { ...DEFAULT_AWARD_RULES[k] };
+  if (!rules) return out;
+  // Nouveau format : objet avec des clés de distinction.
+  if (AWARD_DEFS.some(d => rules[d.key])) {
+    for (const k of Object.keys(out)) if (rules[k]) out[k] = { ...out[k], ...rules[k] };
+    return out;
+  }
+  // Ancien format plat → on mappe sur les champs correspondants.
+  const legacy = { ...DEFAULT_RULES, ...rules };
+  if (legacy.partenaireYears != null) out.PARTENAIRE.minYears = Number(legacy.partenaireYears);
+  if (legacy.fideleYears != null) out.FIDELE.minYears = Number(legacy.fideleYears);
+  if (legacy.regularMaxLate != null) out.REGULIER.maxLate = Number(legacy.regularMaxLate);
+  return out;
+}
 
 const norm = (s) => (s || '').toString().toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const nameMatch = (a, b) => { a = norm(a); b = norm(b); if (!a || !b) return false; if (a === b) return true; const s = a.length <= b.length ? a : b, l = a.length <= b.length ? b : a; return s.length >= 4 && l.includes(s); };
@@ -48,11 +98,10 @@ function paymentsOfTenant(tenant, payments) {
 
 /**
  * Évalue un locataire pour une année.
- * @returns {{ eligible:string|null, label:string, score:number, fullYear:boolean,
- *   stats:object, criteriaMet:string[], criteriaFailed:string[], anciennete:number }}
+ * @param {object} rules  Critères paramétrables (par distinction ou ancien format plat).
  */
-export function evaluateTenantYear({ tenant, contracts, payments, year, rules = DEFAULT_RULES, now = new Date() }) {
-  const R = { ...DEFAULT_RULES, ...rules };
+export function evaluateTenantYear({ tenant, contracts, payments, year, rules, now = new Date() }) {
+  const AR = resolveAwardRules(rules);
   const myContracts = contractsOfTenant(tenant, contracts);
   const myPayments = paymentsOfTenant(tenant, payments);
 
@@ -68,18 +117,16 @@ export function evaluateTenantYear({ tenant, contracts, payments, year, rules = 
   const activeC = myContracts.find(c => c.status === 'Actif' || c.status === 'Expirant') || myContracts[myContracts.length - 1];
   const rent = Number(activeC?.rent) || 0;
 
-  // Fenêtre d'exigibilité dans l'année : du 1er loyer (paymentStartDate / début
-  // contrat) jusqu'au mois courant (année en cours) ou à la sortie (contrat résilié).
+  // Fenêtre d'exigibilité dans l'année.
   const psd = parseDate(tenant.paymentStartDate) || firstStart;
   let startMonth = 0;
   if (psd && psd.getFullYear() === year) startMonth = psd.getMonth();
-  else if (psd && psd.getFullYear() > year) startMonth = 12; // pas encore locataire cette année
-  // Fin : mois courant si année en cours, sinon décembre ; borné par une éventuelle sortie.
+  else if (psd && psd.getFullYear() > year) startMonth = 12;
   let endMonth = (year === now.getFullYear()) ? now.getMonth() : 11;
   const resiliated = myContracts.some(c => c.status === 'Résilié');
   const depart = resiliated ? (parseDate(activeC?.endDate) || null) : null;
   if (depart && depart.getFullYear() === year) endMonth = Math.min(endMonth, depart.getMonth());
-  else if (depart && depart.getFullYear() < year) endMonth = -1; // parti avant cette année
+  else if (depart && depart.getFullYear() < year) endMonth = -1;
 
   const exigibleMonths = [];
   for (let m = startMonth; m <= endMonth; m++) exigibleMonths.push(m);
@@ -105,48 +152,56 @@ export function evaluateTenantYear({ tenant, contracts, payments, year, rules = 
 
   const nbExigible = exigibleMonths.length;
   const fullYear = nbExigible >= 12 && nbUnpaid === 0 && nbPartial === 0 && nbPaid === 12 && nbLate === 0;
-  const perfect = nbExigible > 0 && nbUnpaid === 0 && nbPartial === 0 && nbLate === 0 && nbPaid === nbExigible;
-  const soldeOk = nbUnpaid === 0 && nbPartial === 0 && soldeDu === 0 && nbExigible > 0; // année soldée
-  // Historique : aucun impayé résiduel détecté dans les enregistrements du locataire.
+  const soldeOk = nbUnpaid === 0 && nbPartial === 0 && soldeDu === 0 && nbExigible > 0;
   const hasUnresolved = myPayments.some(p => p.status === 'Impayé' || p.status === 'En retard');
 
   const stats = { nbExigible, nbPaid, nbLate, nbPartial, nbUnpaid, soldeDu, rent, anciennete, fullYear };
 
-  // ── Attribution : première distinction satisfaite dans l'ordre de priorité. ──
-  const met = [], failed = [];
-  const add = (ok, txt) => (ok ? met : failed).push(txt);
-
-  // Critères de base réutilisés
-  add(nbUnpaid === 0, `Aucun impayé à la clôture (${nbUnpaid} impayé(s))`);
-  add(nbPartial === 0, `Aucun paiement partiel (${nbPartial})`);
-  add(nbLate === 0, `Aucun retard (${nbLate} retard(s))`);
-
-  let eligible = null;
   if (nbExigible === 0) {
     return { eligible: null, label: 'Non évaluable', score: 0, fullYear: false, stats, anciennete,
       criteriaMet: [], criteriaFailed: ['Aucune échéance exigible sur l\'année (locataire non présent / pas encore de loyer dû)'], monthsDetail };
   }
-  if (anciennete >= R.partenaireYears && perfect && !hasUnresolved) {
-    eligible = 'PARTENAIRE';
-  } else if (fullYear) {
-    eligible = 'EXCELLENCE';
-  } else if (perfect) {
-    eligible = 'EXEMPLAIRE';
-  } else if (anciennete >= R.fideleYears && soldeOk && nbPartial === 0) {
-    eligible = 'FIDELE';
-  } else if (soldeOk && nbPartial === 0 && nbLate <= R.regularMaxLate) {
-    eligible = 'REGULIER';
+
+  // ── Attribution : première distinction (par priorité) dont TOUS les critères
+  //    paramétrés sont satisfaits. ──
+  function meets(k) {
+    const r = AR[k];
+    if (!r || r.enabled === false) return { ok: false, reasons: ['Distinction désactivée'] };
+    const reasons = [];
+    if (anciennete < (Number(r.minYears) || 0)) reasons.push(`Ancienneté ${anciennete} an(s) < ${r.minYears} requis`);
+    if (nbUnpaid > (Number(r.maxUnpaid) || 0)) reasons.push(`${nbUnpaid} impayé(s) > ${r.maxUnpaid} toléré(s)`);
+    if (nbPartial > (Number(r.maxPartial) || 0)) reasons.push(`${nbPartial} partiel(s) > ${r.maxPartial} toléré(s)`);
+    if (nbLate > (Number(r.maxLate) || 0)) reasons.push(`${nbLate} retard(s) > ${r.maxLate} toléré(s)`);
+    if (r.requireFullYear && !fullYear) reasons.push('12 mois complets exigés');
+    if (r.requireSolde && !soldeOk) reasons.push('Année soldée exigée');
+    if (r.noUnresolved && hasUnresolved) reasons.push('Impayé résiduel dans l\'historique');
+    return { ok: reasons.length === 0, reasons };
   }
 
-  // Score indicatif (0-100) : ponctualité + complétude.
+  let eligible = null;
+  const perAward = {};
+  for (const d of AWARD_DEFS) {
+    const r = meets(d.key);
+    perAward[d.key] = r;
+    if (!eligible && r.ok) eligible = d.key;
+  }
+
+  // Critères remplis / non remplis (pour la ligne « Détail »).
+  const met = [], failed = [];
+  if (eligible) {
+    const r = AR[eligible];
+    met.push(`Ancienneté ${anciennete} an(s) (min ${r.minYears || 0})`);
+    met.push(`${nbUnpaid} impayé(s), ${nbPartial} partiel(s), ${nbLate} retard(s) — dans les seuils`);
+    if (r.requireFullYear) met.push('12 mois complets ✔');
+    if (r.requireSolde) met.push('Année soldée ✔');
+  } else {
+    // On montre pourquoi la distinction la plus accessible (REGULIER) échoue.
+    const base = perAward.REGULIER?.reasons?.length ? perAward.REGULIER.reasons : (perAward.FIDELE?.reasons || []);
+    base.forEach(x => failed.push(x));
+    if (!failed.length) failed.push('Ne remplit aucun critère paramétré');
+  }
+
   const score = nbExigible === 0 ? 0 : Math.round(((nbPaid - nbLate * 0.3) / nbExigible) * 100);
-
-  // Motifs de non-éligibilité détaillés
-  if (!eligible) {
-    if (nbUnpaid > 0) failed.push(`${nbUnpaid} loyer(s) impayé(s) — ${soldeDu.toLocaleString('fr-FR')} FCFA dus`);
-    if (nbPartial > 0) failed.push(`${nbPartial} paiement(s) partiel(s)`);
-    if (nbLate > R.regularMaxLate) failed.push(`${nbLate} retards (> ${R.regularMaxLate} tolérés)`);
-  }
 
   return {
     eligible,

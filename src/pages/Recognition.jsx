@@ -3,7 +3,7 @@ import { collection, query, where, onSnapshot, doc, setDoc, writeBatch, addDoc }
 import { db } from '../lib/firebase';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
-import { evaluateAll, AWARD_DEFS, AWARD_BY_KEY, DEFAULT_RULES } from '../lib/recognition';
+import { evaluateAll, AWARD_DEFS, AWARD_BY_KEY, DEFAULT_AWARD_RULES, AWARD_RULE_FIELDS, resolveAwardRules } from '../lib/recognition';
 import { buildCertificate, certificateHTML } from '../lib/certificate';
 
 const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
@@ -31,8 +31,23 @@ export default function Recognition() {
   const [msg, setMsg] = useState('');
   const [open, setOpen] = useState(null); // ligne dépliée (tenantId)
 
+  // Critères paramétrables (par distinction), chargés depuis Firestore.
+  const [rules, setRules] = useState(() => resolveAwardRules(null));
+  const [showRules, setShowRules] = useState(false);
+  const [rulesDirty, setRulesDirty] = useState(false);
+  const rulesRef = doc(db, 'workspaces', WS, 'recognitionSettings', orgId);
+
   const years = useMemo(() => { const y = now.getFullYear(); return [y, y - 1, y - 2, y - 3]; }, [now]);
   const campaignId = `${orgId}__${year}`;
+
+  // Chargement des critères paramétrés de l'agence.
+  useEffect(() => {
+    const unsub = onSnapshot(rulesRef, (s) => {
+      setRules(resolveAwardRules(s.exists() ? s.data().awardRules : null));
+      setRulesDirty(false);
+    }, () => setRules(resolveAwardRules(null)));
+    return unsub;
+  }, [orgId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Distinctions déjà enregistrées pour l'année.
   useEffect(() => {
@@ -47,14 +62,63 @@ export default function Recognition() {
     return () => { unsub(); unsubC(); };
   }, [orgId, year]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  function setRuleField(awardKey, field, value) {
+    setRules(prev => ({ ...prev, [awardKey]: { ...prev[awardKey], [field]: value } }));
+    setRulesDirty(true);
+  }
+
+  async function saveRules() {
+    setBusy(true); setMsg('');
+    try {
+      await setDoc(rulesRef, { orgId, awardRules: rules, updated_at: new Date().toISOString(), updated_by: String(user?.id || '') }, { merge: true });
+      await logAudit(null, 'CRITERES_MODIFIES', 'Critères des distinctions mis à jour');
+      setRulesDirty(false);
+      setMsg('Critères enregistrés. Relancez l\'évaluation pour les appliquer.'); setTimeout(() => setMsg(''), 5000);
+    } catch (e) { setMsg('Échec enregistrement critères : ' + (e?.code || e?.message)); }
+    finally { setBusy(false); }
+  }
+
+  function resetRules() {
+    if (!window.confirm('Rétablir les critères par défaut (non enregistré tant que vous ne cliquez pas « Enregistrer les critères ») ?')) return;
+    setRules(resolveAwardRules(null)); setRulesDirty(true);
+  }
+
   function runEvaluation() {
     setBusy(true); setMsg('');
     try {
-      const res = evaluateAll({ tenants: state.tenants || [], contracts: state.contracts || [], payments: state.payments || [], year, rules: DEFAULT_RULES, now });
+      const res = evaluateAll({ tenants: state.tenants || [], contracts: state.contracts || [], payments: state.payments || [], year, rules, now });
       setResults(res);
       setMsg(`Évaluation terminée : ${res.length} locataire(s) analysé(s).`);
       setTimeout(() => setMsg(''), 4000);
     } catch (e) { setMsg('Erreur : ' + (e?.message || e)); }
+    finally { setBusy(false); }
+  }
+
+  // Réinitialise l'évaluation affichée (n'efface rien d'enregistré).
+  function resetEvaluation() {
+    setResults(null); setOpen(null);
+    setMsg('Évaluation réinitialisée. Vous pouvez relancer une nouvelle évaluation.'); setTimeout(() => setMsg(''), 4000);
+  }
+
+  // Supprime la campagne de l'année : distinctions, fiches de vérification, doc campagne.
+  async function deleteCampaign() {
+    const items = Object.values(saved);
+    if (!items.length && !campaign) { setMsg('Aucune campagne enregistrée pour cette année.'); setTimeout(() => setMsg(''), 4000); return; }
+    const nbPub = items.filter(a => a.status === 'publiee').length;
+    if (!window.confirm(`Supprimer DÉFINITIVEMENT la campagne ${year} ?\n\n• ${items.length} distinction(s) enregistrée(s)${nbPub ? ` (dont ${nbPub} publiée(s))` : ''}\n• Les certificats publiés ne seront plus vérifiables.\n\nCette action est irréversible.`)) return;
+    setBusy(true); setMsg('');
+    try {
+      const batch = writeBatch(db);
+      items.forEach(a => {
+        batch.delete(doc(db, 'workspaces', WS, 'tenantAwards', a.id));
+        if (a.certificate_number) batch.delete(doc(db, 'workspaces', WS, 'certificateVerify', a.certificate_number));
+      });
+      batch.delete(doc(db, 'workspaces', WS, 'awardCampaigns', campaignId));
+      await batch.commit();
+      await logAudit(null, 'CAMPAGNE_SUPPRIMEE', `Campagne ${year} supprimée (${items.length} distinctions)`);
+      setResults(null); setOpen(null);
+      setMsg(`Campagne ${year} supprimée. Vous pouvez repartir de zéro.`); setTimeout(() => setMsg(''), 5000);
+    } catch (e) { setMsg('Échec suppression : ' + (e?.code || e?.message)); }
     finally { setBusy(false); }
   }
 
@@ -185,6 +249,32 @@ export default function Recognition() {
     finally { setBusy(false); }
   }
 
+  // ── Phase 7 : clôture / réouverture de la campagne annuelle ──
+  async function closeCampaign() {
+    if (!window.confirm(`Clôturer la campagne ${year} ?\n\nUne fois clôturée, l'évaluation et les modifications sont verrouillées (aucun recalcul). Les distinctions publiées restent consultables et vérifiables. Vous pourrez rouvrir si nécessaire.`)) return;
+    setBusy(true);
+    try {
+      await setDoc(doc(db, 'workspaces', WS, 'awardCampaigns', campaignId), { id: campaignId, orgId, year, status: 'Clôturée', closed_at: new Date().toISOString(), closed_by: String(user?.id || '') }, { merge: true });
+      await logAudit(null, 'CLOTURE', `Campagne ${year} clôturée`);
+      setResults(null);
+      setMsg(`Campagne ${year} clôturée et verrouillée.`); setTimeout(() => setMsg(''), 5000);
+    } catch (e) { setMsg('Échec clôture : ' + (e?.code || e?.message)); }
+    finally { setBusy(false); }
+  }
+  async function reopenCampaign() {
+    if (!window.confirm(`Rouvrir la campagne ${year} ? Les modifications redeviennent possibles.`)) return;
+    setBusy(true);
+    try {
+      const back = Object.values(saved).some(a => a.status === 'publiee') ? 'Publiée'
+        : Object.values(saved).some(a => a.status === 'validee') ? 'Validée'
+        : Object.keys(saved).length ? 'Évaluée' : 'Ouverte';
+      await setDoc(doc(db, 'workspaces', WS, 'awardCampaigns', campaignId), { status: back, reopened_at: new Date().toISOString() }, { merge: true });
+      await logAudit(null, 'REOUVERTURE', `Campagne ${year} rouverte`);
+      setMsg(`Campagne ${year} rouverte (${back}).`); setTimeout(() => setMsg(''), 4000);
+    } catch (e) { setMsg('Échec réouverture : ' + (e?.code || e?.message)); }
+    finally { setBusy(false); }
+  }
+
   async function validateOne(tenantId) {
     const a = saved[String(tenantId)]; if (!a) return;
     try {
@@ -211,6 +301,19 @@ export default function Recognition() {
 
   const counts = useMemo(() => results ? countsOf(results) : null, [results]);
   const rows = results || [];
+  const isClosed = campaign?.status === 'Clôturée';
+  const savedList = Object.values(saved);
+  const stage = isClosed ? 'Clôturée'
+    : savedList.some(a => a.status === 'publiee') ? 'Publiée'
+    : savedList.some(a => a.status === 'validee') ? 'Validée'
+    : savedList.length ? 'Évaluée' : 'Ouverte';
+  const nextStep = {
+    Ouverte: 'Lancez l\'évaluation, puis enregistrez la campagne.',
+    Évaluée: 'Validez les distinctions proposées (bouton « Tout valider »).',
+    Validée: 'Publiez les distinctions validées (bouton « Publier »).',
+    Publiée: 'Notifiez les locataires, puis clôturez la campagne quand tout est fait.',
+    Clôturée: 'Campagne verrouillée. Rouvrez-la si une correction est nécessaire.',
+  }[stage];
 
   return (
     <div className="flex flex-col gap-md">
@@ -226,16 +329,78 @@ export default function Recognition() {
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
-        <button onClick={runEvaluation} disabled={busy} className="inline-flex items-center gap-2 bg-primary text-on-primary font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-primary/90 disabled:opacity-50">
+        <button onClick={runEvaluation} disabled={busy || isClosed} title={isClosed ? 'Campagne clôturée — rouvrez-la pour réévaluer' : ''} className="inline-flex items-center gap-2 bg-primary text-on-primary font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-primary/90 disabled:opacity-50">
           {busy ? <><Icon name="progress_activity" size={18} className="animate-spin" /> …</> : <><Icon name="auto_awesome" size={18} /> Lancer l'évaluation</>}
         </button>
-        {results && <button onClick={saveCampaign} disabled={busy} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-outline-variant/30"><Icon name="save" size={18} /> Enregistrer la campagne</button>}
-        {Object.values(saved).some(a => a.status === 'en_attente') && <button onClick={validateAll} disabled={busy} className="inline-flex items-center gap-2 bg-green-100 text-green-700 font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-green-200"><Icon name="verified" size={18} /> Tout valider</button>}
-        {Object.values(saved).some(a => a.status === 'validee') && <button onClick={publishAll} disabled={busy} className="inline-flex items-center gap-2 bg-blue-100 text-blue-800 font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-blue-200"><Icon name="campaign" size={18} /> Publier</button>}
+        <button onClick={() => setShowRules(v => !v)} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-outline-variant/30"><Icon name="tune" size={18} /> Paramètres des critères</button>
+        {results && !isClosed && <button onClick={resetEvaluation} disabled={busy} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-outline-variant/30"><Icon name="restart_alt" size={18} /> Réinitialiser</button>}
+        {results && !isClosed && <button onClick={saveCampaign} disabled={busy} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-outline-variant/30"><Icon name="save" size={18} /> Enregistrer la campagne</button>}
+        {!isClosed && Object.values(saved).some(a => a.status === 'en_attente') && <button onClick={validateAll} disabled={busy} className="inline-flex items-center gap-2 bg-green-100 text-green-700 font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-green-200"><Icon name="verified" size={18} /> Tout valider</button>}
+        {!isClosed && Object.values(saved).some(a => a.status === 'validee') && <button onClick={publishAll} disabled={busy} className="inline-flex items-center gap-2 bg-blue-100 text-blue-800 font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-blue-200"><Icon name="campaign" size={18} /> Publier</button>}
         {Object.values(saved).some(a => a.status === 'publiee') && <button onClick={notifyAllWA} className="inline-flex items-center gap-2 bg-green-100 text-green-700 font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-green-200"><Icon name="chat" size={18} /> Notifier tous (WhatsApp)</button>}
+        {!isClosed && Object.values(saved).some(a => a.status === 'publiee') && <button onClick={closeCampaign} disabled={busy} className="inline-flex items-center gap-2 bg-slate-200 text-slate-800 font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-slate-300"><Icon name="lock" size={18} /> Clôturer la campagne</button>}
+        {isClosed && <button onClick={reopenCampaign} disabled={busy} className="inline-flex items-center gap-2 bg-amber-100 text-amber-800 font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-amber-200"><Icon name="lock_open" size={18} /> Rouvrir la campagne</button>}
+        {!isClosed && (Object.keys(saved).length > 0 || campaign) && <button onClick={deleteCampaign} disabled={busy} className="inline-flex items-center gap-2 bg-red-50 text-red-700 font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-red-100"><Icon name="delete" size={18} /> Supprimer la campagne {year}</button>}
         {campaign && <span className="text-xs text-on-surface-variant">Campagne {year} : <b>{campaign.status}</b></span>}
         {msg && <span className="text-xs text-on-surface-variant">{msg}</span>}
       </div>
+
+      {/* ── Suivi de campagne (Phase 7) ── */}
+      <div className={`rounded-xl border p-3 flex items-start gap-3 ${isClosed ? 'bg-slate-50 border-slate-200' : 'bg-primary/5 border-primary/20'}`}>
+        <Icon name={isClosed ? 'lock' : 'flag'} size={20} className={isClosed ? 'text-slate-600' : 'text-primary'} />
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            {['Ouverte', 'Évaluée', 'Validée', 'Publiée', 'Clôturée'].map((s, i, arr) => {
+              const active = s === stage; const done = arr.indexOf(stage) > i;
+              return <span key={s} className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${active ? 'bg-primary text-on-primary' : done ? 'bg-green-100 text-green-700' : 'bg-surface-container-high text-on-surface-variant'}`}>{done && <Icon name="check" size={12} />}{s}</span>;
+            })}
+          </div>
+          <p className="text-xs text-on-surface-variant mt-1.5"><b>Prochaine étape :</b> {nextStep}</p>
+        </div>
+      </div>
+
+      {/* ── Paramètres des critères (par distinction) ── */}
+      {showRules && (
+        <div className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 p-md">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div>
+              <h3 className="font-bold text-on-surface text-sm flex items-center gap-2"><Icon name="tune" size={18} className="text-primary" /> Paramètres des critères</h3>
+              <p className="text-xs text-on-surface-variant mt-0.5">Réglez les conditions de chaque distinction. L'évaluation attribue, à chaque locataire, la distinction la plus élevée dont <b>tous</b> les critères sont remplis (ordre : Partenaire → Excellence → Exemplaire → Fidèle → Régulier).</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={resetRules} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-outline-variant text-on-surface hover:bg-surface-container-high"><Icon name="restart_alt" size={16} /> Valeurs par défaut</button>
+              <button onClick={saveRules} disabled={busy || !rulesDirty} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-primary text-on-primary hover:bg-primary/90 disabled:opacity-40"><Icon name="save" size={16} /> Enregistrer les critères</button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {AWARD_DEFS.map(def => {
+              const r = rules[def.key] || DEFAULT_AWARD_RULES[def.key];
+              return (
+                <div key={def.key} className="rounded-xl border p-3" style={{ borderColor: def.color + '40', background: def.color + '08' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="font-bold text-sm flex items-center gap-1.5" style={{ color: def.color }}>{def.emoji} {def.label}</p>
+                    <label className="inline-flex items-center gap-1 text-xs font-semibold cursor-pointer">
+                      <input type="checkbox" checked={r.enabled !== false} onChange={e => setRuleField(def.key, 'enabled', e.target.checked)} />
+                      {r.enabled !== false ? 'Activée' : 'Désactivée'}
+                    </label>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    {AWARD_RULE_FIELDS.filter(f => f.key !== 'enabled').map(f => (
+                      <div key={f.key} className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-on-surface-variant">{f.label}</span>
+                        {f.type === 'bool'
+                          ? <input type="checkbox" checked={!!r[f.key]} onChange={e => setRuleField(def.key, f.key, e.target.checked)} />
+                          : <input type="number" min="0" value={r[f.key] ?? 0} onChange={e => setRuleField(def.key, f.key, Math.max(0, Number(e.target.value) || 0))} className="w-16 border border-outline-variant rounded-md px-2 py-1 text-xs text-right bg-surface-container-lowest focus:outline-none focus:border-primary" />}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {rulesDirty && <p className="text-xs text-amber-700 mt-2">Modifications non enregistrées — cliquez « Enregistrer les critères », puis relancez l'évaluation.</p>}
+        </div>
+      )}
 
       {counts && (
         <section className="grid grid-cols-2 lg:grid-cols-7 gap-md">
@@ -271,7 +436,7 @@ export default function Recognition() {
                         <td className="px-4 py-3">
                           <div className="flex gap-1.5">
                             <button onClick={() => setOpen(open === r.tenantId ? null : r.tenantId)} className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-outline-variant text-on-surface hover:bg-surface-container-high">Détail</button>
-                            {sv && sv.status === 'en_attente' && <button onClick={() => validateOne(r.tenantId)} className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-green-100 text-green-700 hover:bg-green-200">Valider</button>}
+                            {!isClosed && sv && sv.status === 'en_attente' && <button onClick={() => validateOne(r.tenantId)} className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-green-100 text-green-700 hover:bg-green-200">Valider</button>}
                             {sv && (sv.status === 'validee' || sv.status === 'publiee') && <>
                               <button onClick={() => genCertPDF(sv)} className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-amber-300 text-amber-800 hover:bg-amber-50">Certif. PDF</button>
                               <button onClick={() => genCertPNG(sv)} className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-outline-variant text-on-surface hover:bg-surface-container-high">PNG</button>
