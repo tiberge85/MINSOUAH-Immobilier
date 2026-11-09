@@ -8,6 +8,29 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  /* Contour visible pour la navigation au CLAVIER uniquement (pas au clic).
+     Beaucoup de boutons retiraient tout contour (outline-none) : on ne voyait
+     plus où l'on était en tabulant. */
+  :focus-visible {
+    outline: 2px solid #785a00;
+    outline-offset: 2px;
+  }
+  .dark :focus-visible { outline-color: #ffd760; }
+  button:focus-visible, a:focus-visible, [role="button"]:focus-visible,
+  summary:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid #785a00 !important;
+    outline-offset: 2px;
+  }
+  .dark button:focus-visible, .dark a:focus-visible, .dark [role="button"]:focus-visible,
+  .dark [tabindex]:focus-visible { outline-color: #ffd760 !important; }
+
+  /* Montants : chiffres de même largeur pour que les colonnes s'alignent. */
+  .num, td.num, th.num { font-variant-numeric: tabular-nums; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+  }
+
   html { overflow-x: hidden; }
 
   body {

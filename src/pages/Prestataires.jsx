@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import Modal from '../components/ui/Modal';
+import { formatFCFA } from '../lib/format';
 
 const SPECIALTIES = ['Plomberie', 'Électricité', 'HVAC', 'Maçonnerie', 'Peinture', 'Menuiserie', 'Jardinage', 'Nettoyage', 'Sécurité', 'Autre'];
 
@@ -95,8 +96,7 @@ export default function Prestataires() {
     if (detail?.id === id) setDetail(null);
   };
 
-  const fmt = n => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
-
+  const fmt = formatFCFA;
   // ── Tickets linked to selected prestataire ────────────────────────────────
   const detailTickets = detail
     ? tickets.filter(t => t.prestataire === detail.name || t.prestataireId === detail.id)

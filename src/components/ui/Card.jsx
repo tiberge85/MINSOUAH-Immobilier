@@ -13,7 +13,7 @@ export default function Card({ children, className = '', onClick }) {
   );
 }
 
-export function StatCard({ label, value, sub, subColor = 'text-green-600', icon, iconBg }) {
+export function StatCard({ label, value, sub, subColor = 'text-green-700', icon, iconBg }) {
   return (
     <div className="bg-surface-container-lowest rounded-xl p-md shadow-card border border-outline-variant/20 flex items-start justify-between">
       <div>

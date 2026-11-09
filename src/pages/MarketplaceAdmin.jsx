@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
+import { formatFCFA } from '../lib/format';
 
 /* ── Constants ─────────────────────────────────────────────────────────────── */
 const TYPES = [
@@ -27,8 +28,7 @@ const STATUS_COLORS = {
 };
 
 const TYPE_LABELS = Object.fromEntries(TYPES.map(t => [t.value, t.label]));
-const fmt = n => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
-
+const fmt = formatFCFA;
 const EMPTY_FORM = {
   type: 'appartement', transaction: 'location', title: '', description: '',
   price: '', pricePeriod: 'mois', zone: '', city: '', surface: '', rooms: '',
@@ -43,7 +43,7 @@ function ImageThumb({ url }) {
   if (err) return (
     <div className="w-full h-full bg-amber-50 flex flex-col items-center justify-center gap-1 p-1">
       <Icon name="broken_image" size={18} className="text-amber-500" />
-      <span className="text-[8px] text-amber-600 text-center leading-tight">URL inaccessible</span>
+      <span className="text-[8px] text-amber-700 text-center leading-tight">URL inaccessible</span>
     </div>
   );
   return <img src={url} alt="" className="w-full h-full object-cover" onError={() => setErr(true)} />;

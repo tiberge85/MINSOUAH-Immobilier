@@ -9,8 +9,9 @@ import Badge from '../components/ui/Badge';
 import Icon from '../components/Icon';
 import { computeMonthMetrics } from '../lib/monthMetrics';
 import RecoveryStats from '../components/RecoveryStats';
+import { formatFCFA } from '../lib/format';
 
-const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
+const fmt = formatFCFA;
 // Montants toujours affichés EN ENTIER (aucune abréviation « k » dans le programme).
 const fmtK = (n) => Number(n || 0).toLocaleString('fr-CI');
 
@@ -663,7 +664,7 @@ export default function OwnerPortal() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-lg sm:font-h2 sm:text-h2 text-on-surface font-bold truncate leading-tight">{owner.name}</h1>
-            <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-semibold bg-green-50 border border-green-200 px-2 py-0.5 rounded-full flex-shrink-0">
+            <span className="inline-flex items-center gap-1 text-[10px] text-green-700 font-semibold bg-green-50 border border-green-200 px-2 py-0.5 rounded-full flex-shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
               Live
             </span>
@@ -724,7 +725,7 @@ export default function OwnerPortal() {
       {/* Warning: no properties linked */}
       {ownerProperties.length === 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-md flex items-start gap-3">
-          <Icon name="link_off" size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <Icon name="link_off" size={20} className="text-amber-700 flex-shrink-0 mt-0.5" />
           <div>
             <p className="font-bold text-amber-800 text-body-sm">Aucun bien lié à ce propriétaire</p>
             <p className="text-[12px] text-amber-700 mt-0.5">

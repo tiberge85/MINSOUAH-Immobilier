@@ -1,4 +1,5 @@
 const COND_ORDER  = ['HS', 'MAUVAIS', 'USAGE', 'BON', 'NEUF'];
+import { formatFCFA } from './format';
 const condScore   = (c) => COND_ORDER.indexOf(c ?? 'BON');
 const deltaStyle  = (ec, xc) => { const se = condScore(ec), sx = condScore(xc); return sx < se ? '#fee2e2;color:#991b1b' : sx > se ? '#dcfce7;color:#14532d' : '#f5f5f5;color:#555'; };
 const deltaLabel  = (ec, xc) => { const se = condScore(ec), sx = condScore(xc); return sx < se ? '⬇ Dégradé' : sx > se ? '⬆ Amélioré' : '✓ Stable'; };
@@ -9,8 +10,7 @@ const SEV_LABEL   = { MINOR: 'Mineur', MODERATE: 'Modéré', MAJOR: 'Majeur' };
 const SEV_COLOR   = { MINOR: '#fef3c7;color:#92400e', MODERATE: '#ffedd5;color:#9a3412', MAJOR: '#fee2e2;color:#991b1b' };
 const CAT_LABEL   = { ENTREE: 'Entrée / Hall', SALON: 'Salon / Séjour', CUISINE: 'Cuisine', CHAMBRE: 'Chambre(s)', BAIN: 'Salle de bain / WC', EXTERIEUR: 'Extérieur / Garage', AUTRE: 'Autre' };
 const STATUS_LABEL = { DRAFT: 'Brouillon', IN_PROGRESS: 'En cours', PENDING_SIGNATURE: 'Att. signature', COMPLETED: 'Complété' };
-const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
-
+const fmt = formatFCFA;
 export function generateEDLHtml(insp) {
   const totalCost = (insp.damages || []).reduce((s, d) => s + (d.cost || 0), 0);
   const grouped   = (insp.items || []).reduce((acc, item) => {

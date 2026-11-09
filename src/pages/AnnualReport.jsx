@@ -7,6 +7,7 @@ import { loadXLSX } from '../lib/lazyXlsx';
 import { loadPptx } from '../lib/lazyPptx';
 import { computeMonthMetrics, MM_MONTH_NAMES } from '../lib/monthMetrics';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { formatFCFA } from '../lib/format';
 
 const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
 
@@ -740,7 +741,7 @@ function Charts({ d, year }) {
     'Reversé': m.reverse, 'Recouvrement': m.recouvrement,
   }));
   const kFmt = (v) => Math.round((Number(v) || 0) / 1000) + 'k';
-  const fcfa = (v) => Number(v || 0).toLocaleString('fr-FR') + ' FCFA';
+  const fcfa = formatFCFA;
   const box = 'bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/20 p-md';
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-md">

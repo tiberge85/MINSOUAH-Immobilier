@@ -6,6 +6,7 @@ import { loadXLSX } from '../lib/lazyXlsx';
 import { auth } from '../lib/firebase';
 import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { provisionAccount, sendResetLink, authErrorMessage } from '../lib/authAccounts';
+import { formatFCFA } from '../lib/format';
 import { getPlan } from '../lib/planLimits';
 import { getDaysRemaining, getLicenseStatusInfo } from '../lib/licenses';
 import { MODULES, ACTIONS, FULL_ACCESS_ROLES, fullPermissions, effectivePermissions } from '../lib/permissions';
@@ -1469,7 +1470,7 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
             ? <div className="text-center py-10 text-on-surface-variant"><Icon name="history" size={40} className="opacity-30 mb-2" /><p>Aucune activité enregistrée</p></div>
             : (state.activityLog || []).map((e, i) => (
               <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-surface-container hover:bg-surface-container-high transition-colors">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${e.action === 'LOGIN' ? 'bg-green-100 text-green-600' : e.action === 'LOGIN_FAIL' ? 'bg-error/10 text-error' : e.action === 'ADD_USER' ? 'bg-primary/10 text-primary' : e.action === 'DELETE_USER' ? 'bg-error/10 text-error' : 'bg-surface-container-high text-on-surface-variant'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${e.action === 'LOGIN' ? 'bg-green-100 text-green-700' : e.action === 'LOGIN_FAIL' ? 'bg-error/10 text-error' : e.action === 'ADD_USER' ? 'bg-primary/10 text-primary' : e.action === 'DELETE_USER' ? 'bg-error/10 text-error' : 'bg-surface-container-high text-on-surface-variant'}`}>
                   <Icon name={e.action === 'LOGIN' ? 'login' : e.action === 'LOGIN_FAIL' ? 'block' : e.action === 'ADD_USER' ? 'person_add' : e.action === 'DELETE_USER' ? 'person_remove' : 'history'} size={15} />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -1642,7 +1643,7 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
             )}
           </div>
           <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
-            <Icon name="info" size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+            <Icon name="info" size={16} className="text-amber-700 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-amber-800">
               L'utilisateur devra <strong>changer son mot de passe</strong> dès sa première connexion.
               Communiquez-lui l'email et le mot de passe temporaire ci-dessus.
@@ -1760,7 +1761,7 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
                     </span>
                   )}
                   {u.failedAttempts > 0 && !isLocked && (
-                    <span className="text-xs text-amber-600">{u.failedAttempts} tentative(s) échouée(s)</span>
+                    <span className="text-xs text-amber-700">{u.failedAttempts} tentative(s) échouée(s)</span>
                   )}
                 </div>
               </div>
@@ -1773,7 +1774,7 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
                     <button onClick={() => handleResetPassword(u)} className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low hover:text-primary transition-colors" title="Réinitialiser le mot de passe">
                       <Icon name="lock_reset" size={16} />
                     </button>
-                    <button onClick={() => handleSuspend(u)} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${u.suspended ? 'text-green-600 hover:bg-green-50' : 'text-amber-600 hover:bg-amber-50'}`} title={u.suspended ? 'Réactiver' : 'Suspendre'}>
+                    <button onClick={() => handleSuspend(u)} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${u.suspended ? 'text-green-700 hover:bg-green-50' : 'text-amber-700 hover:bg-amber-50'}`} title={u.suspended ? 'Réactiver' : 'Suspendre'}>
                       <Icon name={u.suspended ? 'play_circle' : 'pause_circle'} size={16} />
                     </button>
                     {u.id !== 1 && (
@@ -1856,7 +1857,7 @@ function CommissionsTab({ state, dispatch, currentUser, showToast }) {
       </div>
 
       <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2 text-xs text-amber-800">
-        <Icon name="info" size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+        <Icon name="info" size={16} className="text-amber-700 flex-shrink-0 mt-0.5" />
         Le taux est <strong>figé sur chaque paiement au moment de l'encaissement</strong> — modifier un taux ici n'affecte que les encaissements <strong>futurs</strong>, jamais les paiements déjà validés.
       </div>
 
@@ -1945,7 +1946,7 @@ function CommissionsTab({ state, dispatch, currentUser, showToast }) {
             {isAdmin && (
               <div className="flex items-center gap-1">
                 <button onClick={() => dispatch({ type: 'UPDATE_COMMISSION_RATE', payload: { ...r, active: !(r.active !== false) } })}
-                  className={`w-8 h-8 rounded-lg flex items-center justify-center ${r.active === false ? 'text-green-600 hover:bg-green-50' : 'text-amber-600 hover:bg-amber-50'}`}
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center ${r.active === false ? 'text-green-700 hover:bg-green-50' : 'text-amber-700 hover:bg-amber-50'}`}
                   title={r.active === false ? 'Activer' : 'Désactiver'}>
                   <Icon name={r.active === false ? 'play_circle' : 'pause_circle'} size={16} />
                 </button>
@@ -1988,7 +1989,7 @@ function UsageGauge({ label, icon, current, max }) {
           <Icon name={icon} size={15} className="text-on-surface-variant" />
           {label}
         </span>
-        <span className={`font-bold text-xs ${critical ? 'text-error' : warn ? 'text-amber-600' : 'text-on-surface-variant'}`}>
+        <span className={`font-bold text-xs ${critical ? 'text-error' : warn ? 'text-amber-700' : 'text-on-surface-variant'}`}>
           {current} / {isUnlimited ? '∞' : max}
         </span>
       </div>
@@ -2036,7 +2037,7 @@ function PlanLicenceTab({ state }) {
             <h3 className={`text-2xl font-black capitalize ${pc.text}`}>{planId}</h3>
             <p className="text-sm text-on-surface-variant mt-0.5">
               {plan.monthlyPrice
-                ? `${plan.monthlyPrice.toLocaleString('fr-FR')} XOF / mois`
+                ? `${formatFCFA(plan.monthlyPrice)} / mois`
                 : 'Sur devis'}
             </p>
           </div>
@@ -2057,7 +2058,7 @@ function PlanLicenceTab({ state }) {
           <div className="flex items-center gap-1.5 text-xs text-on-surface-variant">
             <Icon name="schedule" size={13} />
             {license?.status === 'trial' ? "Essai · " : "Expire dans "}
-            <strong className={daysLeft <= 7 ? 'text-error' : daysLeft <= 30 ? 'text-amber-600' : 'text-on-surface'}>
+            <strong className={daysLeft <= 7 ? 'text-error' : daysLeft <= 30 ? 'text-amber-700' : 'text-on-surface'}>
               {daysLeft} jour{daysLeft !== 1 ? 's' : ''}
             </strong>
             {license?.expiresAt && (
@@ -2097,7 +2098,7 @@ function PlanLicenceTab({ state }) {
                   ? 'bg-green-50 text-green-700'
                   : 'bg-surface-container text-on-surface-variant/50'
               }`}>
-                <Icon name={included ? 'check_circle' : 'cancel'} size={16} filled={included} className={included ? 'text-green-600' : 'text-on-surface-variant/40'} />
+                <Icon name={included ? 'check_circle' : 'cancel'} size={16} filled={included} className={included ? 'text-green-700' : 'text-on-surface-variant/40'} />
                 {label}
               </div>
             );

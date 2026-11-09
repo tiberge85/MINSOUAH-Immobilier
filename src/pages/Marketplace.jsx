@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
+import { formatFCFA, plural } from '../lib/format';
 
 /* ── Unlock helpers ─────────────────────────────────────────────────────────── */
 const UNLOCK_KEY = 'minsouah_mkt_unlocks';
@@ -138,7 +139,7 @@ function PaymentModal({ listing, onClose, onSuccess, onDispatch, paymentPhone })
           {step === 'done' && (
             <div className="flex flex-col items-center gap-4 py-4">
               <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center">
-                <Icon name="lock_open" size={32} className="text-green-600" />
+                <Icon name="lock_open" size={32} className="text-green-700" />
               </div>
               <div className="text-center">
                 <p className="font-black text-on-surface text-lg">Contact déverrouillé !</p>
@@ -202,7 +203,7 @@ const STATUS_COLORS = {
 };
 
 const fmt = (n, period) => {
-  const s = Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
+  const s = formatFCFA(n);
   return period ? `${s} / ${period}` : s;
 };
 
@@ -575,11 +576,11 @@ function InterestForm({ listing, onClose, onDispatch }) {
 
   if (sent) return (
     <div className="bg-green-50 border border-green-200 rounded-2xl p-5 text-center">
-      <Icon name="check_circle" size={36} className="text-green-600 mx-auto mb-2" />
+      <Icon name="check_circle" size={36} className="text-green-700 mx-auto mb-2" />
       <p className="font-bold text-green-800 text-sm">
         {waTarget ? 'WhatsApp ouvert — votre message est prêt !' : 'Demande enregistrée !'}
       </p>
-      <p className="text-xs text-green-600 mt-1">Un conseiller vous contactera très prochainement.</p>
+      <p className="text-xs text-green-700 mt-1">Un conseiller vous contactera très prochainement.</p>
       <button onClick={onClose} className="mt-3 text-xs text-green-700 underline">Fermer</button>
     </div>
   );
@@ -587,7 +588,7 @@ function InterestForm({ listing, onClose, onDispatch }) {
   return (
     <div className="bg-surface-container rounded-2xl p-4 flex flex-col gap-3">
       <p className="text-xs text-on-surface-variant font-semibold flex items-center gap-1.5">
-        <Icon name="chat" size={14} className="text-green-600" />
+        <Icon name="chat" size={14} className="text-green-700" />
         Remplissez vos coordonnées — un message WhatsApp sera préparé pour vous :
       </p>
       <div className="grid grid-cols-2 gap-3">
@@ -756,14 +757,14 @@ export default function Marketplace() {
       </section>
 
       {/* ── Stats bar ── */}
-      <div className="bg-surface border-b border-outline-variant/20 px-4 sm:px-8 py-2 flex items-center gap-6 text-xs text-on-surface-variant overflow-x-auto no-scrollbar">
-        <span className="font-semibold text-on-surface">{filtered.length} annonce(s) disponible(s)</span>
-        <span>·</span>
-        <span>{published.filter(l => l.transaction === 'location').length} locations</span>
-        <span>·</span>
-        <span>{published.filter(l => l.transaction === 'vente').length} ventes</span>
-        <span>·</span>
-        <span>{published.filter(l => l.featured).length} coups de cœur</span>
+      <div className="bg-surface border-b border-outline-variant/20 px-4 sm:px-8 py-2 grid grid-cols-2 gap-x-4 gap-y-1 sm:flex sm:items-center sm:gap-6 text-xs text-on-surface-variant">
+        <span className="font-semibold text-on-surface whitespace-nowrap">{plural(filtered.length, 'annonce disponible', 'annonces disponibles')}</span>
+        <span aria-hidden="true" className="hidden sm:inline">·</span>
+        <span className="whitespace-nowrap">{plural(published.filter(l => l.transaction === 'location').length, 'location')}</span>
+        <span aria-hidden="true" className="hidden sm:inline">·</span>
+        <span className="whitespace-nowrap">{plural(published.filter(l => l.transaction === 'vente').length, 'vente')}</span>
+        <span aria-hidden="true" className="hidden sm:inline">·</span>
+        <span className="whitespace-nowrap">{plural(published.filter(l => l.featured).length, 'coup de cœur', 'coups de cœur')}</span>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-8 py-6 flex flex-col gap-6">

@@ -11,8 +11,9 @@ import RecoveryStats from '../components/RecoveryStats';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
+import { formatFCFA } from '../lib/format';
 
-const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
+const fmt = formatFCFA;
 // Montants toujours affichés EN ENTIER (aucune abréviation « k » dans le programme).
 const fmtK = (n) => Number(n || 0).toLocaleString('fr-CI');
 
@@ -224,9 +225,9 @@ export default function Dashboard() {
     {
       label: "Taux d'Occupation",
       value: `${occupancyRate}%`,
-      sub: `${expiringSoon} bail(s) expirent ≤60j`,
+      sub: expiringSoon === 0 ? 'Aucun bail n\'expire sous 60 j' : `${expiringSoon} ${expiringSoon > 1 ? 'baux expirent' : 'bail expire'} sous 60 j`,
       subIcon: expiringSoon > 0 ? 'warning' : 'trending_up',
-      subColor: expiringSoon > 0 ? 'text-amber-600' : 'text-green-600',
+      subColor: expiringSoon > 0 ? 'text-amber-700' : 'text-green-700',
       icon: 'donut_large', iconBg: 'bg-primary/10 text-primary',
       to: '/assets',
     },
@@ -234,7 +235,7 @@ export default function Dashboard() {
       label: 'Loyers Attendus',
       value: `${fmtK(mm.expected)} FCFA`,
       sub: monthLabelNow(),
-      subIcon: 'trending_up', subColor: 'text-green-600',
+      subIcon: 'trending_up', subColor: 'text-green-700',
       icon: 'payments', iconBg: 'bg-green-100 text-green-700',
       to: '/payments', finance: true,
     },
@@ -243,7 +244,7 @@ export default function Dashboard() {
       value: `${fmtK(mm.collected)} FCFA`,
       sub: `Taux recouvrement ${recoveryRate}%`,
       subIcon: recoveryRate >= 80 ? 'check_circle' : 'warning',
-      subColor: recoveryRate >= 80 ? 'text-green-600' : 'text-amber-600',
+      subColor: recoveryRate >= 80 ? 'text-green-700' : 'text-amber-700',
       icon: 'account_balance_wallet', iconBg: 'bg-green-100 text-green-700',
       to: '/payments', finance: true,
     },
@@ -252,7 +253,7 @@ export default function Dashboard() {
       value: `${fmtK(mm.pending)} FCFA`,
       sub: `reste ${monthLabelNow()}`,
       subIcon: mm.pending > 0 ? 'error' : 'check_circle',
-      subColor: mm.pending > 0 ? 'text-error' : 'text-green-600',
+      subColor: mm.pending > 0 ? 'text-error' : 'text-green-700',
       icon: 'warning', iconBg: mm.pending > 0 ? 'bg-error/10 text-error' : 'bg-green-100 text-green-700',
       to: '/payments', finance: true,
     },
@@ -261,7 +262,7 @@ export default function Dashboard() {
       value: pendingTickets,
       sub: `${urgentTickets} urgente(s)`,
       subIcon: urgentTickets > 0 ? 'emergency' : 'check_circle',
-      subColor: urgentTickets > 0 ? 'text-error' : 'text-green-600',
+      subColor: urgentTickets > 0 ? 'text-error' : 'text-green-700',
       icon: 'engineering', iconBg: 'bg-error/10 text-error',
       to: '/maintenance',
     },
@@ -377,7 +378,7 @@ export default function Dashboard() {
           <div className="flex flex-col gap-sm overflow-y-auto custom-scrollbar flex-1">
             {alerts.length === 0 ? (
               <div className="text-center py-8 text-on-surface-variant">
-                <Icon name="check_circle" size={32} className="opacity-30 mb-2 text-green-600" />
+                <Icon name="check_circle" size={32} className="opacity-30 mb-2 text-green-700" />
                 <p className="text-body-sm">Aucune alerte urgente</p>
               </div>
             ) : (
@@ -478,7 +479,7 @@ export default function Dashboard() {
                   </div>
                 ))}
                 <div className="mt-1 pt-2 border-t border-outline-variant/20">
-                  <p className={`font-black text-h2 ${recoveryRate >= 80 ? 'text-green-600' : 'text-error'}`}>{recoveryRate}%</p>
+                  <p className={`font-black text-h2 ${recoveryRate >= 80 ? 'text-green-700' : 'text-error'}`}>{recoveryRate}%</p>
                   <p className="text-label-sm text-on-surface-variant">recouvrement</p>
                 </div>
               </div>

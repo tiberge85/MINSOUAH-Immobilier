@@ -20,9 +20,10 @@ import { sendEmail } from '../lib/email';
 import { logSec, SEC, SEV } from '../lib/securityLog';
 import { createBackup, listBackups, restoreBackup, deleteBackupMeta } from '../lib/backup';
 import Icon from '../components/Icon';
+import { formatFCFA } from '../lib/format';
 
 const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
-const fmt = n => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
+const fmt = formatFCFA;
 const PLAN_COLORS = { standard: '#3b82f6', pro: '#8b5cf6', enterprise: '#f59e0b' };
 
 async function sendVerificationEmail(user) {
@@ -532,7 +533,7 @@ export default function SuperAdmin() {
         <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4">
           <div className="bg-surface rounded-2xl shadow-2xl p-6 max-w-sm w-full text-center">
             <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Icon name="timer" size={32} className="text-amber-600" />
+              <Icon name="timer" size={32} className="text-amber-700" />
             </div>
             <h3 className="font-bold text-lg text-on-surface mb-2">Session inactive</h3>
             <p className="text-sm text-on-surface-variant mb-5">
@@ -653,10 +654,10 @@ export default function SuperAdmin() {
             </div>
 
             <div className="bg-surface rounded-xl border border-outline-variant/20 p-5 lg:col-span-2">
-              <h3 className="font-bold text-on-surface mb-4 flex items-center gap-2"><Icon name="schedule" size={16} className="text-amber-600" />Alertes licences <span className="text-xs font-normal text-on-surface-variant ml-1">(expire dans ≤ 30j)</span></h3>
+              <h3 className="font-bold text-on-surface mb-4 flex items-center gap-2"><Icon name="schedule" size={16} className="text-amber-700" />Alertes licences <span className="text-xs font-normal text-on-surface-variant ml-1">(expire dans ≤ 30j)</span></h3>
               {(() => {
                 const expiring = licenses.filter(l => { if (!l.expiresAt) return false; const d = getDaysRemaining(l); return d !== null && d <= 30 && (l.status === 'trial' || l.status === 'active'); });
-                if (expiring.length === 0) return <p className="text-sm text-on-surface-variant text-center py-4"><Icon name="check_circle" size={20} className="text-green-600 inline mr-1" />Aucune licence n'expire dans les 30 prochains jours.</p>;
+                if (expiring.length === 0) return <p className="text-sm text-on-surface-variant text-center py-4"><Icon name="check_circle" size={20} className="text-green-700 inline mr-1" />Aucune licence n'expire dans les 30 prochains jours.</p>;
                 return (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
@@ -985,7 +986,7 @@ export default function SuperAdmin() {
                           <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${licInfo.color}`}>{licInfo.label}</span></td>
                           <td className="px-4 py-3 text-xs text-on-surface-variant">
                             {l.expiresAt ? new Date(l.expiresAt).toLocaleDateString('fr-FR') : '—'}
-                            {days !== null && days <= 30 && l.status !== 'expired' && <span className="ml-1 text-amber-600 font-bold">({days}j)</span>}
+                            {days !== null && days <= 30 && l.status !== 'expired' && <span className="ml-1 text-amber-700 font-bold">({days}j)</span>}
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex gap-1">
@@ -1068,7 +1069,7 @@ export default function SuperAdmin() {
                 )}
               </div>
               <div className="bg-surface rounded-xl border border-outline-variant/20 p-5">
-                <h3 className="font-bold text-on-surface mb-4 flex items-center gap-2"><Icon name="donut_large" size={16} className="text-green-600" />Santé des licences</h3>
+                <h3 className="font-bold text-on-surface mb-4 flex items-center gap-2"><Icon name="donut_large" size={16} className="text-green-700" />Santé des licences</h3>
                 {licenseStatusChartData.length === 0 ? <div className="h-48 flex items-center justify-center text-on-surface-variant text-sm">Aucune licence</div> : (
                   <div className="flex items-center gap-4">
                     <ResponsiveContainer width="55%" height={180}>
@@ -1300,7 +1301,7 @@ export default function SuperAdmin() {
             </div>
             {/* Essai banner */}
             <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
-              <Icon name="hourglass_top" size={20} className="text-amber-600 flex-shrink-0" />
+              <Icon name="hourglass_top" size={20} className="text-amber-700 flex-shrink-0" />
               <div>
                 <p className="text-sm font-bold text-amber-800">Mode Essai</p>
                 <p className="text-xs text-amber-700">Le plan payant sera choisi lors de la conversion de l'essai.</p>
@@ -1371,7 +1372,7 @@ export default function SuperAdmin() {
           <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-lg p-6 flex flex-col gap-5 my-auto">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-on-surface text-lg flex items-center gap-2">
-                <Icon name="verified" size={20} className="text-green-600" /> Convertir l'essai en licence
+                <Icon name="verified" size={20} className="text-green-700" /> Convertir l'essai en licence
               </h3>
               <button onClick={() => setConvertModal(null)}><Icon name="close" size={20} className="text-on-surface-variant" /></button>
             </div>
@@ -1841,8 +1842,8 @@ function PlatformTab({ state, dispatch, showToast, onResetClick }) {
               { label: 'Organisations actives', value: (state.organizations || []).filter(o => o.active !== false).length, icon: 'corporate_fare', color: 'text-primary bg-primary/10' },
               { label: 'Utilisateurs totaux',   value: (state.users || []).filter(u => u.role !== 'SUPER_ADMIN').length,   icon: 'group',          color: 'text-secondary bg-secondary/10' },
               { label: 'Biens totaux',          value: (state.properties || []).length,                                     icon: 'apartment',      color: 'text-tertiary bg-tertiary/10' },
-              { label: 'Contrats actifs',       value: (state.contracts || []).filter(c => c.status === 'Actif').length,    icon: 'contract',       color: 'text-green-600 bg-green-50' },
-              { label: 'Paiements en attente',  value: (state.payments || []).filter(p => p.status !== 'Payé').length,      icon: 'pending',        color: 'text-amber-600 bg-amber-50' },
+              { label: 'Contrats actifs',       value: (state.contracts || []).filter(c => c.status === 'Actif').length,    icon: 'contract',       color: 'text-green-700 bg-green-50' },
+              { label: 'Paiements en attente',  value: (state.payments || []).filter(p => p.status !== 'Payé').length,      icon: 'pending',        color: 'text-amber-700 bg-amber-50' },
               { label: 'Tickets ouverts',       value: (state.tickets || []).filter(t => t.status !== 'Fermé' && t.status !== 'Résolu').length, icon: 'engineering', color: 'text-error bg-error/10' },
             ].map(s => (
               <div key={s.label} className={`p-4 rounded-xl ${s.color.split(' ')[1]} flex items-center gap-3`}>
@@ -1857,7 +1858,7 @@ function PlatformTab({ state, dispatch, showToast, onResetClick }) {
               ? <p className="text-xs text-on-surface-variant">Aucune activité.</p>
               : (state.activityLog || []).filter(e => e.action === 'LOGIN' || e.action === 'LOGIN_FAIL').slice(0, 8).map((e, i) => (
                 <div key={i} className="flex items-center gap-3 py-2 border-b border-outline-variant/10 last:border-0">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs ${e.action === 'LOGIN' ? 'bg-green-100 text-green-600' : 'bg-error/10 text-error'}`}><Icon name={e.action === 'LOGIN' ? 'login' : 'block'} size={14} /></div>
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs ${e.action === 'LOGIN' ? 'bg-green-100 text-green-700' : 'bg-error/10 text-error'}`}><Icon name={e.action === 'LOGIN' ? 'login' : 'block'} size={14} /></div>
                   <div className="flex-1 min-w-0"><p className="text-xs font-medium text-on-surface truncate">{e.userEmail || e.details}</p><p className="text-xs text-on-surface-variant">{e.action === 'LOGIN' ? 'Connexion' : 'Échec'}</p></div>
                   <p className="text-xs text-on-surface-variant flex-shrink-0">{e.timestamp ? new Date(e.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</p>
                 </div>

@@ -7,9 +7,9 @@ import Icon from '../components/Icon';
 import TenantDocuments from '../components/TenantDocuments';
 import { openEDLReport } from '../lib/inspectionReport';
 import { buildReceiptHTML } from '../lib/quittanceReport';
+import { formatFCFA } from '../lib/format';
 
-const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
-
+const fmt = formatFCFA;
 function phoneForWA(raw) {
   const d = (raw || '').replace(/\D/g, '');
   if (!d) return '';
@@ -136,7 +136,7 @@ function PaymentModal({ contract, onClose, onSuccess }) {
           {step === 3 && (
             <div className="text-center py-4">
               <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Icon name="check_circle" size={40} className="text-green-600" filled />
+                <Icon name="check_circle" size={40} className="text-green-700" filled />
               </div>
               <h4 className="font-h2 text-h2 font-bold text-on-surface mb-2">Paiement Confirmé</h4>
               <p className="text-body-sm text-on-surface-variant mb-1">
@@ -572,7 +572,7 @@ export default function TenantPortal() {
       <div className="px-4 -mt-8 relative z-10">
         <div className="bg-surface-container-lowest rounded-2xl shadow-modal border border-outline-variant/20 p-md grid grid-cols-3 gap-md">
           <div className="text-center">
-            <p className="text-h2 font-h2 font-black text-green-600">{paidPayments.length}</p>
+            <p className="text-h2 font-h2 font-black text-green-700">{paidPayments.length}</p>
             <p className="text-label-sm text-on-surface-variant">Payés</p>
           </div>
           <div className="text-center border-x border-outline-variant/20">
@@ -683,7 +683,7 @@ export default function TenantPortal() {
             {tenantTickets.filter(t => t.status !== 'Résolu').length > 0 && (
               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-md">
                 <div className="flex items-center gap-2 mb-2">
-                  <Icon name="engineering" size={18} className="text-amber-600" />
+                  <Icon name="engineering" size={18} className="text-amber-700" />
                   <p className="font-bold text-amber-800">
                     {tenantTickets.filter(t => t.status !== 'Résolu').length} ticket(s) en cours
                   </p>
@@ -715,10 +715,10 @@ export default function TenantPortal() {
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
                 <p className="text-green-700 font-black text-h2">{fmt(totalPaid)}</p>
-                <p className="text-label-sm text-green-600">Total versé</p>
+                <p className="text-label-sm text-green-700">Total versé</p>
               </div>
               <div className="bg-error/5 border border-error/20 rounded-xl p-3 text-center">
-                <p className={`font-black text-h2 ${unpaidPayments.length > 0 ? 'text-error' : 'text-green-600'}`}>
+                <p className={`font-black text-h2 ${unpaidPayments.length > 0 ? 'text-error' : 'text-green-700'}`}>
                   {fmt(unpaidPayments.reduce((s, p) => s + (p.amount || 0), 0))}
                 </p>
                 <p className="text-label-sm text-on-surface-variant">Impayés</p>
@@ -873,7 +873,7 @@ export default function TenantPortal() {
                           </span>
                         )}
                         {insp.tenantSignature && (
-                          <Icon name="verified" size={18} className="text-green-600" title="Signé" />
+                          <Icon name="verified" size={18} className="text-green-700" title="Signé" />
                         )}
                       </div>
                     </div>

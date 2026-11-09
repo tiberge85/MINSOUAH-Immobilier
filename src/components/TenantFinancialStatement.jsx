@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import Icon from './Icon';
+import { formatFCFA } from '../lib/format';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Relevé de compte / état financier d'un locataire.
@@ -9,7 +10,7 @@ import Icon from './Icon';
    ──────────────────────────────────────────────────────────────────────────── */
 
 const MONTHS_FR = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
-const fmt = (n) => `${Number(n || 0).toLocaleString('fr-CI')} FCFA`;
+const fmt = formatFCFA;
 const norm = (s) => (s || '').toString().toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const nameMatch = (a, b) => {
   a = norm(a); b = norm(b);

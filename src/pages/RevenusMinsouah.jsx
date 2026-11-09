@@ -5,10 +5,10 @@ import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import { can } from '../lib/permissions';
 import { buildingOf } from '../lib/commissions';
+import { formatFCFA } from '../lib/format';
 
 const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
-const fmt = (n) => `${(Number(n) || 0).toLocaleString('fr-FR')} FCFA`;
-
+const fmt = formatFCFA;
 // Parse a French "dd mmm. yyyy" / "dd/mm/yyyy" / ISO date
 function parseAnyDate(str) {
   if (!str) return null;

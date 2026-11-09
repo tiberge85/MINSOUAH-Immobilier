@@ -312,8 +312,10 @@ export default function Login() {
 
               <form onSubmit={handleOtpSubmit} className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-semibold text-on-surface">Code OTP</label>
+                  <label htmlFor="login-otp" className="text-sm font-semibold text-on-surface">Code OTP</label>
                   <input
+                    id="login-otp"
+                    autoComplete="one-time-code"
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
@@ -412,9 +414,9 @@ export default function Login() {
                 <p className="text-sm text-on-surface-variant">Entrez votre email. Nous vous enverrons un lien sécurisé pour définir un nouveau mot de passe.</p>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold text-on-surface">Adresse email</label>
+                <label htmlFor="reset-email" className="text-sm font-semibold text-on-surface">Adresse email</label>
                 <div className="relative">
-                  <input type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)}
+                  <input id="reset-email" name="email" type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)}
                     placeholder="votre@email.com" required autoFocus
                     className="w-full px-4 py-3 pl-11 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface" />
                   <Icon name="mail" size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant" />
@@ -458,9 +460,11 @@ export default function Login() {
 
             <form onSubmit={handleLogin} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold text-on-surface">Adresse email</label>
+                <label htmlFor="login-email" className="text-sm font-semibold text-on-surface">Adresse email</label>
                 <div className="relative">
                   <input
+                    id="login-email"
+                    name="email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -474,9 +478,11 @@ export default function Login() {
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold text-on-surface">Mot de passe</label>
+                <label htmlFor="login-password" className="text-sm font-semibold text-on-surface">Mot de passe</label>
                 <div className="relative">
                   <input
+                    id="login-password"
+                    name="password"
                     type={showPass ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -489,7 +495,9 @@ export default function Login() {
                   <button
                     type="button"
                     onClick={() => setShowPass((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface transition-colors"
+                    aria-label={showPass ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                    aria-pressed={showPass}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center rounded-lg text-on-surface-variant hover:text-on-surface transition-colors"
                   >
                     <Icon name={showPass ? 'visibility_off' : 'visibility'} size={20} />
                   </button>
@@ -497,7 +505,7 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={openForgot}
-                  className="self-end text-xs font-semibold text-primary hover:text-primary/70 transition-colors mt-1"
+                  className="self-end text-xs font-semibold text-primary hover:text-primary/70 transition-colors py-2 -my-1"
                 >
                   Mot de passe oublié ?
                 </button>
@@ -532,9 +540,9 @@ export default function Login() {
 
           {/* Live indicator */}
           <div className="border-t border-outline-variant/10 px-6 py-3 flex items-center justify-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <Icon name="lock" size={14} className="text-on-surface-variant" />
             <span className="text-xs text-on-surface-variant">
-              Synchronisation temps réel — Firebase
+              Connexion sécurisée
             </span>
           </div>
         </div>
@@ -542,7 +550,7 @@ export default function Login() {
         <p className="text-center text-xs text-on-surface-variant mt-6">
           © {new Date().getFullYear()} Minsouah — Gestion immobilière Côte d'Ivoire
         </p>
-        <p className="text-center text-[10px] text-on-surface-variant/40 mt-1">v2.5 — 2026-05-17</p>
+        <p className="text-center text-[11px] text-on-surface-variant mt-1">v2.5 — 2026-05-17</p>
       </div>
     </div>
   );

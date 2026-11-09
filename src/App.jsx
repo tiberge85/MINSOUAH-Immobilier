@@ -1,4 +1,4 @@
-import { useState, Component } from 'react';
+import { useState, useEffect, Component, Suspense } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider, useApp } from './context/AppContext';
@@ -10,40 +10,40 @@ import { sendEmailVerification } from 'firebase/auth';
 import { auth } from './lib/firebase';
 import Layout from './components/Layout';
 import Icon from './components/Icon';
+import { lazyPage, preloadPages } from './lib/lazyPage';
 
-// Imports directs (un seul fichier). Volontairement SANS code-splitting : sur un
-// réseau instable, des pages chargées « à la demande » peuvent échouer et bloquer
-// l'appli sur « Chargement… ». Un seul fichier se charge une fois puis tout
-// fonctionne sans redépendre du réseau — c'est le choix fiable ici.
-import Login          from './pages/Login';
-import ChangePassword from './pages/ChangePassword';
-import Dashboard      from './pages/Dashboard';
-import Assets         from './pages/Assets';
-import Rental         from './pages/Rental';
-import Finance        from './pages/Finance';
-import Payments       from './pages/Payments';
-import Maintenance    from './pages/Maintenance';
-import Inbox          from './pages/Inbox';
-import TenantPortal   from './pages/TenantPortal';
-import OwnerPortal    from './pages/OwnerPortal';
-import Settings       from './pages/Settings';
-import Inspections    from './pages/Inspections';
-import ConciergePortal from './pages/ConciergePortal';
-import SuperAdmin     from './pages/SuperAdmin';
-import OrgRegistration from './pages/OrgRegistration';
-import Marketplace    from './pages/Marketplace';
-import Calendar      from './pages/Calendar';
-import Insurance     from './pages/Insurance';
+// Pages publiques et connexion : chargées tout de suite (premier écran).
+// Les autres : à la demande, avec réessai + préchargement en arrière-plan
+// une fois connecté (voir lib/lazyPage.js).
+import Login from './pages/Login';
 import PublicTenantPortal from './pages/PublicTenantPortal';
-import Referrers     from './pages/Referrers';
-import Prestataires  from './pages/Prestataires';
-import Reports       from './pages/Reports';
-import Bordereaux    from './pages/Bordereaux';
-import RevenusMinsouah from './pages/RevenusMinsouah';
 import PublicBordereau from './pages/PublicBordereau';
 import PublicQuittance from './pages/PublicQuittance';
-import AnnualReport   from './pages/AnnualReport';
-import Prospection    from './pages/Prospection';
+const ChangePassword = lazyPage(() => import('./pages/ChangePassword'));
+const Dashboard = lazyPage(() => import('./pages/Dashboard'));
+const Assets = lazyPage(() => import('./pages/Assets'));
+const Rental = lazyPage(() => import('./pages/Rental'));
+const Finance = lazyPage(() => import('./pages/Finance'));
+const Payments = lazyPage(() => import('./pages/Payments'));
+const Maintenance = lazyPage(() => import('./pages/Maintenance'));
+const Inbox = lazyPage(() => import('./pages/Inbox'));
+const TenantPortal = lazyPage(() => import('./pages/TenantPortal'));
+const OwnerPortal = lazyPage(() => import('./pages/OwnerPortal'));
+const Settings = lazyPage(() => import('./pages/Settings'));
+const Inspections = lazyPage(() => import('./pages/Inspections'));
+const ConciergePortal = lazyPage(() => import('./pages/ConciergePortal'));
+const SuperAdmin = lazyPage(() => import('./pages/SuperAdmin'));
+const OrgRegistration = lazyPage(() => import('./pages/OrgRegistration'));
+const Marketplace = lazyPage(() => import('./pages/Marketplace'));
+const Calendar = lazyPage(() => import('./pages/Calendar'));
+const Insurance = lazyPage(() => import('./pages/Insurance'));
+const Referrers = lazyPage(() => import('./pages/Referrers'));
+const Prestataires = lazyPage(() => import('./pages/Prestataires'));
+const Reports = lazyPage(() => import('./pages/Reports'));
+const Bordereaux = lazyPage(() => import('./pages/Bordereaux'));
+const RevenusMinsouah = lazyPage(() => import('./pages/RevenusMinsouah'));
+const AnnualReport = lazyPage(() => import('./pages/AnnualReport'));
+const Prospection = lazyPage(() => import('./pages/Prospection'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -105,7 +105,7 @@ function SuspendedScreen({ license, onLogout }) {
               Contactez votre administrateur ou l'équipe Minsouah
             </li>
             <li className="flex items-start gap-2.5 text-sm text-on-surface">
-              <Icon name="verified" size={16} className="text-green-600 flex-shrink-0 mt-0.5" />
+              <Icon name="verified" size={16} className="text-green-700 flex-shrink-0 mt-0.5" />
               Choisissez un plan Standard, Pro ou Enterprise
             </li>
             <li className="flex items-start gap-2.5 text-sm text-on-surface">
@@ -271,10 +271,14 @@ function AppRoutes() {
   const { state } = useApp();
   const user = state.currentUser;
 
+  // Connecté : précharger toutes les pages pendant que le navigateur est libre.
+  useEffect(() => { if (user) preloadPages(); }, [user]);
+
   // Show global bootstrap screen before routing
   if (state._bootstrapping) return <BootstrapScreen />;
 
   return (
+    <Suspense fallback={<BootstrapScreen />}>
     <Routes>
       {/* Public marketplace — accessible sans connexion */}
       <Route path="/marketplace" element={<Marketplace />} />
@@ -323,6 +327,7 @@ function AppRoutes() {
       <Route path="/superadmin" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><SuperAdmin /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 

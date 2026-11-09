@@ -5,8 +5,9 @@ import {
 } from 'recharts';
 import Icon from './Icon';
 import { recoverySeries, monthTenantBreakdown, lastNMonths, monthLabelNow } from '../lib/monthMetrics';
+import { formatFCFA } from '../lib/format';
 
-const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
+const fmt = formatFCFA;
 const fmtN = (n) => Number(n || 0).toLocaleString('fr-CI');
 
 const STATUS_BADGE = {
@@ -73,7 +74,7 @@ export default function RecoveryStats({ payments = [], contracts = [], tenants =
     return out;
   }, [insight]);
 
-  const trendColor = !insight ? 'text-on-surface' : insight.trend > 3 ? 'text-green-600' : insight.trend < -3 ? 'text-error' : 'text-amber-600';
+  const trendColor = !insight ? 'text-on-surface' : insight.trend > 3 ? 'text-green-700' : insight.trend < -3 ? 'text-error' : 'text-amber-700';
   const trendIcon = !insight ? 'trending_flat' : insight.trend > 3 ? 'trending_up' : insight.trend < -3 ? 'trending_down' : 'trending_flat';
 
   const brk = useMemo(() => {
@@ -94,19 +95,19 @@ export default function RecoveryStats({ payments = [], contracts = [], tenants =
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="bg-surface-container-lowest rounded-xl p-md border border-outline-variant/20">
             <p className="text-label-sm text-on-surface-variant uppercase tracking-wider">Ce mois</p>
-            <p className={`text-h2 font-black ${insight.cur.recouvrement >= 80 ? 'text-green-600' : insight.cur.recouvrement >= 50 ? 'text-amber-600' : 'text-error'}`}>{insight.cur.recouvrement}%</p>
+            <p className={`text-h2 font-black ${insight.cur.recouvrement >= 80 ? 'text-green-700' : insight.cur.recouvrement >= 50 ? 'text-amber-700' : 'text-error'}`}>{insight.cur.recouvrement}%</p>
             <p className="text-label-sm text-on-surface-variant">{fmt(insight.cur.encaisse)}</p>
           </div>
           <div className="bg-surface-container-lowest rounded-xl p-md border border-outline-variant/20">
             <p className="text-label-sm text-on-surface-variant uppercase tracking-wider">vs mois préc.</p>
-            <p className={`text-h2 font-black ${insight.delta > 0 ? 'text-green-600' : insight.delta < 0 ? 'text-error' : 'text-on-surface'}`}>
+            <p className={`text-h2 font-black ${insight.delta > 0 ? 'text-green-700' : insight.delta < 0 ? 'text-error' : 'text-on-surface'}`}>
               {insight.delta > 0 ? '+' : ''}{insight.delta} pts
             </p>
             <p className="text-label-sm text-on-surface-variant">{insight.prev ? `${insight.prev.recouvrement}% le mois dernier` : '—'}</p>
           </div>
           <div className="bg-surface-container-lowest rounded-xl p-md border border-outline-variant/20">
             <p className="text-label-sm text-on-surface-variant uppercase tracking-wider">Meilleur mois</p>
-            <p className="text-h2 font-black text-green-600">{insight.best.recouvrement}%</p>
+            <p className="text-h2 font-black text-green-700">{insight.best.recouvrement}%</p>
             <p className="text-label-sm text-on-surface-variant">{insight.best.label}</p>
           </div>
           <div className="bg-surface-container-lowest rounded-xl p-md border border-outline-variant/20">

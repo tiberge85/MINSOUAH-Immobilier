@@ -2,9 +2,9 @@ import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import Modal from '../components/ui/Modal';
+import { formatFCFA } from '../lib/format';
 
-const fmt = n => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
-
+const fmt = formatFCFA;
 const EMPTY_FORM = {
   name: '', company: '', phone: '', email: '',
   commissionPct: '', notes: '',

@@ -10,6 +10,7 @@ import SearchSelect from '../components/SearchSelect';
 import SignaturePad from '../components/SignaturePad';
 import { can, FULL_ACCESS_ROLES } from '../lib/permissions';
 import { openBordereauPrint } from '../lib/bordereauReport';
+import { formatFCFA } from '../lib/format';
 
 const PAYMENT_MODES = ['Espèces', 'Chèque', 'Virement', 'Mobile Money', 'Mixte'];
 const STATUSES = ['Brouillon', 'En attente de validation', 'Validé', 'Annulé'];
@@ -20,7 +21,7 @@ const STATUS_STYLE = {
   'Annulé': 'bg-error/10 text-error',
 };
 
-const fmt = (n) => `${(Number(n) || 0).toLocaleString('fr-FR')} XOF`;
+const fmt = formatFCFA;
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const nowHM = () => new Date().toTimeString().slice(0, 5);
 const MONTHS_FR = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
@@ -935,7 +936,7 @@ function CreateProprio({ owners, paidPayments, ownerIdOfPayment, tenants = [], t
           </Field>
           {owner && (
             <div className="text-sm text-on-surface-variant flex flex-col justify-center">
-              <p><Icon name="percent" size={13} className="inline" /> Commission : <strong className="text-on-surface">{rate}%</strong>{!owner.commissionRate && <span className="text-amber-600"> (0%)</span>}</p>
+              <p><Icon name="percent" size={13} className="inline" /> Commission : <strong className="text-on-surface">{rate}%</strong>{!owner.commissionRate && <span className="text-amber-700"> (0%)</span>}</p>
               <p className="truncate"><Icon name="account_balance" size={13} className="inline" /> {owner.bank || '—'} · {owner.iban || 'RIB —'}</p>
             </div>
           )}

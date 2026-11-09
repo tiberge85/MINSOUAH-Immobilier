@@ -12,6 +12,7 @@ import { can } from '../lib/permissions';
 import { QRCodeCanvas } from 'qrcode.react';
 import { currentMonthUnpaidList } from '../lib/rentStatus';
 import { resolveCommission, buildingOf, DEFAULT_COMMISSION_RATE } from '../lib/commissions';
+import { formatFCFA } from '../lib/format';
 
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
@@ -51,8 +52,7 @@ function paidTs(p) {
   return d && !isNaN(d) ? d.getTime() : 0;
 }
 
-const fmt = n => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
-
+const fmt = formatFCFA;
 // Petites phrases de motivation chrétienne + encouragement au paiement,
 // tirées au hasard pour clôturer chaque rappel de loyer.
 const REMINDER_BLESSINGS = [
@@ -3574,9 +3574,9 @@ export default function Payments() {
 
           {currentMonthUnpaid.length === 0 ? (
             <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
-              <Icon name="check_circle" size={40} className="text-green-600 mb-3" />
+              <Icon name="check_circle" size={40} className="text-green-700 mb-3" />
               <p className="font-semibold text-green-800">Aucun loyer en attente ce mois-ci</p>
-              <p className="text-sm text-green-600 mt-1">
+              <p className="text-sm text-green-700 mt-1">
                 {currentMonthAdvance.length > 0
                   ? `Les loyers dus pour ${selectedMonth} sont réglés. ${currentMonthAdvance.length} locataire(s) sont en période d'avance (voir ci-dessous).`
                   : `Aucun rappel à envoyer pour ${selectedMonth}.`}
@@ -3719,9 +3719,9 @@ export default function Payments() {
 
           {penaltyList.length === 0 ? (
             <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
-              <Icon name="check_circle" size={40} className="text-green-600 mb-3" />
+              <Icon name="check_circle" size={40} className="text-green-700 mb-3" />
               <p className="font-semibold text-green-800">Aucune pénalité pour {selectedMonth}</p>
-              <p className="text-sm text-green-600 mt-1">Tous les locataires ont réglé leur loyer.</p>
+              <p className="text-sm text-green-700 mt-1">Tous les locataires ont réglé leur loyer.</p>
             </div>
           ) : (
             <div className="bg-surface-container-lowest rounded-xl border border-red-200 overflow-hidden shadow-card">
@@ -3824,12 +3824,12 @@ export default function Payments() {
             <div className="rounded-xl border border-green-200 bg-green-50 p-4">
               <div className="text-lg font-extrabold text-green-700">{fmt(recoveredTotal)}</div>
               <div className="text-xs font-semibold text-green-800">Arriérés recouvrés ({recoveredByTenant.length})</div>
-              <div className="text-[11px] text-green-600 mt-0.5">Réglés · {selectedMonth}</div>
+              <div className="text-[11px] text-green-700 mt-0.5">Réglés · {selectedMonth}</div>
             </div>
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
               <div className="text-lg font-extrabold text-amber-700">{fmt(arrearsTotal)}</div>
               <div className="text-xs font-semibold text-amber-800">Restant dû · mois passés ({arrearsByTenant.length})</div>
-              <div className="text-[11px] text-amber-600 mt-0.5">Loyers en retard non réglés</div>
+              <div className="text-[11px] text-amber-700 mt-0.5">Loyers en retard non réglés</div>
             </div>
             <div className="rounded-xl border border-red-200 bg-red-50 p-4">
               <div className="text-lg font-extrabold text-red-700">{fmt(currentMonthUnpaidTotal)}</div>
@@ -3860,9 +3860,9 @@ export default function Payments() {
             );
             return arrearsByTenant.length === 0 ? (
             <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
-              <Icon name="check_circle" size={40} className="text-green-600 mb-3" />
+              <Icon name="check_circle" size={40} className="text-green-700 mb-3" />
               <p className="font-semibold text-green-800">Aucun arriéré enregistré</p>
-              <p className="text-sm text-green-600 mt-1">Tous les loyers des mois précédents ont été réglés.</p>
+              <p className="text-sm text-green-700 mt-1">Tous les loyers des mois précédents ont été réglés.</p>
             </div>
           ) : shownGroups.length === 0 ? (
             <div className="bg-surface-container rounded-xl p-8 text-center text-on-surface-variant">
@@ -4282,7 +4282,7 @@ export default function Payments() {
           {reportPaid.length > 0 && (
             <div className="bg-surface-container-lowest rounded-xl border border-green-200 overflow-hidden shadow-card">
               <div className="bg-green-50 px-5 py-3 border-b border-green-200 flex items-center gap-2">
-                <Icon name="check_circle" size={16} className="text-green-600" />
+                <Icon name="check_circle" size={16} className="text-green-700" />
                 <h4 className="font-bold text-green-800 text-sm">Paiements reçus ({reportPaid.length})</h4>
                 <span className="ml-auto font-bold text-green-700 text-sm">{fmt(totalCollected)}</span>
               </div>
@@ -4401,13 +4401,13 @@ export default function Payments() {
               const tName = (matchingTenants.find(t => String(t.id) === payForm.tenantId)?.name || '').toLowerCase();
               const alreadyPaid = paidThisMonthSet.has(payForm.tenantId) || paidThisMonthSet.has(tName);
               return alreadyPaid ? (
-                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                <p className="text-xs text-amber-700 mt-1 flex items-center gap-1">
                   <Icon name="warning" size={12} /> Ce locataire a déjà un paiement enregistré pour {payForm.month}. Vous pouvez continuer pour un paiement d'avance.
                 </p>
               ) : null;
             })()}
             {payForm.propertyKey && matchingTenants.length === 0 && (
-              <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+              <p className="text-xs text-amber-700 mt-1 flex items-center gap-1">
                 <Icon name="info" size={12} /> Aucun contrat actif trouvé pour cette propriété.
               </p>
             )}
@@ -4464,7 +4464,7 @@ export default function Payments() {
               className="w-4 h-4 accent-amber-600 flex-shrink-0" />
             <div className="flex-1">
               <p className={`text-sm font-semibold ${payForm.applyCommission ? 'text-amber-800' : 'text-on-surface'}`}>Appliquer la commission Minsouah {effectiveCommissionRate}%</p>
-              <p className={`text-xs mt-0.5 ${payForm.applyCommission ? 'text-amber-600' : 'text-on-surface-variant'}`}>{formCommissionRate > 0 ? 'Taux configuré pour ce bien' : 'Aucune règle configurée · applique 10 % si coché'} · (dé)cochez pour ce paiement</p>
+              <p className={`text-xs mt-0.5 ${payForm.applyCommission ? 'text-amber-700' : 'text-on-surface-variant'}`}>{formCommissionRate > 0 ? 'Taux configuré pour ce bien' : 'Aucune règle configurée · applique 10 % si coché'} · (dé)cochez pour ce paiement</p>
             </div>
             {payForm.applyCommission && payForm.amount && (
               <span className="font-bold text-sm text-amber-700 flex-shrink-0">−{fmt(Math.round((parseFloat(payForm.amount) || 0) * effectiveCommissionRate / 100))}</span>
@@ -4540,7 +4540,7 @@ export default function Payments() {
             {receiptTab === 'preview' && (
               <div className="flex flex-col gap-3">
                 <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-3">
-                  <Icon name="check_circle" size={20} className="text-green-600 flex-shrink-0" />
+                  <Icon name="check_circle" size={20} className="text-green-700 flex-shrink-0" />
                   <div>
                     <p className="font-bold text-green-800 text-sm">Paiement enregistré</p>
                     <p className="text-xs text-green-700">Prévisualisez la quittance avant de la signer ou l'envoyer.</p>
@@ -4615,13 +4615,13 @@ export default function Payments() {
                   signatures.bailleur ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'
                 }`}>
                   <Icon name={signatures.bailleur ? 'verified' : 'warning'} size={20}
-                    className={signatures.bailleur ? 'text-green-600' : 'text-amber-600'} />
+                    className={signatures.bailleur ? 'text-green-700' : 'text-amber-700'} />
                   <div>
                     <p className={`font-semibold text-sm ${signatures.bailleur ? 'text-green-800' : 'text-amber-800'}`}>
                       {signatures.bailleur ? 'Quittance signée numériquement' : 'Quittance sans signature'}
                     </p>
                     <div className="flex gap-4 mt-1">
-                      <span className={`text-xs flex items-center gap-1 ${signatures.bailleur ? 'text-green-700' : 'text-amber-600'}`}>
+                      <span className={`text-xs flex items-center gap-1 ${signatures.bailleur ? 'text-green-700' : 'text-amber-700'}`}>
                         <Icon name={signatures.bailleur ? 'check_circle' : 'radio_button_unchecked'} size={12} />
                         Bailleur
                       </span>
@@ -4675,7 +4675,7 @@ export default function Payments() {
         {reminderModal && (
           <div className="flex flex-col gap-4">
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-              <Icon name="notifications_active" size={22} className="text-amber-600 flex-shrink-0 mt-0.5" />
+              <Icon name="notifications_active" size={22} className="text-amber-700 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold text-on-surface">Rappel pour <strong>{reminderModal.tenantName}</strong></p>
                 <p className="text-sm text-on-surface-variant mt-1">

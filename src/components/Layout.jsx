@@ -1,10 +1,73 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, Suspense } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { canView, PATH_TO_MODULE } from '../lib/permissions';
 import { currentMonthUnpaidList } from '../lib/rentStatus';
 import Icon from './Icon';
+
+// Recherche de pages dans l'en-tête (desktop) : propose les pages du menu
+// auxquelles l'utilisateur a accès ; Entrée ouvre la première correspondance.
+const norm = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+function PageSearch({ items, onGo }) {
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const matches = q.trim() ? items.filter((i) => norm(i.label).includes(norm(q.trim()))).slice(0, 6) : [];
+  const go = (item) => { if (!item) return; onGo(item.path); setQ(''); setOpen(false); };
+  return (
+    <div className="hidden lg:block relative">
+      <div className="flex items-center bg-surface-container rounded-full px-4 py-2 border border-outline-variant/30 gap-2 focus-within:ring-2 focus-within:ring-primary/30">
+        <Icon name="search" className="text-on-surface-variant" size={18} />
+        <input
+          type="search"
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setOpen(true); setActive(0); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); go(matches[active]); }
+            else if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, matches.length - 1)); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
+            else if (e.key === 'Escape') { setQ(''); setOpen(false); }
+          }}
+          placeholder="Aller à une page…"
+          aria-label="Rechercher une page"
+          role="combobox"
+          aria-expanded={open && matches.length > 0}
+          aria-controls="page-search-results"
+          aria-autocomplete="list"
+          className="bg-transparent border-none focus:ring-0 focus:outline-none text-body-sm w-48 text-on-surface placeholder:text-on-surface-variant/80"
+        />
+      </div>
+      {open && q.trim() && (
+        <ul id="page-search-results" role="listbox"
+          className="absolute right-0 mt-2 w-64 bg-surface rounded-xl shadow-modal border border-outline-variant/20 py-1 z-50">
+          {matches.length === 0 && <li className="px-4 py-2.5 text-sm text-on-surface-variant">Aucune page trouvée</li>}
+          {matches.map((item, i) => (
+            <li key={item.path} role="option" aria-selected={i === active}
+              onMouseDown={(e) => { e.preventDefault(); go(item); }}
+              onMouseEnter={() => setActive(i)}
+              className={`flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer ${i === active ? 'bg-surface-container-high text-on-surface' : 'text-on-surface-variant'}`}>
+              <Icon name={item.icon} size={18} />
+              {item.label}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// Affiché dans la zone de contenu pendant qu'une page se charge (le menu reste visible).
+function PageLoading() {
+  return (
+    <div className="flex items-center justify-center gap-2 py-24 text-on-surface-variant text-sm" role="status" aria-live="polite">
+      <Icon name="progress_activity" size={20} className="animate-spin text-primary" />
+      Chargement…
+    </div>
+  );
+}
 
 const ROLE_LABELS = {
   SUPER_ADMIN:        'Super Admin',
@@ -36,8 +99,8 @@ const navItems = [
   { path: '/concierge',   label: 'Mon Espace',        icon: 'supervised_user_circle',  mobileIcon: 'supervised_user_circle', roles: ['CONCIERGE'] },
   { path: '/inbox',       label: 'Messagerie',        icon: 'support_agent',           mobileIcon: 'mail' },
   { path: '/reports',     label: 'Rapports',          icon: 'description',             mobileIcon: 'description' },
-  { path: '/prospection',      label: 'Prospection',        icon: 'group_add',          mobileIcon: 'group_add', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'AGENT', 'MANAGER', 'SUPER_ADMIN'] },
-  { path: '/rapport-exercice', label: "Rapport d'exercice", icon: 'assessment',        mobileIcon: 'assessment', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'SUPER_ADMIN'] },
+  { path: '/prospection',      label: 'Prospection',        icon: 'person_search',      mobileIcon: 'person_search', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'AGENT', 'MANAGER', 'SUPER_ADMIN'] },
+  { path: '/rapport-exercice', label: "Rapport d'exercice", icon: 'summarize',         mobileIcon: 'summarize', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'SUPER_ADMIN'] },
 ];
 
 const pageTitles = {
@@ -156,7 +219,7 @@ export default function Layout() {
           try { const dt = parseContractDate(c.endDate); return dt && ((dt.getTime() - now) / 86400000) <= 30; } catch { return false; }
         })
         .slice(0, 3)
-        .map(c => ({ id: `cont-${c.id}`, icon: 'contract', color: 'text-amber-600', bg: 'bg-amber-100', label: 'Contrat expirant', sub: `${c.tenant} — ${c.endDate}`, path: '/rental' })),
+        .map(c => ({ id: `cont-${c.id}`, icon: 'contract', color: 'text-amber-700', bg: 'bg-amber-100', label: 'Contrat expirant', sub: `${c.tenant} — ${c.endDate}`, path: '/rental' })),
       ...(state.tickets || [])
         .filter(t => t.priority === 'Urgent' && t.status !== 'Fermé' && t.status !== 'Résolu')
         .slice(0, 3)
@@ -215,7 +278,7 @@ export default function Layout() {
     <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4">
       <div className="bg-surface rounded-2xl shadow-2xl p-6 max-w-sm w-full text-center">
         <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Icon name="timer" size={32} className="text-amber-600" />
+          <Icon name="timer" size={32} className="text-amber-700" />
         </div>
         <h3 className="font-bold text-lg text-on-surface mb-2">Session inactive</h3>
         <p className="text-sm text-on-surface-variant mb-5">
@@ -248,12 +311,13 @@ export default function Layout() {
             <button
               onClick={toggleDark}
               className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-surface-container-high text-on-surface-variant transition-colors"
-              title={dark ? 'Mode clair' : 'Mode sombre'}
+              title={dark ? 'Mode clair' : 'Mode sombre'} aria-label={dark ? 'Passer en mode clair' : 'Passer en mode sombre'}
             >
               <Icon name={dark ? 'light_mode' : 'dark_mode'} size={18} />
             </button>
             <button
               onClick={() => navigate('/settings')}
+              aria-label="Mon profil et paramètres"
               className="flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-full hover:bg-surface-container-high transition-colors"
             >
               {currentUser?.avatar
@@ -265,14 +329,14 @@ export default function Layout() {
             <button
               onClick={handleLogout}
               className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-error/10 text-on-surface-variant hover:text-error transition-colors"
-              title="Déconnexion"
+              title="Déconnexion" aria-label="Déconnexion"
             >
               <Icon name="logout" size={18} />
             </button>
           </div>
         </header>
         <main className="pb-8 px-0">
-          <Outlet />
+          <Suspense fallback={<PageLoading />}><Outlet /></Suspense>
         </main>
         {idleModal}
       </div>
@@ -346,7 +410,7 @@ export default function Layout() {
             <p className="font-label-md text-label-md text-on-surface truncate">{currentUser?.name || 'Utilisateur'}</p>
             <p className="text-label-sm text-on-surface-variant">{ROLE_LABELS[currentUser?.role] || ''}</p>
           </div>
-          <button onClick={handleLogout} className="text-on-surface-variant hover:text-error transition-colors p-1" title="Déconnexion">
+          <button onClick={handleLogout} className="text-on-surface-variant hover:text-error transition-colors w-11 h-11 flex items-center justify-center rounded-full" title="Déconnexion" aria-label="Déconnexion">
             <Icon name="logout" size={18} />
           </button>
         </div>
@@ -433,8 +497,9 @@ export default function Layout() {
         <header className="sticky top-0 z-30 bg-surface shadow-topbar border-b border-outline-variant/10 h-16 sm:h-20 flex items-center justify-between px-3 sm:px-margin">
           <div className="flex items-center gap-2 sm:gap-md min-w-0">
             <button
-              className="md:hidden text-primary p-1 rounded-lg hover:bg-surface-container-high transition-colors flex-shrink-0"
+              className="md:hidden text-primary w-11 h-11 -ml-1 flex items-center justify-center rounded-lg hover:bg-surface-container-high transition-colors flex-shrink-0"
               onClick={() => setSidebarOpen(true)}
+              aria-label="Ouvrir le menu"
             >
               <Icon name="menu" />
             </button>
@@ -443,30 +508,25 @@ export default function Layout() {
 
           <div className="flex items-center gap-1 sm:gap-sm flex-shrink-0">
             {/* Search (desktop) */}
-            <div className="hidden lg:flex items-center bg-surface-container rounded-full px-4 py-2 border border-outline-variant/30 gap-2">
-              <Icon name="search" className="text-outline" size={18} />
-              <input
-                type="text"
-                placeholder="Rechercher..."
-                className="bg-transparent border-none focus:ring-0 focus:outline-none text-body-sm w-48 text-on-surface placeholder:text-outline"
-              />
-            </div>
+            <PageSearch items={visibleNav} onGo={(path) => navigate(path)} />
 
             {/* Dark mode toggle */}
             <button
               onClick={toggleDark}
               className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-high transition-colors text-on-surface-variant"
-              title={dark ? 'Mode clair' : 'Mode sombre'}
+              title={dark ? 'Mode clair' : 'Mode sombre'} aria-label={dark ? 'Passer en mode clair' : 'Passer en mode sombre'}
             >
               <Icon name={dark ? 'light_mode' : 'dark_mode'} size={20} />
             </button>
 
             <div className="relative" ref={notifRef}>
               <button onClick={() => setShowNotif(v => !v)}
-                className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-high transition-colors text-on-surface-variant relative">
+                aria-label={notifications.length > 0 ? `Notifications (${notifications.length} non lue${notifications.length > 1 ? 's' : ''})` : 'Notifications'}
+                aria-expanded={showNotif}
+                className="w-11 h-11 rounded-full flex items-center justify-center hover:bg-surface-container-high transition-colors text-on-surface-variant relative">
                 <Icon name="notifications" />
                 {notifications.length > 0 && (
-                  <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-error text-on-error text-[9px] font-bold rounded-full flex items-center justify-center">
+                  <span aria-hidden="true" className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 bg-error text-on-error text-[11px] font-bold rounded-full flex items-center justify-center">
                     {notifications.length > 9 ? '9+' : notifications.length}
                   </span>
                 )}
@@ -492,7 +552,7 @@ export default function Layout() {
                   <div className="max-h-[28rem] overflow-y-auto">
                     {notifications.length === 0 ? (
                       <div className="text-center py-8 text-on-surface-variant">
-                        <Icon name="check_circle" size={32} className="opacity-30 mb-2 text-green-600" />
+                        <Icon name="check_circle" size={32} className="opacity-30 mb-2 text-green-700" />
                         <p className="text-xs">Aucune nouvelle notification</p>
                         {allNotifications.length > 0 && (
                           <button onClick={() => { setReadIds(new Set()); try { localStorage.removeItem(NOTIF_KEY); } catch {} }}
@@ -515,7 +575,7 @@ export default function Layout() {
                         <button
                           onClick={e => { e.stopPropagation(); markRead([n.id]); }}
                           className="text-on-surface-variant hover:text-primary transition-colors flex-shrink-0 mt-1 p-0.5"
-                          title="Marquer comme lu"
+                          title="Marquer comme lu" aria-label="Marquer comme lu"
                         >
                           <Icon name="close" size={14} />
                         </button>
@@ -528,7 +588,7 @@ export default function Layout() {
 
             <button onClick={() => navigate('/settings')}
               className="w-10 h-10 rounded-full overflow-hidden bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-sm cursor-pointer hover:ring-2 hover:ring-primary transition-all"
-              title="Paramètres">
+              title="Paramètres" aria-label="Paramètres">
               {currentUser?.avatar
                 ? <img src={currentUser.avatar} alt="" className="w-full h-full object-cover" />
                 : (currentUser?.initials || '?')}
@@ -538,7 +598,7 @@ export default function Layout() {
 
         {/* Page content */}
         <main className="flex-1 pb-24 md:pb-8">
-          <Outlet />
+          <Suspense fallback={<PageLoading />}><Outlet /></Suspense>
         </main>
       </div>
 
@@ -547,7 +607,7 @@ export default function Layout() {
         <button
           onClick={() => setShowNotif(v => !v)}
           className="fixed bottom-20 right-4 md:bottom-8 md:right-8 z-50 w-14 h-14 bg-primary text-on-primary rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-transform"
-          title="Voir les notifications"
+          title="Voir les notifications" aria-label="Voir les notifications"
         >
           <Icon name="notifications" size={26} />
           <span className="absolute -top-1.5 -right-1.5 min-w-[22px] h-[22px] bg-error text-on-error text-[11px] font-black rounded-full flex items-center justify-center px-1 shadow animate-bounce">
@@ -561,7 +621,7 @@ export default function Layout() {
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           className="fixed bottom-36 right-4 md:bottom-24 md:right-8 z-50 w-11 h-11 bg-surface border border-outline-variant shadow-lg rounded-full flex items-center justify-center hover:bg-surface-container-high active:scale-95 transition-all"
-          title="Retour en haut"
+          title="Retour en haut" aria-label="Retour en haut"
         >
           <Icon name="arrow_upward" size={20} className="text-on-surface" />
         </button>
@@ -598,7 +658,7 @@ export default function Layout() {
               className="flex flex-col items-center justify-center gap-0.5 px-2.5 py-1 min-w-[56px] text-on-surface-variant transition-transform active:scale-90"
             >
               <Icon name="more_horiz" size={22} />
-              <span className="text-[9px] font-medium leading-none">Plus</span>
+              <span className="text-[11px] font-medium leading-none">Plus</span>
             </button>
           )}
         </div>

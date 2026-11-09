@@ -374,7 +374,7 @@ export default function Inbox() {
                 <h2 className="font-h3 text-h3 text-on-surface">{activeConv.contact?.name}</h2>
                 <p className="text-body-sm flex items-center gap-1">
                   {activeConv.contact?.online ? (
-                    <><span className="w-2 h-2 bg-green-500 rounded-full" /><span className="text-green-600">En ligne</span></>
+                    <><span className="w-2 h-2 bg-green-500 rounded-full" /><span className="text-green-700">En ligne</span></>
                   ) : (
                     <span className="text-on-surface-variant">{activeConv.contact?.role}</span>
                   )}

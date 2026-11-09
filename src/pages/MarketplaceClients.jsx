@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
+import { formatFCFA } from '../lib/format';
 
 const STATUS_OPTIONS = [
   { value: 'nouveau',  label: 'Nouveau' },
@@ -15,7 +16,7 @@ const TYPE_LABELS = {
   terrain: 'Terrain', bureau: 'Bureau', residence_meublee: 'Résidence Meublée',
 };
 
-const fmt  = n => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
+const fmt = formatFCFA;
 const fmtDate = d => { try { return new Date(d).toLocaleDateString('fr-CI'); } catch { return '—'; } };
 
 function scoreMatch(client, listing) {

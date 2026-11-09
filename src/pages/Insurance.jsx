@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
+import { formatFCFA } from '../lib/format';
 
-const fmt = n => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
-
+const fmt = formatFCFA;
 const INSURANCE_TYPES = ['Habitation', 'Multirisque', 'Responsabilité civile', 'Autre'];
 
 /* ── Helpers ── */
@@ -310,7 +310,7 @@ export default function Insurance() {
                           {ins.endDate ? new Date(ins.endDate).toLocaleDateString('fr-CI') : '—'}
                         </span>
                         {days !== null && days >= 0 && days <= 30 && (
-                          <span className="ml-1.5 text-xs text-amber-600">({days}j)</span>
+                          <span className="ml-1.5 text-xs text-amber-700">({days}j)</span>
                         )}
                       </td>
                       <td className="px-4 py-3 font-semibold text-on-surface">{fmt(ins.amount)}</td>

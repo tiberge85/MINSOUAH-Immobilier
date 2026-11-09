@@ -18,7 +18,7 @@ const priorityBorderColor = {
 };
 
 const statusIconMap = {
-  'En attente': { icon: 'pending_actions', color: 'text-amber-600 bg-amber-100' },
+  'En attente': { icon: 'pending_actions', color: 'text-amber-700 bg-amber-100' },
   'En cours': { icon: 'engineering', color: 'text-tertiary bg-tertiary-container/20' },
   Résolu: { icon: 'check_circle', color: 'text-green-700 bg-green-100' },
 };

@@ -10,12 +10,12 @@ import TenantFinancialStatement from '../components/TenantFinancialStatement';
 import { openContractReport } from '../lib/contractReport';
 import { can } from '../lib/permissions';
 import { randomPassword } from '../lib/authAccounts';
+import { formatFCFA } from '../lib/format';
 
 const TABS = ['Contrats', 'Locataires', 'Anciens locataires', 'Propriétaires'];
 const CONTRACT_STATUSES = ['Tous', 'Actif', 'Expirant', 'Brouillon', 'Résilié'];
 const COLORS = ['bg-primary-container text-on-primary-container', 'bg-secondary-container text-on-secondary-container', 'bg-tertiary-container text-on-tertiary-container', 'bg-error-container text-on-error-container'];
-const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
-
+const fmt = formatFCFA;
 const STATUS_BADGE = {
   Actif:    'bg-green-100 text-green-800',
   Expirant: 'bg-amber-100 text-amber-800',
@@ -715,7 +715,7 @@ ${sectionsHtml}
             </span>
           )}
           {!former && t.paymentStartDate && (
-            <span className="flex items-center gap-1.5 text-amber-600 font-medium">
+            <span className="flex items-center gap-1.5 text-amber-700 font-medium">
               <Icon name="event_upcoming" size={12} />1er loyer : {new Date(t.paymentStartDate).toLocaleDateString('fr-CI')}
             </span>
           )}
@@ -988,7 +988,7 @@ ${sectionsHtml}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="bg-green-50 border border-green-200 rounded-2xl p-4 text-center">
                       <p className="text-3xl font-black text-green-700">{importResult.ok.length}</p>
-                      <p className="text-xs text-green-600 font-semibold mt-1">Importé(s) avec succès</p>
+                      <p className="text-xs text-green-700 font-semibold mt-1">Importé(s) avec succès</p>
                     </div>
                     <div className={`${importResult.errors.length > 0 ? 'bg-red-50 border-red-200' : 'bg-surface-container border-outline-variant/20'} border rounded-2xl p-4 text-center`}>
                       <p className={`text-3xl font-black ${importResult.errors.length > 0 ? 'text-red-600' : 'text-on-surface-variant'}`}>{importResult.errors.length}</p>
@@ -1114,11 +1114,11 @@ ${sectionsHtml}
                   const ct = tenants.find(t => normN(t.name) === normN(activeCont.tenant));
                   return (
                     <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-start gap-2">
-                      <Icon name="person" size={14} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                      <Icon name="person" size={14} className="text-amber-700 mt-0.5 flex-shrink-0" />
                       <div className="text-xs">
                         <p className="font-bold text-amber-800">{activeCont.tenant}</p>
                         {ct?.phone && <p className="text-amber-700">{ct.phone}</p>}
-                        {ct?.email && <p className="text-amber-600">{ct.email}</p>}
+                        {ct?.email && <p className="text-amber-700">{ct.email}</p>}
                         <p className="text-amber-500 mt-0.5">Contrat {activeCont.status} — fin : {activeCont.endDate || 'Indéterminée'}</p>
                       </div>
                     </div>
@@ -1307,7 +1307,7 @@ ${sectionsHtml}
               </div>
               <div>
                 <label className="form-label flex items-center gap-1.5">
-                  <Icon name="event_upcoming" size={13} className="text-amber-600" />
+                  <Icon name="event_upcoming" size={13} className="text-amber-700" />
                   1er paiement de loyer
                 </label>
                 <input type="date" value={tForm.paymentStartDate || ''} onChange={e => setTForm(f => ({ ...f, paymentStartDate: e.target.value }))} className="form-input" />

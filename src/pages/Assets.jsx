@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import { can } from '../lib/permissions';
+import { formatFCFA } from '../lib/format';
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const CATEGORIES = ['Tous', 'Immeuble', 'Studio', '2 Pièces', '3 Pièces', '4 Pièces', 'Magasin'];
@@ -29,7 +30,7 @@ const EMPTY_FORM = {
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
+const fmt = formatFCFA;
 const buildingRevenue = (units = []) =>
   units.filter(u => u.status === 'Loué').reduce((s, u) => s + Number(u.rent || 0), 0);
 
@@ -362,7 +363,7 @@ export default function Assets() {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {[
           { label: 'Total',       value: totalUnits,  icon: 'apartment',    color: 'text-primary',     statusVal: null },
-          { label: 'Loués',       value: loued,       icon: 'check_circle', color: 'text-green-600',   statusVal: 'Loué' },
+          { label: 'Loués',       value: loued,       icon: 'check_circle', color: 'text-green-700',   statusVal: 'Loué' },
           { label: 'Libres',      value: libres,      icon: 'lock_open',    color: 'text-blue-600',    statusVal: 'Disponible' },
           { label: 'Maintenance', value: maintenance, icon: 'build',        color: 'text-error',       statusVal: 'Maintenance' },
           { label: 'Revenus/mois', value: fmt(revenue), icon: 'trending_up', color: 'text-on-primary-container', highlight: true, statusVal: '__revenue__' },
@@ -809,7 +810,7 @@ export default function Assets() {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                 {[
                   { l: 'Total', v: target.units?.length || 0, c: 'text-primary' },
-                  { l: 'Loués', v: target.units?.filter(u => u.status === 'Loué').length || 0, c: 'text-green-600' },
+                  { l: 'Loués', v: target.units?.filter(u => u.status === 'Loué').length || 0, c: 'text-green-700' },
                   { l: 'Libres', v: target.units?.filter(u => u.status === 'Disponible').length || 0, c: 'text-blue-600' },
                   { l: 'Maintenance', v: target.units?.filter(u => u.status === 'Maintenance').length || 0, c: 'text-error' },
                 ].map(s => (
@@ -1054,7 +1055,7 @@ function BuildingCard({ building, onDetail, onEdit, onDelete, onQr, canEdit, can
         <div className="mb-3">
           <div className="flex justify-between text-xs mb-1">
             <span className="text-on-surface-variant">Occupation</span>
-            <span className="font-bold text-green-600">{rate}%</span>
+            <span className="font-bold text-green-700">{rate}%</span>
           </div>
           <div className="h-1.5 bg-surface-container-high rounded-full overflow-hidden">
             <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${rate}%` }} />

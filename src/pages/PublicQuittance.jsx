@@ -3,10 +3,10 @@ import { useParams } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import Icon from '../components/Icon';
+import { formatFCFA } from '../lib/format';
 
 const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
-const fmt = (n) => `${(Number(n) || 0).toLocaleString('fr-FR')} FCFA`;
-
+const fmt = formatFCFA;
 export default function PublicQuittance() {
   const { id } = useParams();
   const [state, setState] = useState('loading'); // loading | ok | notfound
@@ -53,7 +53,7 @@ export default function PublicQuittance() {
             </div>
             <p className="text-center font-bold text-green-700 mb-3">Enregistrement trouvé ✓</p>
             <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
-              <Icon name="info" size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+              <Icon name="info" size={18} className="text-amber-700 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-amber-800 leading-relaxed">
                 <strong>Comparez ces informations avec le document papier</strong> — surtout le <strong>montant</strong>, le <strong>nom du locataire</strong> et la <strong>période</strong>.
                 En cas de différence, la quittance est <strong>falsifiée</strong>.

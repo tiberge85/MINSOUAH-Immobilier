@@ -10,6 +10,7 @@ import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
 import { can } from '../lib/permissions';
+import { formatFCFA } from '../lib/format';
 
 const typeFilterOpts = ['Tous', 'Loyer', 'Réparations', 'Taxes', 'Entretien', 'Charges', 'Autre'];
 const expenseTypes = ['Travaux', 'Réparations', 'Eau', 'Électricité', 'Taxes', 'Entretien', 'Charges', 'Autre'];
@@ -17,8 +18,7 @@ const expenseTypes = ['Travaux', 'Réparations', 'Eau', 'Électricité', 'Taxes'
 const MONTHS_SHORT = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
 const MONTHS_FR = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
-const fmt = (n) => Number(n || 0).toLocaleString('fr-FR') + ' FCFA';
-
+const fmt = formatFCFA;
 function isoToFr(iso) {
   if (!iso) return '';
   const [y, m, d] = iso.split('-');
@@ -528,7 +528,7 @@ export default function Finance() {
           {/* Encaissements */}
           <section>
             <h3 className="text-label-md font-semibold text-on-surface-variant uppercase tracking-wider mb-2 flex items-center gap-2">
-              <Icon name="south_west" size={16} className="text-green-600" /> Encaissements
+              <Icon name="south_west" size={16} className="text-green-700" /> Encaissements
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               <StatCard label="Loyers aujourd'hui" value={fmt(dash.encToday)} icon="today" tone="green" onClick={() => goPayments('payments', 'Payé')} />

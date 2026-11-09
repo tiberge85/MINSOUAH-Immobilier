@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
+import { formatFCFA } from '../lib/format';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const MONTH_NAMES = [
@@ -62,8 +63,7 @@ function mondayWeekday(date) {
   return (date.getDay() + 6) % 7;
 }
 
-const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
-
+const fmt = formatFCFA;
 // ─── Collect all events from app state ────────────────────────────────────────
 function collectEvents({ contracts = [], payments = [], inspections = [], tickets = [], insurances = [] }) {
   const today = new Date();

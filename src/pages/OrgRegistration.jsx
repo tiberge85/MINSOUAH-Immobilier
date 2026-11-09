@@ -370,7 +370,7 @@ export default function OrgRegistration() {
 
               {emailSentOk ? (
                 <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2 mb-4 text-sm text-green-800">
-                  <Icon name="check_circle" size={16} className="text-green-600 flex-shrink-0" />
+                  <Icon name="check_circle" size={16} className="text-green-700 flex-shrink-0" />
                   Email envoyé. Vérifiez votre boîte mail et le dossier Spam.
                 </div>
               ) : (
@@ -576,7 +576,7 @@ export default function OrgRegistration() {
                       <div className="border-t border-outline-variant/20 pt-3 flex flex-col gap-1">
                         {pc.included.map(f => (
                           <div key={f} className="flex items-center gap-1.5 text-xs text-on-surface-variant">
-                            <Icon name="check" size={12} className="text-green-600 flex-shrink-0" /> {f}
+                            <Icon name="check" size={12} className="text-green-700 flex-shrink-0" /> {f}
                           </div>
                         ))}
                         {pc.excluded.map(f => (

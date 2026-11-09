@@ -4,7 +4,9 @@
  * and base64 assets, open it in a new window and auto-print.
  */
 
-const fmt = (n) => `${(Number(n) || 0).toLocaleString('fr-FR')} XOF`;
+import { formatFCFA } from './format';
+
+const fmt = formatFCFA;
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 export function buildBordereauHTML(bord, orgSettings = {}, opts = {}) {

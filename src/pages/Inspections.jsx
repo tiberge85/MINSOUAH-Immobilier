@@ -6,6 +6,7 @@ import Icon from '../components/Icon';
 import SearchSelect from '../components/SearchSelect';
 import { openEDLReport, openSynthesisReport, openAllSummariesReport } from '../lib/inspectionReport';
 import { can } from '../lib/permissions';
+import { formatFCFA } from '../lib/format';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const CATEGORIES = [
@@ -40,8 +41,7 @@ const STATUS_CFG = {
 };
 
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('fr-FR') : '—';
-const fmtMoney = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
-
+const fmtMoney = formatFCFA;
 // ─── Signature pad ─────────────────────────────────────────────────────────
 function SignaturePad({ onSave, onCancel }) {
   const canvasRef = useRef(null);
@@ -1126,7 +1126,7 @@ export default function Inspections() {
                     </div>
                     {detail.managerSignature ? (
                       <span className="flex items-center gap-1.5 text-green-700 text-label-sm font-bold">
-                        <Icon name="verified" size={18} className="text-green-600" />
+                        <Icon name="verified" size={18} className="text-green-700" />
                         Signé le {fmtDate(detail.managerSignature.signedAt)}
                       </span>
                     ) : isAdmin ? (
@@ -1151,7 +1151,7 @@ export default function Inspections() {
                     </div>
                     {detail.tenantSignature ? (
                       <span className="flex items-center gap-1.5 text-green-700 text-label-sm font-bold">
-                        <Icon name="verified" size={18} className="text-green-600" />
+                        <Icon name="verified" size={18} className="text-green-700" />
                         Signé le {fmtDate(detail.tenantSignature.signedAt)}
                       </span>
                     ) : detail.status === 'PENDING_SIGNATURE' ? (
@@ -1173,7 +1173,7 @@ export default function Inspections() {
 
                 {detail.status === 'COMPLETED' && (
                   <div className="bg-green-50 border border-green-200 rounded-2xl p-md flex items-center gap-3">
-                    <Icon name="task_alt" size={28} className="text-green-600" />
+                    <Icon name="task_alt" size={28} className="text-green-700" />
                     <div>
                       <p className="font-bold text-green-800">État des lieux complété</p>
                       <p className="text-body-sm text-green-700">Document signé par les deux parties le {detail.completedDate}</p>

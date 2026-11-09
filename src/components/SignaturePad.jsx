@@ -176,7 +176,7 @@ const SignaturePad = forwardRef(function SignaturePad({ label, subtitle, require
       </div>
 
       <div className="flex items-center justify-between flex-wrap gap-1">
-        <p className={`text-xs ${signed ? 'text-green-600 font-semibold' : 'text-on-surface-variant'}`}>
+        <p className={`text-xs ${signed ? 'text-green-700 font-semibold' : 'text-on-surface-variant'}`}>
           {signed ? '✓ Signature enregistrée' : 'Aucune signature'}
         </p>
         <div className="flex gap-2 flex-wrap items-center">

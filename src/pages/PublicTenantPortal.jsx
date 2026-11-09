@@ -2,13 +2,13 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { formatFCFA } from '../lib/format';
 
 const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
 
 const BRAND = '#785a00';
 
-const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
-
+const fmt = formatFCFA;
 const STATUS_STYLE = {
   'Payé':      { bg: '#dcfce7', color: '#166534', label: 'Payé' },
   'Impayé':    { bg: '#fee2e2', color: '#991b1b', label: 'Impayé' },

@@ -148,7 +148,7 @@ function StrengthBar({ password }) {
           <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${i <= score ? colors[score] : 'bg-outline-variant/30'}`} />
         ))}
       </div>
-      <p className={`text-xs ${score <= 1 ? 'text-error' : score === 2 ? 'text-amber-600' : score === 3 ? 'text-yellow-600' : 'text-green-600'}`}>
+      <p className={`text-xs ${score <= 1 ? 'text-error' : score === 2 ? 'text-amber-700' : score === 3 ? 'text-yellow-600' : 'text-green-700'}`}>
         {labels[score]}
       </p>
     </div>
@@ -257,7 +257,7 @@ export default function ChangePassword() {
         <div className="bg-surface rounded-3xl shadow-xl border border-outline-variant/20 overflow-hidden">
           {isFirstLogin && (
             <div className="bg-amber-50 border-b border-amber-200 px-6 py-4 flex items-center gap-3">
-              <Icon name="info" size={18} className="text-amber-600 flex-shrink-0" />
+              <Icon name="info" size={18} className="text-amber-700 flex-shrink-0" />
               <p className="text-sm text-amber-800">
                 Bienvenue <strong>{user.name}</strong> ! Créez votre mot de passe personnel pour continuer.
               </p>
@@ -310,7 +310,7 @@ export default function ChangePassword() {
                   { ok: /[0-9]/.test(next), label: 'Chiffre' },
                   { ok: /[^A-Za-z0-9]/.test(next), label: 'Caractère spécial' },
                 ].map(r => (
-                  <li key={r.label} className={`flex items-center gap-1.5 text-xs ${r.ok ? 'text-green-600' : 'text-on-surface-variant'}`}>
+                  <li key={r.label} className={`flex items-center gap-1.5 text-xs ${r.ok ? 'text-green-700' : 'text-on-surface-variant'}`}>
                     <Icon name={r.ok ? 'check_circle' : 'radio_button_unchecked'} size={14} filled={r.ok} />
                     {r.label}
                   </li>

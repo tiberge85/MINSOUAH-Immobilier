@@ -6,6 +6,7 @@ import {
 import { onAuthStateChanged, signInAnonymously, signOut, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { provisionAccount, randomToken } from '../lib/authAccounts';
+import { formatFCFA } from '../lib/format';
 import { checkLimit } from '../lib/planLimits';
 import { createLicensePayload } from '../lib/licenses';
 import { sendEmail } from '../lib/email';
@@ -80,13 +81,13 @@ async function applyBordereauValidation(bord, orgId, st, actor) {
       await sendEmail({
         to: bord.ownerEmail,
         subject: `Reversement ${bord.number} — ${st.orgSettings?.companyName || 'Minsouah'}`,
-        html: `<p>Bonjour ${bord.ownerName || ''},</p><p>Un reversement de <strong>${(bord.totalNet || 0).toLocaleString('fr-FR')} XOF</strong> a été effectué en votre faveur (bordereau <strong>${bord.number}</strong>).</p><p>Mode : ${bord.paymentMode || '—'}${bord.transferRef ? ` · Réf : ${bord.transferRef}` : ''}</p><p>— ${st.orgSettings?.companyName || 'Minsouah Immobilier'}</p>`,
+        html: `<p>Bonjour ${bord.ownerName || ''},</p><p>Un reversement de <strong>${formatFCFA(bord.totalNet)}</strong> a été effectué en votre faveur (bordereau <strong>${bord.number}</strong>).</p><p>Mode : ${bord.paymentMode || '—'}${bord.transferRef ? ` · Réf : ${bord.transferRef}` : ''}</p><p>— ${st.orgSettings?.companyName || 'Minsouah Immobilier'}</p>`,
       });
     } else if (!isProprio && st.orgSettings?.email) {
       await sendEmail({
         to: st.orgSettings.email,
         subject: `Versement comptabilité ${bord.number}`,
-        html: `<p>Un bordereau de versement à la comptabilité (<strong>${bord.number}</strong>) d'un montant de <strong>${(bord.totalAmount || 0).toLocaleString('fr-FR')} XOF</strong> a été validé.</p>`,
+        html: `<p>Un bordereau de versement à la comptabilité (<strong>${bord.number}</strong>) d'un montant de <strong>${formatFCFA(bord.totalAmount)}</strong> a été validé.</p>`,
       });
     }
   } catch { /* email is best-effort */ }

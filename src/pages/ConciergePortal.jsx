@@ -186,7 +186,7 @@ export default function ConciergePortal() {
             <div className="lg:col-span-2 bg-surface rounded-2xl border border-outline-variant/20 shadow-card overflow-hidden">
               <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant/10">
                 <h3 className="font-bold text-on-surface flex items-center gap-2">
-                  <Icon name="engineering" className="text-amber-600" size={18} />
+                  <Icon name="engineering" className="text-amber-700" size={18} />
                   Tickets à traiter
                   {openTickets.length > 0 && <span className="bg-error/10 text-error text-xs font-black px-2 py-0.5 rounded-full">{openTickets.length}</span>}
                 </h3>
@@ -196,7 +196,7 @@ export default function ConciergePortal() {
               </div>
               {openTickets.length === 0 ? (
                 <div className="text-center py-12 text-on-surface-variant">
-                  <Icon name="check_circle" size={36} className="opacity-30 mb-2 text-green-600" />
+                  <Icon name="check_circle" size={36} className="opacity-30 mb-2 text-green-700" />
                   <p className="font-semibold text-sm">Aucun ticket ouvert</p>
                 </div>
               ) : (
@@ -364,7 +364,7 @@ export default function ConciergePortal() {
           {/* Liste tickets */}
           {filteredTickets.length === 0 ? (
             <div className="text-center py-16 text-on-surface-variant bg-surface rounded-2xl border border-outline-variant/20">
-              <Icon name="check_circle" size={48} className="opacity-30 mb-2 text-green-600" />
+              <Icon name="check_circle" size={48} className="opacity-30 mb-2 text-green-700" />
               <p className="font-bold">Aucun ticket dans cette catégorie</p>
             </div>
           ) : (
