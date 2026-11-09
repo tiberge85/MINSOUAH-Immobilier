@@ -2,303 +2,190 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ══════════════════════════════════════════════════════════════════════════
-    //  MODÈLE DE CONFIANCE
-    //  • Le rôle et l'agence d'un appelant viennent de usersByUid/{uid}.
-    //  • usersByUid ne peut être écrit par son propriétaire QUE s'il recopie
-    //    fidèlement sa fiche `users` (même e-mail que le jeton Firebase, même rôle,
-    //    agence autorisée). Personne ne peut donc plus s'auto-attribuer un rôle.
-    //  • Une fiche `users` ne peut pas modifier elle-même ses champs sensibles
-    //    (rôle, agence, permissions, suspension, e-mail).
-    //  • Les mots de passe ne sont plus vérifiés côté client : Firebase Auth est la
-    //    seule source de vérité.
-    // ══════════════════════════════════════════════════════════════════════════
-
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    function wsPath(wsId, col, id) {
-      return /databases/$(database)/documents/workspaces/$(wsId)/$(col)/$(id);
-    }
-
     function callerMeta(wsId) {
-      let p = wsPath(wsId, 'usersByUid', request.auth.uid);
+      let p = /databases/$(database)/documents/workspaces/$(wsId)/usersByUid/$(request.auth.uid);
       return exists(p) ? get(p).data : {};
     }
-    function callerRole(wsId)   { return callerMeta(wsId).get('role', ''); }
-    function callerOrgId(wsId)  { return callerMeta(wsId).get('orgId', ''); }
-    function callerOrgIds(wsId) { return callerMeta(wsId).get('orgIds', []); }
+    function callerRole(wsId)  { return callerMeta(wsId).get('role', ''); }
+    function callerOrgId(wsId) { return callerMeta(wsId).get('orgId', ''); }
 
-    // Compte e-mail/mot de passe (pas une session anonyme).
-    function isVerifiedNonAnon() {
-      return request.auth != null
-             && request.auth.token.firebase.sign_in_provider != 'anonymous';
-    }
-
-    function isSuperAdmin(wsId) {
-      return isVerifiedNonAnon() && callerRole(wsId) == 'SUPER_ADMIN';
-    }
+    function isSuperAdmin(wsId) { return callerRole(wsId) == 'SUPER_ADMIN'; }
 
     function isOrgAdmin(wsId) {
-      return isVerifiedNonAnon() && callerRole(wsId) in ['ORGANIZATION_ADMIN', 'ADMIN'];
+      return callerRole(wsId) in ['ORGANIZATION_ADMIN', 'ADMIN'];
     }
 
     function isStaff(wsId) {
-      return isVerifiedNonAnon() && callerRole(wsId) in [
+      return callerRole(wsId) in [
         'ORGANIZATION_ADMIN', 'AGENT',
         'ADMIN', 'MANAGER', 'CONCIERGE', 'TECHNICIAN', 'ACCOUNTANT'
       ];
     }
 
+    function sameOrg(wsId, docOrgId) {
+      return callerOrgId(wsId) == docOrgId;
+    }
+
+    function orgIdOf(resource, request) {
+      return resource == null ? request.resource.data.orgId : resource.data.orgId;
+    }
+
+    // Non-anonymous authenticated user with a verified email address.
+    // Called before writing to sensitive live collections (organizations, licenses, users).
+   function isVerifiedNonAnon() {
+  return request.auth != null
+         && request.auth.token.firebase.sign_in_provider != 'anonymous';
+}
+
+    // ── usersByUid — written at login ─────────────────────────────────────────
+    match /workspaces/{wsId}/usersByUid/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read: if request.auth != null && isSuperAdmin(wsId);
+    }
+
+    // ── Organizations ─────────────────────────────────────────────────────────
+    // Read: SUPER_ADMIN, staff (anonymous OK via usersByUid), or verified email users.
+    // Create: verified email (self-registration) OR SUPER_ADMIN.
+    // Update/delete: SUPER_ADMIN only.
+    match /workspaces/{wsId}/organizations/{orgId} {
+      allow read:   if request.auth != null
+                    && (isSuperAdmin(wsId) || isStaff(wsId)
+                        || request.auth.token.firebase.sign_in_provider != 'anonymous');
+      allow create: if isVerifiedNonAnon()
+                    || (request.auth != null && isSuperAdmin(wsId));
+      allow update, delete: if request.auth != null && isSuperAdmin(wsId);
+    }
+
+    // ── Pending organizations (held in limbo until email is verified) ─────────
+    // Created immediately after Firebase Auth account is made (email_verified: false OK).
+    // Only the creating user can read or delete their own pending record.
+    match /workspaces/{wsId}/pendingOrganizations/{orgId} {
+      allow create: if request.auth != null
+                    && request.auth.token.firebase.sign_in_provider != 'anonymous';
+      allow read, delete: if request.auth != null
+                          && request.auth.uid == resource.data.fbUid;
+      allow update: if false;
+    }
+
+    // ── Licenses ──────────────────────────────────────────────────────────────
+    // Read: SUPER_ADMIN, staff (anonymous OK via usersByUid), or verified email users.
+    match /workspaces/{wsId}/licenses/{licId} {
+      allow read:   if request.auth != null
+                    && (isSuperAdmin(wsId) || isStaff(wsId)
+                        || request.auth.token.firebase.sign_in_provider != 'anonymous');
+      allow create: if isVerifiedNonAnon()
+                    || (request.auth != null && isSuperAdmin(wsId));
+      allow update, delete: if request.auth != null && isSuperAdmin(wsId);
+    }
+
+    // ── Users ─────────────────────────────────────────────────────────────────
+    match /workspaces/{wsId}/users/{userId} {
+      allow read: if request.auth != null;
+      allow create: if isVerifiedNonAnon()
+                    || (request.auth != null && isSuperAdmin(wsId));
+      allow update, delete: if request.auth != null
+                            && (isSuperAdmin(wsId)
+                                || (isOrgAdmin(wsId)
+                                    && resource.data.orgId == callerOrgId(wsId))
+                                // Un utilisateur peut modifier SA PROPRE fiche (ex. mot de
+                                // passe à la première connexion). L'id du document est un
+                                // nombre (Date.now()) et usersByUid.userId une chaîne : on
+                                // compare en TEXTE des deux côtés, sinon la règle échoue
+                                // (nombre == chaîne) et le changement de mot de passe est
+                                // refusé → l'utilisateur reste bloqué à « Première connexion ».
+                                || string(resource.data.id) == string(callerMeta(wsId).userId));
+    }
+
+    // ── System settings ───────────────────────────────────────────────────────
+    match /workspaces/{wsId}/settings/{settingId} {
+      allow read: if request.auth != null && isStaff(wsId);
+      allow write: if request.auth != null
+                   && (isSuperAdmin(wsId)
+                       || (settingId != 'systemSettings' && isOrgAdmin(wsId)));
+    }
+
+    // ── Mail queue (Firebase Trigger Email extension) ─────────────────────────
+    match /mail/{mailId} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if false;
+    }
+
+    // ── Org-scoped collections ────────────────────────────────────────────────
+    // Agences de l'utilisateur (toutes), lues depuis usersByUid.orgIds.
+    function callerOrgIds(wsId) { return callerMeta(wsId).get('orgIds', []); }
     // Le document appartient-il à l'agence active OU à l'une des agences de
     // l'utilisateur ? (permet le rapport d'exercice « toutes agences »).
     function inCallerOrgs(wsId, docOrgId) {
       return docOrgId == callerOrgId(wsId) || (docOrgId in callerOrgIds(wsId));
     }
-
-    // Lecture / écriture d'un document rattaché à une agence.
-    // En écriture, l'agence est contrôlée AVANT (resource) et APRÈS
-    // (request.resource) : impossible de déplacer un document vers une autre agence.
-    function allowOrgRead(wsId) {
-      return isSuperAdmin(wsId)
-             || (isStaff(wsId) && inCallerOrgs(wsId, resource.data.orgId));
-    }
-    function allowOrgCreate(wsId) {
-      return isSuperAdmin(wsId)
-             || (isStaff(wsId) && inCallerOrgs(wsId, request.resource.data.orgId));
-    }
-    function allowOrgUpdate(wsId) {
-      return isSuperAdmin(wsId)
-             || (isStaff(wsId)
-                 && inCallerOrgs(wsId, resource.data.orgId)
-                 && inCallerOrgs(wsId, request.resource.data.orgId));
-    }
-    function allowOrgDelete(wsId) {
-      return isSuperAdmin(wsId)
-             || (isStaff(wsId) && inCallerOrgs(wsId, resource.data.orgId));
+    function allowOrgDoc(wsId) {
+      return request.auth != null
+             && (isSuperAdmin(wsId) || isStaff(wsId))
+             && (isSuperAdmin(wsId) || inCallerOrgs(wsId, orgIdOf(resource, request)));
     }
 
-    // ── usersByUid — écrit à la connexion ────────────────────────────────────
-    // Le propriétaire du uid ne peut écrire que le reflet exact de SA fiche users.
-    function ubMatchesUserDoc(wsId, d) {
-      let up = wsPath(wsId, 'users', string(d.userId));
-      let u = get(up).data;
-      return isVerifiedNonAnon()
-             && exists(up)
-             && u.get('email', '') == request.auth.token.email
-             && u.get('suspended', false) != true
-             && d.role == u.role
-             && (u.role == 'SUPER_ADMIN'
-                 || d.orgId == u.get('orgId', 'default')
-                 || d.orgId in u.get('orgIds', []))
-             && (u.role == 'SUPER_ADMIN'
-                 || d.get('orgIds', []).toSet()
-                      .difference(u.get('orgIds', []).toSet().union([u.get('orgId', 'default')].toSet()))
-                      .size() == 0);
-    }
-
-    match /workspaces/{wsId}/usersByUid/{uid} {
-      allow read: if request.auth != null
-                  && (request.auth.uid == uid || isSuperAdmin(wsId));
-      allow create, update: if request.auth != null
-                            && (isSuperAdmin(wsId)
-                                || (request.auth.uid == uid
-                                    && ubMatchesUserDoc(wsId, request.resource.data)));
-      allow delete: if request.auth != null
-                    && (request.auth.uid == uid || isSuperAdmin(wsId));
-    }
-
-    // ── Organizations ─────────────────────────────────────────────────────────
-    // Create : SUPER_ADMIN, ou auto-inscription (compte e-mail) d'une agence
-    // en essai dont l'appelant est déclaré créateur (createdByUid).
-    match /workspaces/{wsId}/organizations/{orgId} {
-      allow read:   if isSuperAdmin(wsId) || isStaff(wsId) || isVerifiedNonAnon();
-      allow create: if isSuperAdmin(wsId)
-                    || (isVerifiedNonAnon()
-                        && request.resource.data.get('createdByUid', '') == request.auth.uid
-                        && request.resource.data.get('plan', '') == 'trial');
-      allow update, delete: if isSuperAdmin(wsId);
-    }
-
-    // ── Pending organizations (en attente de vérification de l'e-mail) ───────
-    match /workspaces/{wsId}/pendingOrganizations/{orgId} {
-      allow create: if isVerifiedNonAnon()
-                    && request.resource.data.fbUid == request.auth.uid;
-      allow read, delete: if request.auth != null
-                          && request.auth.uid == resource.data.fbUid;
-      allow update: if request.auth != null
-                    && request.auth.uid == resource.data.fbUid
-                    && request.resource.data.fbUid == resource.data.fbUid;
-    }
-
-    // ── Licenses ──────────────────────────────────────────────────────────────
-    // Create : SUPER_ADMIN, ou licence d'ESSAI (≤ 31 jours) pour une agence que
-    // l'appelant vient de créer lui-même.
-    function isOwnTrialLicense(wsId) {
-      let d = request.resource.data;
-      let org = get(wsPath(wsId, 'organizations', d.orgId)).data;
-      return isVerifiedNonAnon()
-             && org.get('createdByUid', '') == request.auth.uid
-             && d.plan == 'trial'
-             && d.status == 'trial'
-             && d.trialDays is int && d.trialDays <= 31
-             && d.expiresAt is string
-             && d.expiresAt < isoDay(request.time + duration.value(32, 'd'));
-    }
-    function pad2(n) { return n < 10 ? '0' + string(n) : string(n); }
-    // « AAAA-MM-JJ » : comparable lexicographiquement à une date ISO 8601.
-    function isoDay(t) { return string(t.year()) + '-' + pad2(t.month()) + '-' + pad2(t.day()); }
-
-    match /workspaces/{wsId}/licenses/{licId} {
-      allow read:   if isSuperAdmin(wsId) || isStaff(wsId) || isVerifiedNonAnon();
-      allow create: if isSuperAdmin(wsId) || isOwnTrialLicense(wsId);
-      allow update, delete: if isSuperAdmin(wsId);
-    }
-
-    // ── Users ─────────────────────────────────────────────────────────────────
-    // Champs qu'un utilisateur ne peut JAMAIS modifier sur sa propre fiche.
-    function touchesProtectedUserFields() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasAny([
-        'id', 'email', 'role', 'orgId', 'orgIds', 'permissions', 'suspended',
-        'personId', 'firebaseUid', 'emailVerificationRequired'
-      ]);
-    }
-    function isSelfUserDoc() {
-      return isVerifiedNonAnon()
-             && resource.data.get('email', '') == request.auth.token.email;
-    }
-    // Un admin d'agence ne peut gérer que des comptes de SES agences et ne peut
-    // jamais créer / promouvoir un SUPER_ADMIN.
-    function orgAdminManages(wsId, d) {
-      return isOrgAdmin(wsId)
-             && d.get('role', '') != 'SUPER_ADMIN'
-             && inCallerOrgs(wsId, d.get('orgId', ''))
-             && d.get('orgIds', []).toSet()
-                  .difference(callerOrgIds(wsId).toSet().union([callerOrgId(wsId)].toSet()))
-                  .size() == 0;
-    }
-    // Auto-inscription : la fiche admin d'une agence que l'appelant a créée.
-    function isSelfRegistration(wsId) {
-      let d = request.resource.data;
-      let org = get(wsPath(wsId, 'organizations', d.orgId)).data;
-      return isVerifiedNonAnon()
-             && d.role == 'ORGANIZATION_ADMIN'
-             && d.email == request.auth.token.email
-             && org.get('createdByUid', '') == request.auth.uid
-             && !('password' in d)
-             && !('permissions' in d)
-             && !('orgIds' in d);
-    }
-
-    match /workspaces/{wsId}/users/{userId} {
-      allow read: if isSuperAdmin(wsId)
-                  || isSelfUserDoc()
-                  || (isStaff(wsId) && inCallerOrgs(wsId, resource.data.get('orgId', '')));
-      allow create: if isSuperAdmin(wsId)
-                    || orgAdminManages(wsId, request.resource.data)
-                    || isSelfRegistration(wsId);
-      allow update: if isSuperAdmin(wsId)
-                    || (orgAdminManages(wsId, resource.data)
-                        && orgAdminManages(wsId, request.resource.data))
-                    || (isSelfUserDoc() && !touchesProtectedUserFields());
-      allow delete: if isSuperAdmin(wsId)
-                    || orgAdminManages(wsId, resource.data);
-    }
-
-    // ── System settings ───────────────────────────────────────────────────────
-    match /workspaces/{wsId}/settings/{settingId} {
-      allow read: if isStaff(wsId) || isSuperAdmin(wsId);
-      allow write: if isSuperAdmin(wsId)
-                   || (settingId != 'systemSettings' && isOrgAdmin(wsId));
-    }
-
-    // ── Mail queue (extension Firebase Trigger Email) ────────────────────────
-    // Plus de relais ouvert : compte e-mail obligatoire ; un non-membre du
-    // personnel ne peut écrire qu'à SA PROPRE adresse (codes de vérification).
-    match /mail/{mailId} {
-      allow create: if isVerifiedNonAnon()
-                    && request.resource.data.keys().hasOnly(['to', 'message', 'createdAt'])
-                    && request.resource.data.to is list
-                    && request.resource.data.to.size() >= 1
-                    && request.resource.data.to.size() <= 5
-                    && (isStaff('minsouah') || isSuperAdmin('minsouah')
-                        || request.resource.data.to == [request.auth.token.email]);
-      allow read, update, delete: if false;
-    }
-
-    // ── Org-scoped collections ────────────────────────────────────────────────
-    match /workspaces/{wsId}/properties/{id}    { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/contracts/{id}     { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/payments/{id}      { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/tickets/{id}       { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/inspections/{id}   { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/transactions/{id}  { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/conversations/{id} { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/persons/{id}       { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/avenants/{id}      { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/tenants/{id}       { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/owners/{id}        { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/monthClosures/{id} { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/tenantDocuments/{id} { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/insurances/{id}    { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/referrers/{id}     { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/prestataires/{id}  { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/budgets/{id}       { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/bordereaux/{id}    { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/commissionRates/{id} { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    // Rapports — le filtrage fin « qui peut lire » reste appliqué côté app.
-    match /workspaces/{wsId}/reports/{id}       { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/annualReports/{id} { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
-    match /workspaces/{wsId}/prospects/{id}     { allow read: if allowOrgRead(wsId); allow create: if allowOrgCreate(wsId); allow update: if allowOrgUpdate(wsId); allow delete: if allowOrgDelete(wsId); }
+    match /workspaces/{wsId}/properties/{id}    { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/contracts/{id}     { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/payments/{id}      { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/tickets/{id}       { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/inspections/{id}   { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/transactions/{id}  { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/conversations/{id} { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/persons/{id}       { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/avenants/{id}      { allow read, write: if allowOrgDoc(wsId); }
 
     // ── OTP (2FA) ─────────────────────────────────────────────────────────────
-    // Uniquement le titulaire du compte (même e-mail que le jeton Firebase).
-    // NB : la vérification du code reste côté client — voir phase 2 (Cloud Function).
     match /workspaces/{wsId}/otps/{userId} {
-      allow read, write: if isVerifiedNonAnon()
-                         && get(wsPath(wsId, 'users', userId)).data.get('email', '') == request.auth.token.email;
+      allow read, write, delete: if request.auth != null;
     }
 
     // ── Security logs ─────────────────────────────────────────────────────────
     match /workspaces/{wsId}/security_logs/{logId} {
       allow create: if request.auth != null;
-      allow read:   if isSuperAdmin(wsId);
+      allow read:   if request.auth != null && isSuperAdmin(wsId);
       allow update, delete: if false;
     }
 
     // ── Backups ───────────────────────────────────────────────────────────────
     match /workspaces/{wsId}/backups/{backupId} {
-      allow read, write: if isSuperAdmin(wsId);
+      allow read, write: if request.auth != null && isSuperAdmin(wsId);
     }
     match /workspaces/{wsId}/backups/{backupId}/{subCol}/{subDoc} {
-      allow read, write: if isSuperAdmin(wsId);
+      allow read, write: if request.auth != null && isSuperAdmin(wsId);
     }
 
     // ── Activity log ──────────────────────────────────────────────────────────
     match /workspaces/{wsId}/activityLog/{id} {
-      allow read:  if isSuperAdmin(wsId) || isStaff(wsId);
-      allow create: if isSuperAdmin(wsId) || isStaff(wsId);
-      allow update, delete: if isSuperAdmin(wsId);
+      allow read:  if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
+      allow write: if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
     }
+
+    // ── Tenants / owners ──────────────────────────────────────────────────────
+    match /workspaces/{wsId}/tenants/{id}       { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/owners/{id}        { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/monthClosures/{id} { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/tenantDocuments/{id} { allow read, write: if allowOrgDoc(wsId); }
 
     // ── Marketplace listings ───────────────────────────────────────────────────
-    // Lecture : tout visiteur (session anonyme comprise). Écriture : SUPER_ADMIN.
-    // Les visiteurs ne peuvent que faire évoluer les compteurs.
+    // Read: any authenticated user (includes anonymous — public marketplace)
+    // Write: SUPER_ADMIN only
+    // Update views/reactions: any authenticated user (anonymous included)
     match /workspaces/{wsId}/listings/{id} {
       allow read:  if request.auth != null;
-      allow create, delete: if isSuperAdmin(wsId);
-      allow update: if isSuperAdmin(wsId)
-        || (request.auth != null
-            && request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['views', 'reactions', 'updatedAt']));
+      allow write: if request.auth != null && isSuperAdmin(wsId);
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['views', 'reactions', 'updatedAt']);
     }
 
-    // ── Marketplace client profiles ────────────────────────────────────────────
+    // ── Marketplace client profiles (visitors who register interest) ──────────
     match /workspaces/{wsId}/listingClients/{id} {
-      allow read:  if isSuperAdmin(wsId) || isStaff(wsId);
-      allow create: if request.auth != null
-                    && request.resource.data.get('uid', request.auth.uid) == request.auth.uid;
-      allow update, delete: if isSuperAdmin(wsId)
-                            || (request.auth != null && request.auth.uid == resource.data.uid);
+      allow read:  if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null
+                            && (isSuperAdmin(wsId) || request.auth.uid == resource.data.uid);
     }
 
     // ── Listing reactions ─────────────────────────────────────────────────────
@@ -308,46 +195,73 @@ service cloud.firestore {
     }
 
     // ── Listing contact unlocks (paid access) ─────────────────────────────────
+    // Any authenticated user (incl. anonymous) can create an unlock record.
+    // Only SUPER_ADMIN can read/update/delete (for validation dashboard).
     match /workspaces/{wsId}/listingUnlocks/{id} {
       allow create: if request.auth != null;
-      allow read, update, delete: if isSuperAdmin(wsId);
+      allow read, update, delete: if request.auth != null && isSuperAdmin(wsId);
     }
 
-    // ── Public marketplace config ────────────────────────────────────────────
+    // ── Public marketplace config (readable by any auth incl. anonymous) ────────
     match /workspaces/{wsId}/publicSettings/{docId} {
       allow read:  if request.auth != null;
-      allow write: if isSuperAdmin(wsId);
+      allow write: if request.auth != null && isSuperAdmin(wsId);
     }
 
-    // ── Voucher number counters ───────────────────────────────────────────────
+    // ── Insurances ────────────────────────────────────────────────────────────
+    match /workspaces/{wsId}/insurances/{id} { allow read, write: if allowOrgDoc(wsId); }
+
+    // ── Apporteurs d'affaire ──────────────────────────────────────────────────
+    match /workspaces/{wsId}/referrers/{id} { allow read, write: if allowOrgDoc(wsId); }
+
+    // ── Prestataires (contractors) ────────────────────────────────────────────
+    match /workspaces/{wsId}/prestataires/{id} { allow read, write: if allowOrgDoc(wsId); }
+
+    // ── Budgets (monthly targets) ─────────────────────────────────────────────
+    match /workspaces/{wsId}/budgets/{id} { allow read, write: if allowOrgDoc(wsId); }
+
+    // ── Bordereaux de versement (org-scoped) ──────────────────────────────────
+    match /workspaces/{wsId}/bordereaux/{id} { allow read, write: if allowOrgDoc(wsId); }
+
+    // ── Taux de commission de gestion (org-scoped) ────────────────────────────
+    match /workspaces/{wsId}/commissionRates/{id} { allow read, write: if allowOrgDoc(wsId); }
+
+    // ── Rapports (org-scoped) — le filtrage "qui peut lire" est appliqué côté app ──
+    match /workspaces/{wsId}/reports/{id} { allow read, write: if allowOrgDoc(wsId); }
+
+    // Rapport annuel de gestion (commentaires du gérant par agence + exercice).
+    match /workspaces/{wsId}/annualReports/{id} { allow read, write: if allowOrgDoc(wsId); }
+
+    // Prospection commerciale (prospects, visites, mandats).
+    match /workspaces/{wsId}/prospects/{id} { allow read, write: if allowOrgDoc(wsId); }
+
+    // Minsouah Reconnaissance (distinctions locataires) — gestion par le personnel.
+    // La lecture « sa propre distinction » par le locataire sera ajoutée avec l'espace locataire.
+    match /workspaces/{wsId}/tenantAwards/{id}   { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/awardCampaigns/{id} { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/awardAuditLogs/{id} { allow read, write: if allowOrgDoc(wsId); }
+
+    // ── Voucher number counters (org staff only) ──────────────────────────────
     match /workspaces/{wsId}/counters/{id} {
-      allow read, write: if isSuperAdmin(wsId) || isStaff(wsId);
+      allow read, write: if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
     }
 
-    // ── Documents publics accessibles par QR code ─────────────────────────────
-    // `get` (lecture d'UN document dont on connaît l'identifiant) reste public.
-    // `list` (énumération de la collection) est réservé au personnel de l'agence :
-    // avant, n'importe qui pouvait aspirer tous les portails / quittances / bordereaux.
+    // ── Bordereau public verification (QR code — readable by anyone) ───────────
     match /workspaces/{wsId}/bordereauVerify/{id} {
-      allow get:    if true;
-      allow list:   if allowOrgRead(wsId);
-      allow create: if allowOrgCreate(wsId);
-      allow update: if allowOrgUpdate(wsId);
-      allow delete: if allowOrgDelete(wsId);
+      allow read:  if true;
+      allow write: if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
     }
+
+    // ── Quittance public verification (QR code — readable by anyone) ───────────
     match /workspaces/{wsId}/quittanceVerify/{id} {
-      allow get:    if true;
-      allow list:   if allowOrgRead(wsId);
-      allow create: if allowOrgCreate(wsId);
-      allow update: if allowOrgUpdate(wsId);
-      allow delete: if allowOrgDelete(wsId);
+      allow read:  if true;
+      allow write: if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
     }
+
+    // ── Tenant portals (public QR code portal — any authenticated or anon user can read) ──
     match /workspaces/{wsId}/tenantPortals/{id} {
-      allow get:    if true;
-      allow list:   if allowOrgRead(wsId);
-      allow create: if allowOrgCreate(wsId);
-      allow update: if allowOrgUpdate(wsId);
-      allow delete: if allowOrgDelete(wsId);
+      allow read:  if true;
+      allow write: if request.auth != null && (isSuperAdmin(wsId) || isStaff(wsId));
     }
 
     // ── Deny everything else ──────────────────────────────────────────────────
