@@ -12,6 +12,7 @@ import { getDaysRemaining, getLicenseStatusInfo } from '../lib/licenses';
 import { MODULES, ACTIONS, FULL_ACCESS_ROLES, fullPermissions, effectivePermissions } from '../lib/permissions';
 import { DEFAULT_COMMISSION_RATE } from '../lib/commissions';
 import { SCI_NORA_LOGO, SCI_NORA_STAMP } from '../lib/sciNoraAssets';
+import { confirmDialog } from '../context/ToastContext';
 
 // Rôles autorisés par catégorie — SUPER_ADMIN a sa propre page /superadmin
 const ADMIN_ROLES  = ['ORGANIZATION_ADMIN', 'ADMIN'];
@@ -359,14 +360,14 @@ export default function Settings() {
 
   /* ── Full reset (truly empty) ── */
   const handleFullReset = async () => {
-    if (!window.confirm('Effacer TOUTES les données dans Firestore (biens, locataires, contrats, paiements) ?\n\nLes comptes utilisateurs sont conservés.\nCette action est irréversible.')) return;
+    if (!await confirmDialog('Effacer TOUTES les données dans Firestore (biens, locataires, contrats, paiements) ?\n\nLes comptes utilisateurs sont conservés.\nCette action est irréversible.')) return;
     await dispatch({ type: 'RESET' });
     navigate('/login');
   };
 
   /* ── Demo reload ── */
-  const handleDemoReload = () => {
-    if (!window.confirm('Recharger les données de démonstration ? Cela remplacera vos données actuelles.')) return;
+  const handleDemoReload = async () => {
+    if (!await confirmDialog('Recharger les données de démonstration ? Cela remplacera vos données actuelles.')) return;
     dispatch({ type: 'RESET_DEMO' });
     showToast('Données de démonstration rechargées');
   };
@@ -1255,8 +1256,8 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
     showToast(u.suspended ? `${u.name} réactivé` : `${u.name} suspendu`);
   };
 
-  const handleDelete = (u) => {
-    if (!window.confirm(`Supprimer le compte de ${u.name} ? Cette action est irréversible.`)) return;
+  const handleDelete = async (u) => {
+    if (!await confirmDialog(`Supprimer le compte de ${u.name} ? Cette action est irréversible.`)) return;
     dispatch({ type: 'DELETE_USER', payload: u.id });
     showToast(`Compte de ${u.name} supprimé`);
   };
@@ -1334,11 +1335,11 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
   const handleImportState = (e) => {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
         const parsed = JSON.parse(ev.target.result);
         if (!parsed.users) { showToast('Fichier invalide — pas de comptes trouvés'); return; }
-        if (!window.confirm(`Importer ${parsed.users.length} compte(s) et toutes les données depuis ce fichier ?\n\nAttention : vos données actuelles seront remplacées.`)) return;
+        if (!await confirmDialog(`Importer ${parsed.users.length} compte(s) et toutes les données depuis ce fichier ?\n\nAttention : vos données actuelles seront remplacées.`)) return;
         dispatch({ type: 'IMPORT_STATE', payload: parsed });
         showToast('Données importées avec succès — reconnectez-vous');
         if (importRef2.current) importRef2.current.value = '';
@@ -1874,8 +1875,8 @@ function CommissionsTab({ state, dispatch, currentUser, showToast }) {
               <p className="text-xs mt-0.5">{withComm.length} paiement(s) portent une commission figée (total {totalComm.toLocaleString('fr-FR')} FCFA). Cette action la remet à 0 (net = montant encaissé) sur tous ces paiements. Irréversible.</p>
             </div>
             <button
-              onClick={() => {
-                if (!window.confirm(`Retirer la commission de ${withComm.length} paiement(s) ? Cette action est irréversible.`)) return;
+              onClick={async () => {
+                if (!await confirmDialog(`Retirer la commission de ${withComm.length} paiement(s) ? Cette action est irréversible.`)) return;
                 dispatch({ type: 'CLEAR_ORG_COMMISSIONS', payload: { orgId } });
                 showToast('Commissions retirées de tous les paiements de l\'organisation');
               }}
@@ -1950,7 +1951,7 @@ function CommissionsTab({ state, dispatch, currentUser, showToast }) {
                   title={r.active === false ? 'Activer' : 'Désactiver'}>
                   <Icon name={r.active === false ? 'play_circle' : 'pause_circle'} size={16} />
                 </button>
-                <button onClick={() => { if (window.confirm('Supprimer ce taux ?')) dispatch({ type: 'DELETE_COMMISSION_RATE', payload: r.id }); }}
+                <button onClick={async () => { if (await confirmDialog('Supprimer ce taux ?')) dispatch({ type: 'DELETE_COMMISSION_RATE', payload: r.id }); }}
                   className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-error/10 hover:text-error" title="Supprimer">
                   <Icon name="delete" size={16} />
                 </button>

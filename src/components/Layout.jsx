@@ -350,6 +350,8 @@ export default function Layout() {
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-40 md:hidden"
+          data-no-a11y
+          aria-hidden="true"
           onClick={() => setSidebarOpen(false)}
         />
       )}

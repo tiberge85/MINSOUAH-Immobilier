@@ -10,6 +10,7 @@ import { sendEmailVerification } from 'firebase/auth';
 import { auth } from './lib/firebase';
 import Layout from './components/Layout';
 import Icon from './components/Icon';
+import OverlayA11y from './components/OverlayA11y';
 import { lazyPage, preloadPages } from './lib/lazyPage';
 
 // Pages publiques et connexion : chargées tout de suite (premier écran).
@@ -362,6 +363,7 @@ export default function App() {
         <QueryClientProvider client={queryClient}>
           <AppProvider>
             <ToastProvider>
+              <OverlayA11y />
               <HashRouter>
                 <AppRoutes />
               </HashRouter>

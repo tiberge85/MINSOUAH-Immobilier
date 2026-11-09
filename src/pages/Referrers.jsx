@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import Modal from '../components/ui/Modal';
 import { formatFCFA } from '../lib/format';
+import { confirmDialog } from '../context/ToastContext';
 
 const fmt = formatFCFA;
 const EMPTY_FORM = {
@@ -74,7 +75,7 @@ export default function Referrers() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Supprimer cet apporteur d\'affaire ?')) return;
+    if (!await confirmDialog('Supprimer cet apporteur d\'affaire ?')) return;
     await dispatch({ type: 'DELETE_REFERRER', payload: id });
     if (selected?.id === id) setSelected(null);
   };

@@ -11,6 +11,7 @@ import { openContractReport } from '../lib/contractReport';
 import { can } from '../lib/permissions';
 import { randomPassword } from '../lib/authAccounts';
 import { formatFCFA } from '../lib/format';
+import { confirmDialog } from '../context/ToastContext';
 
 const TABS = ['Contrats', 'Locataires', 'Anciens locataires', 'Propriétaires'];
 const CONTRACT_STATUSES = ['Tous', 'Actif', 'Expirant', 'Brouillon', 'Résilié'];
@@ -184,8 +185,8 @@ export default function Rental() {
     setTimeout(() => { sigBailleurRef.current?.clear(); sigPreneurRef.current?.clear(); }, 50);
   };
   const openEditContract = (c) => { setCForm({ ...c, rent: String(c.rent) }); setModal('contract'); setTarget(c); setStep(1); };
-  const endContract = (c) => {
-    if (!window.confirm(`Mettre fin au contrat de ${c.tenant} (${c.propertyName}) ?\n\n• Le contrat passe en « Résilié »\n• Le bien repasse « Libre »\n• Le locataire n'est plus compté dans les loyers à encaisser`)) return;
+  const endContract = async (c) => {
+    if (!await confirmDialog(`Mettre fin au contrat de ${c.tenant} (${c.propertyName}) ?\n\n• Le contrat passe en « Résilié »\n• Le bien repasse « Libre »\n• Le locataire n'est plus compté dans les loyers à encaisser`)) return;
     const today = new Date().toISOString().slice(0, 10);
     dispatch({ type: 'UPDATE_CONTRACT', payload: { ...c, status: 'Résilié', endDate: c.endDate || today } });
     const base = normN((c.propertyName || '').split(' — ')[0]);
@@ -227,7 +228,7 @@ export default function Rental() {
   const openEditOwner = (o) => { setOForm({ propertyIds: [], ...o }); setModal('owner'); setTarget(o); };
 
   // ── Sauvegardes ────────────────────────────────────────────────────────────
-  const saveContract = () => {
+  const saveContract = async () => {
     const prop = properties.find(p => p.id === cForm.propertyId) ||
                  properties.find(p => p.name?.trim().toLowerCase() === cForm.propertyName?.trim().toLowerCase());
     const sigB = sigBailleurRef.current?.getDataURL() || cForm.sigBailleur || null;
@@ -251,7 +252,7 @@ export default function Rental() {
         ? contracts.find(c => isActC(c) && normN(c.propertyName || '') === normPayload)
         : null;
       if (conflict) {
-        const ok = window.confirm(
+        const ok = await confirmDialog(
           `Ce bien est déjà loué par ${conflict.tenant} (contrat ${conflict.status}).\n\nVoulez-vous quand même créer un nouveau contrat ?`
         );
         if (!ok) return;

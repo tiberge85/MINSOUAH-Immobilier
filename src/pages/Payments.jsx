@@ -13,6 +13,7 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { currentMonthUnpaidList } from '../lib/rentStatus';
 import { resolveCommission, buildingOf, DEFAULT_COMMISSION_RATE } from '../lib/commissions';
 import { formatFCFA } from '../lib/format';
+import { confirmDialog } from '../context/ToastContext';
 
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
@@ -2443,10 +2444,10 @@ export default function Payments() {
   };
 
   // Annule une restitution déjà marquée (remet la caution « à restituer »).
-  const cancelCautionRefund = (d) => {
+  const cancelCautionRefund = async (d) => {
     const tenant = (tenants || []).find(t => String(t.id) === String(d.tenantId));
     if (!tenant) return;
-    if (!window.confirm(`Annuler la restitution de la caution de ${d.tenantName} ? La caution repassera « à restituer ».`)) return;
+    if (!await confirmDialog(`Annuler la restitution de la caution de ${d.tenantName} ? La caution repassera « à restituer ».`)) return;
     dispatch({
       type: 'UPDATE_TENANT',
       payload: {
@@ -3164,7 +3165,7 @@ export default function Payments() {
   };
 
   const handleReopenMonth = async (month) => {
-    if (!window.confirm(`Rouvrir le mois ${month} ? Les paiements post-clôture resteront en place.`)) return;
+    if (!await confirmDialog(`Rouvrir le mois ${month} ? Les paiements post-clôture resteront en place.`)) return;
     await dispatch({ type: 'REOPEN_MONTH', payload: month });
   };
 
@@ -3798,8 +3799,8 @@ export default function Payments() {
             </div>
             <div className="flex gap-sm flex-wrap">
               {arrearsSelected.size > 0 && (
-                <Btn icon="delete" variant="danger" onClick={() => {
-                  if (window.confirm(`Supprimer ${arrearsSelected.size} arriéré(s) sélectionné(s) ?`)) {
+                <Btn icon="delete" variant="danger" onClick={async () => {
+                  if (await confirmDialog(`Supprimer ${arrearsSelected.size} arriéré(s) sélectionné(s) ?`)) {
                     arrearsSelected.forEach(id => dispatch({ type: 'DELETE_PAYMENT', payload: id }));
                     setArrearsSelected(new Set());
                   }
@@ -3955,8 +3956,8 @@ export default function Payments() {
                                       ) : null;
                                     })()}
                                     {!p.isSynthetic && (
-                                      <button onClick={() => {
-                                        if (window.confirm(`Supprimer l'arriéré de ${p.month} pour ${group.tenantName} ?`)) {
+                                      <button onClick={async () => {
+                                        if (await confirmDialog(`Supprimer l'arriéré de ${p.month} pour ${group.tenantName} ?`)) {
                                           dispatch({ type: 'DELETE_PAYMENT', payload: p.id });
                                           setArrearsSelected(prev => { const next = new Set(prev); next.delete(p.id); return next; });
                                         }

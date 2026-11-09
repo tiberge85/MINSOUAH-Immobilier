@@ -11,6 +11,7 @@ import SignaturePad from '../components/SignaturePad';
 import { can, FULL_ACCESS_ROLES } from '../lib/permissions';
 import { openBordereauPrint } from '../lib/bordereauReport';
 import { formatFCFA } from '../lib/format';
+import { confirmDialog } from '../context/ToastContext';
 
 const PAYMENT_MODES = ['Espèces', 'Chèque', 'Virement', 'Mobile Money', 'Mixte'];
 const STATUSES = ['Brouillon', 'En attente de validation', 'Validé', 'Annulé'];
@@ -212,8 +213,8 @@ export default function Bordereaux() {
   /* ════════════════ STATUS TRANSITIONS ════════════════ */
   const submitForValidation = (b) => { dispatch({ type: 'SET_BORDEREAU_STATUS', payload: { id: b.id, status: 'En attente de validation', step: 'controlled' } }); toast(`Bordereau ${b.number} soumis pour validation`); setDetail(null); };
   const validate = (b) => { dispatch({ type: 'SET_BORDEREAU_STATUS', payload: { id: b.id, status: 'Validé', step: 'validated' } }); toast(`Bordereau ${b.number} validé — loyers verrouillés`); setDetail(null); };
-  const cancel = (b) => { if (!window.confirm(`Annuler le bordereau ${b.number} ? Les loyers seront de nouveau disponibles.`)) return; dispatch({ type: 'SET_BORDEREAU_STATUS', payload: { id: b.id, status: 'Annulé' } }); toast(`Bordereau ${b.number} annulé`); setDetail(null); };
-  const remove = (b) => { if (!window.confirm(`Supprimer définitivement le bordereau ${b.number} ?`)) return; dispatch({ type: 'DELETE_BORDEREAU', payload: b.id }); toast('Bordereau supprimé'); setDetail(null); };
+  const cancel = async (b) => { if (!await confirmDialog(`Annuler le bordereau ${b.number} ? Les loyers seront de nouveau disponibles.`)) return; dispatch({ type: 'SET_BORDEREAU_STATUS', payload: { id: b.id, status: 'Annulé' } }); toast(`Bordereau ${b.number} annulé`); setDetail(null); };
+  const remove = async (b) => { if (!await confirmDialog(`Supprimer définitivement le bordereau ${b.number} ?`)) return; dispatch({ type: 'DELETE_BORDEREAU', payload: b.id }); toast('Bordereau supprimé'); setDetail(null); };
 
   if (!can(currentUser, 'bordereaux', 'view')) {
     return (

@@ -3,6 +3,7 @@ import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { useApp } from '../context/AppContext';
 import { db } from '../lib/firebase';
 import Icon from './Icon';
+import { confirmDialog } from '../context/ToastContext';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Documents du locataire — dossier complet, consultable partout.
@@ -214,8 +215,8 @@ export default function TenantDocuments({ tenantId, tenantName, readOnly = false
     }
   };
 
-  const remove = (d) => {
-    if (!confirm(`Supprimer le document « ${d.name} » ?`)) return;
+  const remove = async (d) => {
+    if (!await confirmDialog(`Supprimer le document « ${d.name} » ?`)) return;
     // Supprime d'abord les morceaux liés
     if (d.chunked) {
       (state.tenantDocuments || [])

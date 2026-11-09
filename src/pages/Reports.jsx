@@ -4,6 +4,7 @@ import Icon from '../components/Icon';
 import Modal from '../components/ui/Modal';
 import { can, FULL_ACCESS_ROLES } from '../lib/permissions';
 import { compressImage } from '../lib/storage';
+import { confirmDialog } from '../context/ToastContext';
 
 const inputCls = 'w-full border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest focus:outline-none focus:border-primary';
 
@@ -109,8 +110,8 @@ export default function Reports() {
     setShowForm(false);
   };
 
-  const del = (r) => {
-    if (!window.confirm(`Supprimer le rapport « ${r.title} » ?`)) return;
+  const del = async (r) => {
+    if (!await confirmDialog(`Supprimer le rapport « ${r.title} » ?`)) return;
     dispatch({ type: 'DELETE_REPORT', payload: r.id });
     if (viewing?.id === r.id) setViewing(null);
   };

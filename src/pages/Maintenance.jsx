@@ -6,6 +6,7 @@ import Input, { Select } from '../components/ui/Input';
 import Modal from '../components/ui/Modal';
 import Icon from '../components/Icon';
 import { can } from '../lib/permissions';
+import { confirmDialog } from '../context/ToastContext';
 
 const PRIORITY_FILTERS = ['Tous', 'Urgent', 'Moyen', 'Bas'];
 const TYPE_FILTERS = ['Plomberie', 'HVAC', 'Électricité', 'Autre'];
@@ -235,9 +236,9 @@ export default function Maintenance() {
                     <span className="text-label-sm text-on-surface-variant">{ticket.id}</span>
                     {canDelete && (
                       <button
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
-                          if (window.confirm(`Supprimer le ticket "${ticket.title}" ?`)) {
+                          if (await confirmDialog(`Supprimer le ticket "${ticket.title}" ?`)) {
                             dispatch({ type: 'DELETE_TICKET', payload: ticket.id });
                           }
                         }}
@@ -452,8 +453,8 @@ export default function Maintenance() {
               <Button
                 variant="secondary"
                 icon="delete"
-                onClick={() => {
-                  if (window.confirm(`Supprimer le ticket "${detailTicket?.title}" ?`)) {
+                onClick={async () => {
+                  if (await confirmDialog(`Supprimer le ticket "${detailTicket?.title}" ?`)) {
                     dispatch({ type: 'DELETE_TICKET', payload: detailTicket.id });
                     setDetailTicket(null);
                   }

@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import Modal from '../components/ui/Modal';
 import { formatFCFA } from '../lib/format';
+import { confirmDialog } from '../context/ToastContext';
 
 const SPECIALTIES = ['Plomberie', 'Électricité', 'HVAC', 'Maçonnerie', 'Peinture', 'Menuiserie', 'Jardinage', 'Nettoyage', 'Sécurité', 'Autre'];
 
@@ -91,7 +92,7 @@ export default function Prestataires() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Supprimer ce prestataire ?')) return;
+    if (!await confirmDialog('Supprimer ce prestataire ?')) return;
     await dispatch({ type: 'DELETE_PRESTATAIRE', payload: id });
     if (detail?.id === id) setDetail(null);
   };

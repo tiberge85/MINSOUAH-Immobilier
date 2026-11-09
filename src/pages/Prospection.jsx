@@ -3,6 +3,7 @@ import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc
 import { db } from '../lib/firebase';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
+import { confirmDialog } from '../context/ToastContext';
 
 const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
 const TYPES = ['Propriétaire', 'Locataire'];
@@ -73,7 +74,7 @@ export default function Prospection() {
   function edit(p) { setEditId(p.id); setForm({ name: p.name || '', type: p.type || 'Propriétaire', source: p.source || '', nbVisites: p.nbVisites || 0, status: p.status || 'Nouveau', note: p.note || '' }); }
 
   async function remove(p) {
-    if (!window.confirm(`Supprimer le prospect « ${p.name} » ?`)) return;
+    if (!await confirmDialog(`Supprimer le prospect « ${p.name} » ?`)) return;
     try { await deleteDoc(doc(db, 'workspaces', WS, 'prospects', p.id)); }
     catch (e) { setMsg('Suppression impossible : ' + (e?.code || e?.message)); }
   }
