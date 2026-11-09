@@ -240,6 +240,11 @@ service cloud.firestore {
     match /workspaces/{wsId}/tenantAwards/{id}   { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/awardCampaigns/{id} { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/awardAuditLogs/{id} { allow read, write: if allowOrgDoc(wsId); }
+    // Vérification publique d'un certificat (QR code) — lecture par tous, écriture par le personnel.
+    match /workspaces/{wsId}/certificateVerify/{id} {
+      allow read:  if true;
+      allow write: if allowOrgDoc(wsId);
+    }
 
     // ── Voucher number counters (org staff only) ──────────────────────────────
     match /workspaces/{wsId}/counters/{id} {

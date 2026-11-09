@@ -4,6 +4,7 @@ import { db } from '../lib/firebase';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import { evaluateAll, AWARD_DEFS, AWARD_BY_KEY, DEFAULT_RULES } from '../lib/recognition';
+import { buildCertificate, certificateHTML } from '../lib/certificate';
 
 const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
 const fNum = (n) => Number(n || 0).toLocaleString('fr-FR');
@@ -90,6 +91,56 @@ export default function Recognition() {
     finally { setBusy(false); }
   }
 
+  const baseUrl = (typeof window !== 'undefined') ? (window.location.origin + window.location.pathname) : '';
+  const orgSettings = state.orgSettings || {};
+
+  async function genCertPDF(award) {
+    try {
+      const { svg } = await buildCertificate(award, orgSettings, baseUrl);
+      const win = window.open('', '_blank', 'width=1150,height=820');
+      if (win) { win.document.write(certificateHTML(svg, `Certificat ${award.tenantName}`)); win.document.close(); }
+      else alert('Autorisez les pop-ups pour le certificat.');
+    } catch (e) { setMsg('Certificat : ' + (e?.message || e)); }
+  }
+
+  async function genCertPNG(award) {
+    try {
+      const { svg } = await buildCertificate(award, orgSettings, baseUrl);
+      const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+      const scale = 2, canvas = document.createElement('canvas');
+      canvas.width = 1123 * scale; canvas.height = 794 * scale;
+      const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height); URL.revokeObjectURL(url);
+      canvas.toBlob((b) => { const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = `Certificat_${(award.tenantName || '').replace(/[^a-zA-Z0-9]+/g, '_')}_${award.year}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(u), 1500); }, 'image/png');
+    } catch (e) { setMsg('Image : ' + (e?.message || e)); }
+  }
+
+  // Publie les distinctions validées : statut « publiee » + fiche de vérification publique.
+  async function publishAll() {
+    const toPublish = Object.values(saved).filter(a => a.status === 'validee');
+    if (!toPublish.length) { setMsg('Aucune distinction validée à publier.'); return; }
+    if (!window.confirm(`Publier ${toPublish.length} distinction(s) ? Les locataires pourront les consulter et les certificats deviendront vérifiables.`)) return;
+    setBusy(true);
+    try {
+      const batch = writeBatch(db); const nowIso = new Date().toISOString();
+      toPublish.forEach(a => {
+        batch.set(doc(db, 'workspaces', WS, 'tenantAwards', a.id), { status: 'publiee', published_at: nowIso }, { merge: true });
+        batch.set(doc(db, 'workspaces', WS, 'certificateVerify', a.certificate_number), {
+          certificate_number: a.certificate_number, tenantName: a.tenantName, label: a.label,
+          award_type: a.award_type, year: a.year, property: a.property || '', orgId, valid: true, published_at: nowIso,
+        }, { merge: true });
+      });
+      batch.set(doc(db, 'workspaces', WS, 'awardCampaigns', campaignId), { status: 'Publiée', published_at: nowIso }, { merge: true });
+      await batch.commit();
+      await logAudit(null, 'PUBLICATION', `${toPublish.length} distinctions publiées`);
+      setMsg(`${toPublish.length} distinction(s) publiée(s).`); setTimeout(() => setMsg(''), 4000);
+    } catch (e) { setMsg('Échec publication : ' + (e?.code || e?.message)); }
+    finally { setBusy(false); }
+  }
+
   async function validateOne(tenantId) {
     const a = saved[String(tenantId)]; if (!a) return;
     try {
@@ -136,6 +187,7 @@ export default function Recognition() {
         </button>
         {results && <button onClick={saveCampaign} disabled={busy} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-outline-variant/30"><Icon name="save" size={18} /> Enregistrer la campagne</button>}
         {Object.values(saved).some(a => a.status === 'en_attente') && <button onClick={validateAll} disabled={busy} className="inline-flex items-center gap-2 bg-green-100 text-green-700 font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-green-200"><Icon name="verified" size={18} /> Tout valider</button>}
+        {Object.values(saved).some(a => a.status === 'validee') && <button onClick={publishAll} disabled={busy} className="inline-flex items-center gap-2 bg-blue-100 text-blue-800 font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-blue-200"><Icon name="campaign" size={18} /> Publier</button>}
         {campaign && <span className="text-xs text-on-surface-variant">Campagne {year} : <b>{campaign.status}</b></span>}
         {msg && <span className="text-xs text-on-surface-variant">{msg}</span>}
       </div>
@@ -175,6 +227,10 @@ export default function Recognition() {
                           <div className="flex gap-1.5">
                             <button onClick={() => setOpen(open === r.tenantId ? null : r.tenantId)} className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-outline-variant text-on-surface hover:bg-surface-container-high">Détail</button>
                             {sv && sv.status === 'en_attente' && <button onClick={() => validateOne(r.tenantId)} className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-green-100 text-green-700 hover:bg-green-200">Valider</button>}
+                            {sv && (sv.status === 'validee' || sv.status === 'publiee') && <>
+                              <button onClick={() => genCertPDF(sv)} className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-amber-300 text-amber-800 hover:bg-amber-50">Certif. PDF</button>
+                              <button onClick={() => genCertPNG(sv)} className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-outline-variant text-on-surface hover:bg-surface-container-high">PNG</button>
+                            </>}
                           </div>
                         </td>
                       </tr>

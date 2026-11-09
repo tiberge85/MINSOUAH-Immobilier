@@ -42,6 +42,7 @@ import Bordereaux    from './pages/Bordereaux';
 import RevenusMinsouah from './pages/RevenusMinsouah';
 import PublicBordereau from './pages/PublicBordereau';
 import PublicQuittance from './pages/PublicQuittance';
+import PublicCertificate from './pages/PublicCertificate';
 import AnnualReport   from './pages/AnnualReport';
 import Prospection    from './pages/Prospection';
 import Recognition    from './pages/Recognition';
@@ -295,6 +296,7 @@ function AppRoutes() {
       <Route path="/locataire/:token" element={<PublicTenantPortal />} />
       <Route path="/bordereau/:id" element={<PublicBordereau />} />
       <Route path="/quittance/:id" element={<PublicQuittance />} />
+      <Route path="/certificat/:num" element={<PublicCertificate />} />
 
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER']} module="dashboard"><Dashboard /></ProtectedRoute>} />
