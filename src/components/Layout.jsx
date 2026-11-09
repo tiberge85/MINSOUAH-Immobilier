@@ -1,10 +1,14 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, Navigate } from 'react-router-dom';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { canView, PATH_TO_MODULE } from '../lib/permissions';
 import { currentMonthUnpaidList } from '../lib/rentStatus';
 import Icon from './Icon';
+
+const WS_LAYOUT = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
 
 const ROLE_LABELS = {
   SUPER_ADMIN:        'Super Admin',
@@ -132,6 +136,25 @@ export default function Layout() {
     return null;
   };
 
+  /* ── Distinctions publiées du locataire (notification cloche) ── */
+  const tenantPersonId = currentUser?.role === 'TENANT' && currentUser?.personId != null ? String(currentUser.personId) : '';
+  const [awardNotifs, setAwardNotifs] = useState([]);
+  useEffect(() => {
+    if (!tenantPersonId) { setAwardNotifs([]); return; }
+    const q = query(collection(db, 'workspaces', WS_LAYOUT, 'tenantAwards'), where('tenantId', '==', tenantPersonId));
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(a => a.status === 'publiee')
+        .sort((a, b) => (b.year || 0) - (a.year || 0))
+        .map(a => ({
+          id: `award-${a.id}`, icon: 'workspace_premium', color: 'text-primary', bg: 'bg-primary/10',
+          label: '🏅 Nouvelle distinction', sub: `${a.label || 'Distinction'} — ${a.year || ''}`, path: '/mes-distinctions',
+        }));
+      setAwardNotifs(list);
+    }, () => { setAwardNotifs([]); });
+    return unsub;
+  }, [tenantPersonId]);
+
   /* ── Notifications ── */
   const NOTIF_KEY = `minsouah_read_notifs_${currentUser?.id || 'guest'}`;
   const [readIds, setReadIds] = useState(() => {
@@ -148,6 +171,7 @@ export default function Layout() {
   const allNotifications = useMemo(() => {
     const now = Date.now();
     return [
+      ...awardNotifs,
       ...(state.payments || [])
         .filter(p => p.status === 'Impayé' || p.status === 'En retard')
         .slice(0, 8)
@@ -168,7 +192,7 @@ export default function Layout() {
         .slice(0, 3)
         .map(c => ({ id: `msg-${c.id}`, icon: 'mail', color: 'text-primary', bg: 'bg-primary/10', label: 'Nouveau message', sub: c.contact?.name || 'Messagerie', path: '/inbox' })),
     ];
-  }, [state.payments, state.contracts, state.tickets, state.conversations]);
+  }, [awardNotifs, state.payments, state.contracts, state.tickets, state.conversations]);
 
   const notifications = allNotifications.filter(n => !readIds.has(n.id));
 

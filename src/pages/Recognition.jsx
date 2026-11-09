@@ -9,6 +9,13 @@ import { buildCertificate, certificateHTML } from '../lib/certificate';
 const WS = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
 const fNum = (n) => Number(n || 0).toLocaleString('fr-FR');
 
+function phoneForWA(raw) {
+  const d = (raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('225')) return d;
+  return '225' + (d.startsWith('0') ? d.slice(1) : d);
+}
+
 export default function Recognition() {
   const { state } = useApp();
   const user = state.currentUser;
@@ -72,6 +79,7 @@ export default function Recognition() {
         const id = `${orgId}__${year}__${r.tenantId}`;
         batch.set(doc(db, 'workspaces', WS, 'tenantAwards', id), {
           id, orgId, year, tenantId: String(r.tenantId), tenantName: r.tenantName, property: r.property,
+          tenantPhone: (state.tenants || []).find(t => String(t.id) === String(r.tenantId))?.phone || '',
           award_type: r.eligible, label: r.label, payment_score: r.score,
           certificate_number: `MR-${year}-${orgId}-${r.tenantId}`.replace(/[^A-Za-z0-9-]/g, ''),
           criteria_snapshot: { stats: r.stats, anciennete: r.anciennete, met: r.criteriaMet, failed: r.criteriaFailed },
@@ -93,6 +101,42 @@ export default function Recognition() {
 
   const baseUrl = (typeof window !== 'undefined') ? (window.location.origin + window.location.pathname) : '';
   const orgSettings = state.orgSettings || {};
+
+  // Téléphones des locataires (pour la notification WhatsApp).
+  const phoneMap = useMemo(() => {
+    const m = {};
+    (state.tenants || []).forEach(t => { if (t?.id != null) m[String(t.id)] = t.phone || t.telephone || ''; });
+    return m;
+  }, [state.tenants]);
+
+  // Message de félicitations WhatsApp (sans aucune donnée financière).
+  function waMessage(a) {
+    const verif = `${baseUrl}#/certificat/${a.certificate_number}`;
+    const company = orgSettings?.companyName || 'Minsouah Immobilier';
+    return encodeURIComponent(
+      `Bonjour ${a.tenantName},\n\n` +
+      `Félicitations ! 🎉 Pour l'exercice ${a.year}, Minsouah vous décerne la distinction « ${a.label} ».\n` +
+      `Votre sérieux mérite d'être reconnu.\n\n` +
+      `Vous pouvez consulter et vérifier votre certificat ici :\n${verif}\n\n` +
+      `Avec toute notre reconnaissance,\n— ${company}`
+    );
+  }
+
+  // Ouvre WhatsApp pré-rempli pour un locataire (notification manuelle, un clic).
+  function notifyWA(a) {
+    const phone = phoneForWA(phoneMap[String(a.tenantId)] || a.tenantPhone || '');
+    if (!phone) { setMsg(`Aucun numéro enregistré pour ${a.tenantName}.`); setTimeout(() => setMsg(''), 4000); return; }
+    window.open(`https://wa.me/${phone}?text=${waMessage(a)}`, '_blank');
+  }
+
+  // Notifie tous les locataires des distinctions publiées (ouvre WhatsApp en série).
+  function notifyAllWA() {
+    const published = Object.values(saved).filter(a => a.status === 'publiee');
+    const withPhone = published.filter(a => phoneForWA(phoneMap[String(a.tenantId)] || a.tenantPhone || ''));
+    if (!withPhone.length) { setMsg('Aucun locataire publié avec numéro WhatsApp.'); setTimeout(() => setMsg(''), 4000); return; }
+    if (!window.confirm(`Ouvrir WhatsApp pour notifier ${withPhone.length} locataire(s) ? (${published.length - withPhone.length} sans numéro seront ignorés)`)) return;
+    withPhone.forEach((a, i) => setTimeout(() => window.open(`https://wa.me/${phoneForWA(phoneMap[String(a.tenantId)] || a.tenantPhone || '')}?text=${waMessage(a)}`, '_blank'), i * 700));
+  }
 
   async function genCertPDF(award) {
     try {
@@ -136,7 +180,7 @@ export default function Recognition() {
       batch.set(doc(db, 'workspaces', WS, 'awardCampaigns', campaignId), { status: 'Publiée', published_at: nowIso }, { merge: true });
       await batch.commit();
       await logAudit(null, 'PUBLICATION', `${toPublish.length} distinctions publiées`);
-      setMsg(`${toPublish.length} distinction(s) publiée(s).`); setTimeout(() => setMsg(''), 4000);
+      setMsg(`${toPublish.length} distinction(s) publiée(s). Les locataires sont notifiés dans l'app (cloche « Mes distinctions »). Utilisez « Notifier tous (WhatsApp) » pour les prévenir aussi par message.`); setTimeout(() => setMsg(''), 9000);
     } catch (e) { setMsg('Échec publication : ' + (e?.code || e?.message)); }
     finally { setBusy(false); }
   }
@@ -188,6 +232,7 @@ export default function Recognition() {
         {results && <button onClick={saveCampaign} disabled={busy} className="inline-flex items-center gap-2 bg-surface-container-high text-on-surface font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-outline-variant/30"><Icon name="save" size={18} /> Enregistrer la campagne</button>}
         {Object.values(saved).some(a => a.status === 'en_attente') && <button onClick={validateAll} disabled={busy} className="inline-flex items-center gap-2 bg-green-100 text-green-700 font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-green-200"><Icon name="verified" size={18} /> Tout valider</button>}
         {Object.values(saved).some(a => a.status === 'validee') && <button onClick={publishAll} disabled={busy} className="inline-flex items-center gap-2 bg-blue-100 text-blue-800 font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-blue-200"><Icon name="campaign" size={18} /> Publier</button>}
+        {Object.values(saved).some(a => a.status === 'publiee') && <button onClick={notifyAllWA} className="inline-flex items-center gap-2 bg-green-100 text-green-700 font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-green-200"><Icon name="chat" size={18} /> Notifier tous (WhatsApp)</button>}
         {campaign && <span className="text-xs text-on-surface-variant">Campagne {year} : <b>{campaign.status}</b></span>}
         {msg && <span className="text-xs text-on-surface-variant">{msg}</span>}
       </div>
@@ -231,6 +276,7 @@ export default function Recognition() {
                               <button onClick={() => genCertPDF(sv)} className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-amber-300 text-amber-800 hover:bg-amber-50">Certif. PDF</button>
                               <button onClick={() => genCertPNG(sv)} className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-outline-variant text-on-surface hover:bg-surface-container-high">PNG</button>
                             </>}
+                            {sv && sv.status === 'publiee' && <button onClick={() => notifyWA(sv)} className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-green-100 text-green-700 hover:bg-green-200">WhatsApp</button>}
                           </div>
                         </td>
                       </tr>
