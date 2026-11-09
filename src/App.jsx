@@ -1,5 +1,5 @@
 import { useState, useEffect, Component, Suspense } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -271,12 +271,17 @@ function ProtectedRoute({ children, allowedRoles, module }) {
 function AppRoutes() {
   const { state } = useApp();
   const user = state.currentUser;
+  const { pathname } = useLocation();
 
   // Connecté : précharger toutes les pages pendant que le navigateur est libre.
-  useEffect(() => { if (user) preloadPages(); }, [user]);
+  useEffect(() => { if (user && !state._bootstrapping) preloadPages(); }, [user, state._bootstrapping]);
 
-  // Show global bootstrap screen before routing
-  if (state._bootstrapping) return <BootstrapScreen />;
+  // L'écran de connexion s'affiche TOUT DE SUITE, sans attendre Firestore :
+  // l'utilisateur tape ses identifiants pendant que la base se prépare (le
+  // bouton « Se connecter » attend qu'elle soit prête). Les autres écrans
+  // gardent l'écran de démarrage.
+  const loginNow = !user && pathname === '/login';
+  if (state._bootstrapping && !loginNow) return <BootstrapScreen />;
 
   return (
     <Suspense fallback={<BootstrapScreen />}>

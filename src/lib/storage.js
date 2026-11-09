@@ -1,8 +1,10 @@
 import {
   ref, uploadBytesResumable, getDownloadURL,
-  deleteObject, listAll,
+  deleteObject, listAll, getStorage,
 } from 'firebase/storage';
-import { storage } from './firebase';
+import app from './firebase';
+
+const storage = getStorage(app);
 
 // Folder structure
 export const STORAGE_PATHS = {

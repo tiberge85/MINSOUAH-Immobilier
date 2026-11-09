@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ref, onValue, set, onDisconnect, serverTimestamp } from 'firebase/database';
-import { rtdb } from '../lib/firebase';
+import { getDatabase, ref, onValue, set, onDisconnect, serverTimestamp } from 'firebase/database';
+import app from '../lib/firebase';
+
+const rtdb = getDatabase(app);
 
 export function usePresence(userId) {
   useEffect(() => {

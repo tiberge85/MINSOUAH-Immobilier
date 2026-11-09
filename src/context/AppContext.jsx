@@ -281,7 +281,11 @@ export function AppProvider({ children }) {
     commissionRates: [],
     tenantDocuments: [],
     reports: [],
-    currentUser: null,
+    // Session locale lue dès le premier rendu (évite d'afficher un instant
+    // l'écran de connexion à quelqu'un de déjà connecté).
+    currentUser: (() => {
+      try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; }
+    })(),
     orgSettings: DEFAULT_ORG,
     systemSettings: DEFAULT_SYSTEM,
     publicMarketplace: {},
@@ -306,6 +310,8 @@ export function AppProvider({ children }) {
   // pages au fur et à mesure (onSnapshot) — ça évite l'écran « Chargement des
   // données… » qui attendait TOUTES les collections avant d'afficher l'appli.
   const ESSENTIAL = ['users', 'organizations', 'licenses'];
+  // Collections que les règles Firestore refusent à une session anonyme.
+  const ANON_DENIED = new Set(['organizations', 'licenses', 'listingClients', 'listingUnlocks']);
 
   const checkBootstrap = useCallback(() => {
     if (ESSENTIAL.every((c) => loadedRef.current.has(c))) {
@@ -453,6 +459,13 @@ export function AppProvider({ children }) {
         // toutes les données). On marque « chargé » pour débloquer le démarrage au
         // lieu d'ouvrir un abonnement voué à l'échec.
         if (orgFiltered && !sessionOrgId && !isSuper) {
+          if (!loadedRef.current.has(colName)) { loadedRef.current.add(colName); checkBootstrap(); }
+          return;
+        }
+        // Visiteur non connecté (session anonyme) : les règles Firestore lui
+        // refusent ces collections. Inutile d'ouvrir l'abonnement et d'attendre
+        // le refus du serveur avant d'afficher l'appli.
+        if (user?.isAnonymous && ANON_DENIED.has(colName)) {
           if (!loadedRef.current.has(colName)) { loadedRef.current.add(colName); checkBootstrap(); }
           return;
         }

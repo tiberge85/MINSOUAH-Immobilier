@@ -10,10 +10,10 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-firebase': [
-            'firebase/app', 'firebase/auth', 'firebase/firestore',
-            'firebase/storage', 'firebase/database',
-          ],
+          // Seulement ce qu'il faut au démarrage. firebase/storage et
+          // firebase/database restent dans des fichiers à part, chargés par les
+          // écrans qui s'en servent.
+          'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
           'vendor-ui': ['@tanstack/react-query'],
         },
       },

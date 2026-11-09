@@ -1,8 +1,6 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, setPersistence, browserLocalPersistence, indexedDBLocalPersistence } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
-import { getDatabase } from 'firebase/database';
 
 // Les clés Firebase web sont publiques par design — la sécurité est dans les Security Rules
 const firebaseConfig = {
@@ -21,8 +19,9 @@ const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const storage = getStorage(app);
-export const rtdb = getDatabase(app);
+// Storage et Realtime Database ne sont PAS initialisés ici : ils ne servent
+// qu'à quelques écrans (lib/storage.js, hooks/usePresence.js) qui les créent
+// eux-mêmes. Les importer ici les ajoutait au téléchargement initial.
 
 // Persist auth across browser sessions / reloads.
 // IMPORTANT : on EXPORTE une promesse `authReady` et on l'ATTEND avant toute

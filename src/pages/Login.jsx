@@ -35,21 +35,10 @@ export default function Login() {
   const pendingLoginRef               = useRef(null);       // { user, firebaseUid }
   const cooldownRef                   = useRef(null);
 
-  // Show loading screen while Firestore is bootstrapping
-  if (state._bootstrapping) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
-        <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center shadow-lg">
-          <Icon name="domain" size={32} className="text-on-primary" />
-        </div>
-        <h1 className="font-black text-3xl text-primary tracking-tight">Minsouah</h1>
-        <div className="flex items-center gap-2 text-on-surface-variant text-sm">
-          <Icon name="progress_activity" size={18} className="animate-spin text-primary" />
-          Connexion à la base de données…
-        </div>
-      </div>
-    );
-  }
+  // Le formulaire s'affiche sans attendre Firestore ; seul l'envoi attend que
+  // la base soit prête (sinon la connexion anonyme de démarrage, encore en
+  // cours, pourrait remplacer la session qu'on est en train d'ouvrir).
+  const preparing = state._bootstrapping;
 
   // Show error if Firebase is unreachable
   if (state._networkError) {
@@ -204,6 +193,7 @@ export default function Login() {
   // ── Password login ─────────────────────────────────────────────────────
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (preparing) return;
     setError('');
     setLoading(true);
 
@@ -527,11 +517,13 @@ export default function Login() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || preparing}
                 className="w-full py-3.5 bg-primary text-on-primary font-bold rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
               >
                 {loading
                   ? <><Icon name="progress_activity" size={20} className="animate-spin" /> Connexion…</>
+                  : preparing
+                  ? <><Icon name="progress_activity" size={20} className="animate-spin" /> Préparation…</>
                   : <><Icon name="login" size={20} /> Se connecter</>
                 }
               </button>

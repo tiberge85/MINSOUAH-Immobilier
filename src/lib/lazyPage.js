@@ -37,8 +37,21 @@ export function lazyPage(factory) {
 let preloaded = false;
 export function preloadPages() {
   if (preloaded) return;
+  // Connexion lente ou « économie de données » : on ne précharge pas. Les pages
+  // se téléchargent alors une à une, à la première visite.
+  const c = navigator.connection;
+  if (c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || ''))) return;
   preloaded = true;
-  const run = () => loaders.forEach((f, i) => setTimeout(() => f().catch(() => {}), i * 150));
-  if ('requestIdleCallback' in window) window.requestIdleCallback(run, { timeout: 4000 });
-  else setTimeout(run, 1500);
+  // Une page à la fois, et seulement après un délai : les données Firestore de
+  // l'écran ouvert passent d'abord, le préchargement ne leur vole pas la bande
+  // passante.
+  const run = async () => {
+    for (const f of loaders) {
+      try { await f(); } catch { /* ignorée : rechargée à la visite */ }
+    }
+  };
+  const start = () => ('requestIdleCallback' in window
+    ? window.requestIdleCallback(run, { timeout: 5000 })
+    : run());
+  setTimeout(start, 6000);
 }
