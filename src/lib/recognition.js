@@ -42,22 +42,22 @@ export const DEFAULT_RULES = { fideleYears: 2, partenaireYears: 4, regularMaxLat
      requireSolde    : exige une année entièrement soldée (aucun reste dû)
      noUnresolved    : exige aucun impayé/retard résiduel dans l'historique  */
 export const DEFAULT_AWARD_RULES = {
-  PARTENAIRE: { enabled: true, minYears: 4, maxLate: 0,  maxPartial: 0, maxUnpaid: 0, requireFullYear: false, requireSolde: true, noUnresolved: true },
-  EXCELLENCE: { enabled: true, minYears: 0, maxLate: 0,  maxPartial: 0, maxUnpaid: 0, requireFullYear: true,  requireSolde: true, noUnresolved: false },
-  EXEMPLAIRE: { enabled: true, minYears: 0, maxLate: 0,  maxPartial: 0, maxUnpaid: 0, requireFullYear: false, requireSolde: true, noUnresolved: false },
-  FIDELE:     { enabled: true, minYears: 2, maxLate: 99, maxPartial: 0, maxUnpaid: 0, requireFullYear: false, requireSolde: true, noUnresolved: false },
-  REGULIER:   { enabled: true, minYears: 0, maxLate: 2,  maxPartial: 0, maxUnpaid: 0, requireFullYear: false, requireSolde: true, noUnresolved: false },
+  PARTENAIRE: { enabled: true, minYears: 4, minMonths: 0,  maxLate: 0,  maxPartial: 0, maxUnpaid: 0, requireSolde: true, noUnresolved: true },
+  EXCELLENCE: { enabled: true, minYears: 0, minMonths: 12, maxLate: 0,  maxPartial: 0, maxUnpaid: 0, requireSolde: true, noUnresolved: false },
+  EXEMPLAIRE: { enabled: true, minYears: 0, minMonths: 0,  maxLate: 0,  maxPartial: 0, maxUnpaid: 0, requireSolde: true, noUnresolved: false },
+  FIDELE:     { enabled: true, minYears: 2, minMonths: 0,  maxLate: 99, maxPartial: 0, maxUnpaid: 0, requireSolde: true, noUnresolved: false },
+  REGULIER:   { enabled: true, minYears: 0, minMonths: 0,  maxLate: 2,  maxPartial: 0, maxUnpaid: 0, requireSolde: true, noUnresolved: false },
 };
 
 export const AWARD_RULE_FIELDS = [
-  { key: 'enabled',         label: 'Distinction activée',            type: 'bool' },
-  { key: 'minYears',        label: 'Ancienneté minimale (années)',    type: 'num' },
-  { key: 'maxLate',         label: 'Retards tolérés',                 type: 'num' },
-  { key: 'maxPartial',      label: 'Paiements partiels tolérés',      type: 'num' },
-  { key: 'maxUnpaid',       label: 'Impayés tolérés',                 type: 'num' },
-  { key: 'requireFullYear', label: 'Exiger 12 mois complets',         type: 'bool' },
-  { key: 'requireSolde',    label: 'Exiger année soldée',             type: 'bool' },
-  { key: 'noUnresolved',    label: 'Aucun impayé résiduel (historique)', type: 'bool' },
+  { key: 'enabled',      label: 'Distinction activée',               type: 'bool' },
+  { key: 'minYears',     label: 'Ancienneté minimale (années)',       type: 'num' },
+  { key: 'minMonths',    label: 'Mois réglés minimum',                type: 'num' },
+  { key: 'maxLate',      label: 'Retards tolérés',                    type: 'num' },
+  { key: 'maxPartial',   label: 'Paiements partiels tolérés',         type: 'num' },
+  { key: 'maxUnpaid',    label: 'Impayés tolérés',                    type: 'num' },
+  { key: 'requireSolde', label: 'Exiger année soldée',                type: 'bool' },
+  { key: 'noUnresolved', label: 'Aucun impayé résiduel (historique)', type: 'bool' },
 ];
 
 /** Normalise n'importe quelle entrée (nouveau format par distinction, ancien
@@ -69,6 +69,11 @@ export function resolveAwardRules(rules) {
   // Nouveau format : objet avec des clés de distinction.
   if (AWARD_DEFS.some(d => rules[d.key])) {
     for (const k of Object.keys(out)) if (rules[k]) out[k] = { ...out[k], ...rules[k] };
+    // Compat : ancienne case « Exiger 12 mois complets » → nombre de mois.
+    for (const k of Object.keys(out)) {
+      if (out[k].minMonths == null && rules[k] && rules[k].requireFullYear) out[k].minMonths = 12;
+      delete out[k].requireFullYear;
+    }
     return out;
   }
   // Ancien format plat → on mappe sur les champs correspondants.
@@ -189,10 +194,10 @@ export function evaluateTenantYear({ tenant, contracts, payments, year, rules, n
     if (!r || r.enabled === false) return { ok: false, reasons: ['Distinction désactivée'] };
     const reasons = [];
     if (anciennete < (Number(r.minYears) || 0)) reasons.push(`Ancienneté ${anciennete} an(s) < ${r.minYears} requis`);
+    if (nbPaid < (Number(r.minMonths) || 0)) reasons.push(`${nbPaid} mois réglé(s) < ${r.minMonths} requis`);
     if (nbUnpaid > (Number(r.maxUnpaid) || 0)) reasons.push(`${nbUnpaid} impayé(s) > ${r.maxUnpaid} toléré(s)`);
     if (nbPartial > (Number(r.maxPartial) || 0)) reasons.push(`${nbPartial} partiel(s) > ${r.maxPartial} toléré(s)`);
     if (nbLate > (Number(r.maxLate) || 0)) reasons.push(`${nbLate} retard(s) > ${r.maxLate} toléré(s)`);
-    if (r.requireFullYear && !fullYear) reasons.push('12 mois complets exigés');
     if (r.requireSolde && !soldeOk) reasons.push('Année soldée exigée');
     if (r.noUnresolved && hasUnresolved) reasons.push('Impayé résiduel dans l\'historique');
     return { ok: reasons.length === 0, reasons };
@@ -211,8 +216,8 @@ export function evaluateTenantYear({ tenant, contracts, payments, year, rules, n
   if (eligible) {
     const r = AR[eligible];
     met.push(`Ancienneté ${anciennete} an(s) (min ${r.minYears || 0})`);
+    met.push(`${nbPaid} mois réglé(s) (min ${r.minMonths || 0})`);
     met.push(`${nbUnpaid} impayé(s), ${nbPartial} partiel(s), ${nbLate} retard(s) — dans les seuils`);
-    if (r.requireFullYear) met.push('12 mois complets ✔');
     if (r.requireSolde) met.push('Année soldée ✔');
   } else {
     // On montre pourquoi la distinction la plus accessible (REGULIER) échoue.
