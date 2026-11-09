@@ -38,6 +38,7 @@ const navItems = [
   { path: '/reports',     label: 'Rapports',          icon: 'description',             mobileIcon: 'description' },
   { path: '/prospection',      label: 'Prospection',        icon: 'group_add',          mobileIcon: 'group_add', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'AGENT', 'MANAGER', 'SUPER_ADMIN'] },
   { path: '/reconnaissance',   label: 'Reconnaissance',     icon: 'workspace_premium',  mobileIcon: 'workspace_premium', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { path: '/mes-distinctions', label: 'Mes distinctions',   icon: 'workspace_premium',  mobileIcon: 'workspace_premium', roles: ['TENANT'] },
   { path: '/rapport-exercice', label: "Rapport d'exercice", icon: 'assessment',        mobileIcon: 'assessment', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'SUPER_ADMIN'] },
 ];
 

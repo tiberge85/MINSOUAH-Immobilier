@@ -46,6 +46,7 @@ import PublicCertificate from './pages/PublicCertificate';
 import AnnualReport   from './pages/AnnualReport';
 import Prospection    from './pages/Prospection';
 import Recognition    from './pages/Recognition';
+import MyAwards       from './pages/MyAwards';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -311,6 +312,7 @@ function AppRoutes() {
         <Route path="inbox"        element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE', 'TECHNICIAN', 'ACCOUNTANT']} module="inbox"><Inbox /></ProtectedRoute>} />
         <Route path="concierge"    element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE']}><ConciergePortal /></ProtectedRoute>} />
         <Route path="portal/tenant" element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'TENANT']}><TenantPortal /></ProtectedRoute>} />
+        <Route path="mes-distinctions" element={<ProtectedRoute allowedRoles={['TENANT', 'ORGANIZATION_ADMIN', 'ADMIN', 'MANAGER', 'AGENT']}><MyAwards /></ProtectedRoute>} />
         <Route path="portal/owner"  element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'OWNER']}><OwnerPortal /></ProtectedRoute>} />
         <Route path="settings"     element={<ProtectedRoute module="settings"><Settings /></ProtectedRoute>} />
         <Route path="calendar"    element={<ProtectedRoute allowedRoles={['ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'ACCOUNTANT']} module="calendar"><Calendar /></ProtectedRoute>} />

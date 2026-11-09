@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
+import { verifyPwd } from '../lib/auth';
 import { isLicenseValid } from '../lib/licenses';
-import { authErrorMessage } from '../lib/authAccounts';
-import { signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth';
-import { doc, setDoc, getDoc, getDocFromServer, collection, getDocs, query, where } from 'firebase/firestore';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { doc, setDoc, getDocFromServer, collection, getDocs } from 'firebase/firestore';
 import { auth, db, authReady } from '../lib/firebase';
 import { sendOTP, verifyOTP } from '../lib/otp';
 import { logSec, SEC } from '../lib/securityLog';
@@ -35,10 +35,21 @@ export default function Login() {
   const pendingLoginRef               = useRef(null);       // { user, firebaseUid }
   const cooldownRef                   = useRef(null);
 
-  // Le formulaire s'affiche sans attendre Firestore ; seul l'envoi attend que
-  // la base soit prête (sinon la connexion anonyme de démarrage, encore en
-  // cours, pourrait remplacer la session qu'on est en train d'ouvrir).
-  const preparing = state._bootstrapping;
+  // Show loading screen while Firestore is bootstrapping
+  if (state._bootstrapping) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+        <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center shadow-lg">
+          <Icon name="domain" size={32} className="text-on-primary" />
+        </div>
+        <h1 className="font-black text-3xl text-primary tracking-tight">Minsouah</h1>
+        <div className="flex items-center gap-2 text-on-surface-variant text-sm">
+          <Icon name="progress_activity" size={18} className="animate-spin text-primary" />
+          Connexion à la base de données…
+        </div>
+      </div>
+    );
+  }
 
   // Show error if Firebase is unreachable
   if (state._networkError) {
@@ -64,6 +75,8 @@ export default function Login() {
     );
   }
 
+  const users = state.users || [];
+
   // ── Helpers ────────────────────────────────────────────────────────────
   const startCooldown = (seconds = 60) => {
     setOtpCooldown(seconds);
@@ -85,6 +98,7 @@ export default function Login() {
         await setDoc(ubRef, {
           userId: String(user.id), orgId: user.orgId || 'default',
           orgIds: (user.orgIds && user.orgIds.length) ? user.orgIds : [user.orgId || 'default'],
+          personId: user.personId != null ? String(user.personId) : '',
           role: user.role, updatedAt: new Date().toISOString(),
         }, { merge: true });
         // Wait for the write to reach the server before the page reloads.
@@ -193,7 +207,6 @@ export default function Login() {
   // ── Password login ─────────────────────────────────────────────────────
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (preparing) return;
     setError('');
     setLoading(true);
 
@@ -203,54 +216,112 @@ export default function Login() {
       // à la connexion ») sur certains navigateurs.
       await authReady;
       const emailLow = email.trim().toLowerCase();
+      let user = users.find((u) => (u.email || '').toLowerCase() === emailLow);
 
-      // 1) Authentification Firebase — SEULE source de vérité du mot de passe.
-      //    (Avant : la liste complète des comptes, hash compris, était lue AVANT
-      //    connexion et le mot de passe vérifié dans le navigateur.)
-      let firebaseUid = null;
-      try {
-        const cred = await signInWithEmailAndPassword(auth, emailLow, password);
-        firebaseUid = cred.user.uid;
-      } catch (authErr) {
-        const msg = authErrorMessage(authErr);
-        setError(msg === 'Email ou mot de passe incorrect.'
-          ? "Email ou mot de passe incorrect. Si votre administrateur a réinitialisé votre accès, utilisez « Mot de passe oublié ? »."
-          : msg);
-        await logSec({ action: SEC.LOGIN_FAIL, userEmail: emailLow, details: authErr?.code || 'auth' }).catch(() => {});
+      // Repli : si la liste locale n'est pas encore chargée (ou incomplète),
+      // on interroge Firebase DIRECTEMENT avant de dire « aucun compte ».
+      // Évite l'erreur « Aucun compte trouvé » quand on valide trop tôt.
+      let diag = '';
+      if (!user) {
+        try {
+          const snap = await getDocs(collection(db, 'workspaces', WS, 'users'));
+          const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          user = all.find(u => (u.email || '').toLowerCase() === emailLow);
+          diag = `${snap.size} compte(s) lus · ws=${WS}`;
+        } catch (fetchErr) {
+          diag = `lecture bloquée: ${fetchErr?.code || fetchErr?.message || 'inconnue'}`;
+          console.warn('[Login] repli Firestore users échoué', fetchErr);
+        }
+      }
+
+      // DERNIER RECOURS : si la liste des comptes est illisible (auth anonyme HS
+      // ou règles Firestore), on s'authentifie DIRECTEMENT avec l'email + mot de
+      // passe via Firebase, puis on relit la fiche avec cette session authentifiée.
+      // Ça permet de se connecter même quand la lecture pré-connexion est bloquée.
+      if (!user) {
+        try {
+          await signInWithEmailAndPassword(auth, emailLow, password);
+          const snap = await getDocs(collection(db, 'workspaces', WS, 'users'));
+          const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          user = all.find(u => (u.email || '').toLowerCase() === emailLow);
+        } catch (authErr) {
+          console.warn('[Login] auth directe Firebase échouée', authErr?.code || authErr?.message);
+        }
+      }
+
+      if (!user) { setError(`Aucun compte trouvé avec cet email.${diag ? ` [${diag}]` : ''}`); return; }
+      if (user.suspended) { setError("Ce compte a été suspendu. Contactez l'administrateur."); return; }
+
+      if (user.role !== 'SUPER_ADMIN') {
+        const userOrg = (state.organizations || []).find(o => o.id === user.orgId);
+        // Ne bloquer que si l'organisation est désactivée ET n'a AUCUNE licence valide.
+        // Une organisation est auto-désactivée quand une licence expire, mais n'était
+        // jamais réactivée quand une nouvelle licence valide était ajoutée — ce qui
+        // bloquait à tort toute l'équipe (ex. une agence dont l'essai a été renouvelé).
+        const hasValidLicense = (state.licenses || [])
+          .some(l => l.orgId === user.orgId && isLicenseValid(l));
+        if (userOrg && userOrg.active === false && !hasValidLicense) {
+          setError("Votre organisation est suspendue. Contactez le support Minsouah.");
+          return;
+        }
+      }
+
+      if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
+        const remaining = Math.ceil((new Date(user.lockedUntil) - Date.now()) / 60000);
+        setError(`Compte temporairement bloqué. Réessayez dans ${remaining} min.`);
         return;
       }
 
-      // 2) Lecture de SA fiche (autorisée par les règles : même e-mail que le jeton).
-      let user = null;
+      let firebaseUid = null;
+
       try {
-        const snap = await getDocs(query(collection(db, 'workspaces', WS, 'users'), where('email', '==', emailLow)));
-        const found = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        user = found[0] || null;
-      } catch (fetchErr) {
-        console.warn('[Login] lecture du profil échouée', fetchErr?.code || fetchErr?.message);
-      }
-
-      const refuse = async (msg) => { await signOut(auth).catch(() => {}); setError(msg); };
-
-      if (!user) { await refuse("Aucun profil Minsouah n'est associé à ce compte. Contactez votre administrateur."); return; }
-      if (user.suspended) { await refuse("Ce compte a été suspendu. Contactez l'administrateur."); return; }
-
-      if (user.role !== 'SUPER_ADMIN' && user.orgId) {
-        // Ne bloquer que si l'organisation est désactivée ET n'a AUCUNE licence valide.
+        const cred = await signInWithEmailAndPassword(auth, emailLow, password);
+        firebaseUid = cred.user.uid;
+      } catch (fbErr) {
+        // Firebase sign-in failed for ANY reason (wrong Firebase password, no
+        // Firebase account, unknown/other error code…). The app's stored
+        // password hash is the source of truth for admin/self resets (which do
+        // NOT touch Firebase Auth), so ALWAYS fall back to verifying it. Accept
+        // login when EITHER the Firebase password OR the local hash matches.
+        let ok = false;
         try {
-          const orgSnap = await getDoc(doc(db, 'workspaces', WS, 'organizations', user.orgId));
-          const userOrg = orgSnap.exists() ? orgSnap.data() : null;
-          if (userOrg && userOrg.active === false) {
-            const licSnap = await getDocs(query(collection(db, 'workspaces', WS, 'licenses'), where('orgId', '==', user.orgId)));
-            const hasValidLicense = licSnap.docs.some(d => isLicenseValid(d.data()));
-            if (!hasValidLicense) { await refuse('Votre organisation est suspendue. Contactez le support Minsouah.'); return; }
+          ok = await verifyPwd(password, user.password);
+        } catch (hashErr) {
+          console.warn('[Login] hash verify failed', hashErr);
+          setError("Vérification impossible dans ce contexte. Ouvrez l'application en HTTPS (https://…) puis réessayez.");
+          return;
+        }
+        if (!ok) {
+          dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: emailLow, success: false } });
+          const attempts = (user.failedAttempts || 0) + 1;
+          await logSec({ action: SEC.LOGIN_FAIL, userId: user.id, userEmail: emailLow, role: user.role, details: `Attempt ${attempts}` });
+          setError(attempts >= 5
+            ? 'Compte bloqué pour 15 minutes après 5 tentatives échouées.'
+            : `Mot de passe incorrect. ${5 - attempts} tentative(s) restante(s).`);
+          return;
+        }
+        // Hash verified — ensure a Firebase Auth account exists for this password
+        try {
+          const newCred = await createUserWithEmailAndPassword(auth, emailLow, password);
+          firebaseUid = newCred.user.uid;
+        } catch (createErr) {
+          if (createErr.code === 'auth/email-already-in-use') {
+            // A Firebase account exists but with a different password. The user
+            // proved identity via the local hash — retry sign-in just in case.
+            try {
+              const retryCred = await signInWithEmailAndPassword(auth, emailLow, password);
+              firebaseUid = retryCred.user.uid;
+            } catch {
+              console.warn('[Login] Firebase Auth password out of sync for', emailLow, '— logging in via local hash.');
+            }
           }
-        } catch (orgErr) {
-          console.warn('[Login] vérification organisation', orgErr?.code || orgErr?.message);
+          // Other create errors ignored — user still gets in-app access via the hash
         }
       }
 
       // ── 2FA: opt-in for any role via twoFaEnabled flag ──────────────────────
+      // SUPER_ADMIN 2FA is not forced — it must be explicitly enabled in their
+      // user doc (twoFaEnabled: true) once email delivery is confirmed working.
       const needs2FA = !!user.twoFaEnabled;
       if (needs2FA) {
         pendingLoginRef.current = { user, firebaseUid };
@@ -302,10 +373,8 @@ export default function Login() {
 
               <form onSubmit={handleOtpSubmit} className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <label htmlFor="login-otp" className="text-sm font-semibold text-on-surface">Code OTP</label>
+                  <label className="text-sm font-semibold text-on-surface">Code OTP</label>
                   <input
-                    id="login-otp"
-                    autoComplete="one-time-code"
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
@@ -404,9 +473,9 @@ export default function Login() {
                 <p className="text-sm text-on-surface-variant">Entrez votre email. Nous vous enverrons un lien sécurisé pour définir un nouveau mot de passe.</p>
               </div>
               <div className="flex flex-col gap-1">
-                <label htmlFor="reset-email" className="text-sm font-semibold text-on-surface">Adresse email</label>
+                <label className="text-sm font-semibold text-on-surface">Adresse email</label>
                 <div className="relative">
-                  <input id="reset-email" name="email" type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)}
+                  <input type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)}
                     placeholder="votre@email.com" required autoFocus
                     className="w-full px-4 py-3 pl-11 rounded-xl border border-outline-variant/40 bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface" />
                   <Icon name="mail" size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant" />
@@ -450,11 +519,9 @@ export default function Login() {
 
             <form onSubmit={handleLogin} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1">
-                <label htmlFor="login-email" className="text-sm font-semibold text-on-surface">Adresse email</label>
+                <label className="text-sm font-semibold text-on-surface">Adresse email</label>
                 <div className="relative">
                   <input
-                    id="login-email"
-                    name="email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -468,11 +535,9 @@ export default function Login() {
               </div>
 
               <div className="flex flex-col gap-1">
-                <label htmlFor="login-password" className="text-sm font-semibold text-on-surface">Mot de passe</label>
+                <label className="text-sm font-semibold text-on-surface">Mot de passe</label>
                 <div className="relative">
                   <input
-                    id="login-password"
-                    name="password"
                     type={showPass ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -485,9 +550,7 @@ export default function Login() {
                   <button
                     type="button"
                     onClick={() => setShowPass((v) => !v)}
-                    aria-label={showPass ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-                    aria-pressed={showPass}
-                    className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center rounded-lg text-on-surface-variant hover:text-on-surface transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface transition-colors"
                   >
                     <Icon name={showPass ? 'visibility_off' : 'visibility'} size={20} />
                   </button>
@@ -495,7 +558,7 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={openForgot}
-                  className="self-end text-xs font-semibold text-primary hover:text-primary/70 transition-colors py-2 -my-1"
+                  className="self-end text-xs font-semibold text-primary hover:text-primary/70 transition-colors mt-1"
                 >
                   Mot de passe oublié ?
                 </button>
@@ -517,13 +580,11 @@ export default function Login() {
 
               <button
                 type="submit"
-                disabled={loading || preparing}
+                disabled={loading}
                 className="w-full py-3.5 bg-primary text-on-primary font-bold rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
               >
                 {loading
                   ? <><Icon name="progress_activity" size={20} className="animate-spin" /> Connexion…</>
-                  : preparing
-                  ? <><Icon name="progress_activity" size={20} className="animate-spin" /> Préparation…</>
                   : <><Icon name="login" size={20} /> Se connecter</>
                 }
               </button>
@@ -532,9 +593,9 @@ export default function Login() {
 
           {/* Live indicator */}
           <div className="border-t border-outline-variant/10 px-6 py-3 flex items-center justify-center gap-2">
-            <Icon name="lock" size={14} className="text-on-surface-variant" />
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             <span className="text-xs text-on-surface-variant">
-              Connexion sécurisée
+              Synchronisation temps réel — Firebase
             </span>
           </div>
         </div>
@@ -542,7 +603,7 @@ export default function Login() {
         <p className="text-center text-xs text-on-surface-variant mt-6">
           © {new Date().getFullYear()} Minsouah — Gestion immobilière Côte d'Ivoire
         </p>
-        <p className="text-center text-[11px] text-on-surface-variant mt-1">v2.5 — 2026-05-17</p>
+        <p className="text-center text-[10px] text-on-surface-variant/40 mt-1">v2.5 — 2026-05-17</p>
       </div>
     </div>
   );
