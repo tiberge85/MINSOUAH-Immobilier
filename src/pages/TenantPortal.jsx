@@ -7,9 +7,16 @@ import Icon from '../components/Icon';
 import TenantDocuments from '../components/TenantDocuments';
 import { openEDLReport } from '../lib/inspectionReport';
 import { buildReceiptHTML } from '../lib/quittanceReport';
-import { formatFCFA } from '../lib/format';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { buildCertificate, certificateHTML } from '../lib/certificate';
+import { AWARD_BY_KEY } from '../lib/recognition';
 
-const fmt = formatFCFA;
+const WS_TP = import.meta.env.VITE_FIREBASE_WORKSPACE || 'minsouah';
+const AWARD_THEME = { EXCELLENCE: '#b8860b', EXEMPLAIRE: '#1d4ed8', REGULIER: '#15803d', PARTENAIRE: '#7c3aed', FIDELE: '#0f766e' };
+
+const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
+
 function phoneForWA(raw) {
   const d = (raw || '').replace(/\D/g, '');
   if (!d) return '';
@@ -136,7 +143,7 @@ function PaymentModal({ contract, onClose, onSuccess }) {
           {step === 3 && (
             <div className="text-center py-4">
               <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Icon name="check_circle" size={40} className="text-green-700" filled />
+                <Icon name="check_circle" size={40} className="text-green-600" filled />
               </div>
               <h4 className="font-h2 text-h2 font-bold text-on-surface mb-2">Paiement Confirmé</h4>
               <p className="text-body-sm text-on-surface-variant mb-1">
@@ -307,6 +314,52 @@ export default function TenantPortal() {
       setSelectedId(currentUser.personId);
     }
   }, [currentUser?.role, currentUser?.personId]);
+
+  /* ── Distinctions (Minsouah Reconnaissance) ── */
+  const [awards, setAwards] = useState([]);
+  const [showAwards, setShowAwards] = useState(false);
+  const [awardMsg, setAwardMsg] = useState('');
+  useEffect(() => {
+    if (!selectedId) { setAwards([]); return; }
+    const q = query(collection(db, 'workspaces', WS_TP, 'tenantAwards'), where('tenantId', '==', String(selectedId)));
+    const unsub = onSnapshot(q, (snap) => {
+      setAwards(snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(a => a.status === 'publiee')
+        .sort((a, b) => (b.year || 0) - (a.year || 0)));
+    }, () => setAwards([]));
+    return unsub;
+  }, [selectedId]);
+
+  const awardBaseUrl = (typeof window !== 'undefined') ? (window.location.origin + window.location.pathname) : '';
+  async function viewAwardPDF(a) {
+    try {
+      const { svg } = await buildCertificate(a, orgSettings || {}, awardBaseUrl);
+      const win = window.open('', '_blank', 'width=1150,height=820');
+      if (win) { win.document.write(certificateHTML(svg, `Certificat ${a.tenantName}`)); win.document.close(); }
+      else setAwardMsg('Autorisez les pop-ups pour voir le certificat.');
+    } catch (e) { setAwardMsg('Erreur : ' + (e?.message || e)); }
+  }
+  async function makeAwardPng(a) {
+    const { svg } = await buildCertificate(a, orgSettings || {}, awardBaseUrl);
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+    const img = new Image(); await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+    const scale = 2, canvas = document.createElement('canvas'); canvas.width = 1123 * scale; canvas.height = 794 * scale;
+    const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height); URL.revokeObjectURL(url);
+    return await new Promise(res => canvas.toBlob(res, 'image/png'));
+  }
+  async function shareAward(a) {
+    try {
+      const b = await makeAwardPng(a);
+      const file = new File([b], `Certificat_${a.year}.png`, { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Mon certificat Minsouah', text: `${a.label} — Minsouah ${a.year}` });
+      } else {
+        const u = URL.createObjectURL(b); const el = document.createElement('a'); el.href = u; el.download = `Mon_certificat_${a.year}.png`; el.click(); setTimeout(() => URL.revokeObjectURL(u), 1500);
+        setAwardMsg('Image téléchargée — vous pouvez l\'envoyer via WhatsApp.'); setTimeout(() => setAwardMsg(''), 5000);
+      }
+    } catch (e) { if (e?.name !== 'AbortError') setAwardMsg('Partage impossible : ' + (e?.message || e)); }
+  }
 
   const tenant = tenants.find(t => t.id === selectedId);
   const tenantName = tenant ? (tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim()) : '';
@@ -547,13 +600,68 @@ export default function TenantPortal() {
           <div className="absolute bottom-2 right-16 w-16 h-16 rounded-full border-2 border-on-primary" />
         </div>
         <div className="relative">
-          <button
-            onClick={() => setSelectedId(null)}
-            className="flex items-center gap-1 text-on-primary/80 hover:text-on-primary mb-4 transition-colors"
-          >
-            <Icon name="arrow_back" size={18} />
-            <span className="text-label-sm">Retour</span>
-          </button>
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={() => setSelectedId(null)}
+              className="flex items-center gap-1 text-on-primary/80 hover:text-on-primary transition-colors"
+            >
+              <Icon name="arrow_back" size={18} />
+              <span className="text-label-sm">Retour</span>
+            </button>
+
+            {/* Cloche — Mes distinctions */}
+            <div className="relative">
+              <button
+                onClick={() => setShowAwards(v => !v)}
+                className="relative w-10 h-10 rounded-full flex items-center justify-center bg-on-primary/15 hover:bg-on-primary/25 text-on-primary transition-colors"
+                title="Mes distinctions"
+              >
+                <Icon name="notifications" size={20} />
+                {awards.length > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-amber-400 text-[10px] font-black text-amber-950 rounded-full flex items-center justify-center border border-on-primary/40">
+                    {awards.length}
+                  </span>
+                )}
+              </button>
+              {showAwards && (
+                <>
+                  <div className="fixed inset-0 z-[150]" onClick={() => setShowAwards(false)} />
+                  <div className="absolute right-0 top-12 w-[20rem] max-w-[calc(100vw-2rem)] bg-surface rounded-2xl shadow-xl border border-outline-variant/20 z-[160] overflow-hidden text-on-surface">
+                    <div className="px-4 py-3 border-b border-outline-variant/10 flex items-center gap-2">
+                      <Icon name="verified" size={18} className="text-primary" />
+                      <p className="font-bold text-sm">Mes distinctions</p>
+                    </div>
+                    {awardMsg && <div className="px-4 py-2 text-xs bg-surface-container-high">{awardMsg}</div>}
+                    <div className="max-h-[22rem] overflow-y-auto">
+                      {awards.length === 0 ? (
+                        <div className="px-4 py-6 text-center">
+                          <Icon name="verified" size={28} className="opacity-25 mb-1" />
+                          <p className="text-xs text-on-surface-variant">Pas encore de distinction. Chaque loyer réglé à temps vous en rapproche&nbsp;! 💪</p>
+                        </div>
+                      ) : awards.map(a => {
+                        const def = AWARD_BY_KEY[a.award_type]; const color = AWARD_THEME[a.award_type] || '#785a00';
+                        return (
+                          <div key={a.id} className="px-4 py-3 border-b border-outline-variant/10 last:border-0">
+                            <div className="flex items-center gap-2">
+                              <span className="w-8 h-8 rounded-full flex items-center justify-center text-lg flex-shrink-0" style={{ background: color + '22' }}>{def?.emoji || '🏅'}</span>
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold leading-tight" style={{ color }}>{def?.label || a.label}</p>
+                                <p className="text-[11px] text-on-surface-variant">Exercice {a.year}</p>
+                              </div>
+                            </div>
+                            <div className="flex gap-1.5 mt-2">
+                              <button onClick={() => viewAwardPDF(a)} className="flex-1 inline-flex items-center justify-center gap-1 bg-primary text-on-primary rounded-lg px-2 py-1.5 text-xs font-semibold"><Icon name="visibility" size={14} /> Voir</button>
+                              <button onClick={() => shareAward(a)} className="flex-1 inline-flex items-center justify-center gap-1 bg-green-100 text-green-700 rounded-lg px-2 py-1.5 text-xs font-semibold"><Icon name="share" size={14} /> Partager</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
           <div className="flex items-center gap-md">
             {tenant.avatar
               ? <img src={tenant.avatar} alt="" className="w-16 h-16 rounded-full object-cover border-2 border-on-primary/40 flex-shrink-0" />
@@ -572,7 +680,7 @@ export default function TenantPortal() {
       <div className="px-4 -mt-8 relative z-10">
         <div className="bg-surface-container-lowest rounded-2xl shadow-modal border border-outline-variant/20 p-md grid grid-cols-3 gap-md">
           <div className="text-center">
-            <p className="text-h2 font-h2 font-black text-green-700">{paidPayments.length}</p>
+            <p className="text-h2 font-h2 font-black text-green-600">{paidPayments.length}</p>
             <p className="text-label-sm text-on-surface-variant">Payés</p>
           </div>
           <div className="text-center border-x border-outline-variant/20">
@@ -683,7 +791,7 @@ export default function TenantPortal() {
             {tenantTickets.filter(t => t.status !== 'Résolu').length > 0 && (
               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-md">
                 <div className="flex items-center gap-2 mb-2">
-                  <Icon name="engineering" size={18} className="text-amber-700" />
+                  <Icon name="engineering" size={18} className="text-amber-600" />
                   <p className="font-bold text-amber-800">
                     {tenantTickets.filter(t => t.status !== 'Résolu').length} ticket(s) en cours
                   </p>
@@ -715,10 +823,10 @@ export default function TenantPortal() {
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
                 <p className="text-green-700 font-black text-h2">{fmt(totalPaid)}</p>
-                <p className="text-label-sm text-green-700">Total versé</p>
+                <p className="text-label-sm text-green-600">Total versé</p>
               </div>
               <div className="bg-error/5 border border-error/20 rounded-xl p-3 text-center">
-                <p className={`font-black text-h2 ${unpaidPayments.length > 0 ? 'text-error' : 'text-green-700'}`}>
+                <p className={`font-black text-h2 ${unpaidPayments.length > 0 ? 'text-error' : 'text-green-600'}`}>
                   {fmt(unpaidPayments.reduce((s, p) => s + (p.amount || 0), 0))}
                 </p>
                 <p className="text-label-sm text-on-surface-variant">Impayés</p>
@@ -873,7 +981,7 @@ export default function TenantPortal() {
                           </span>
                         )}
                         {insp.tenantSignature && (
-                          <Icon name="verified" size={18} className="text-green-700" title="Signé" />
+                          <Icon name="verified" size={18} className="text-green-600" title="Signé" />
                         )}
                       </div>
                     </div>
