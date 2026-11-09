@@ -2,9 +2,10 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import {
   collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, deleteField,
   writeBatch, getDocs, query, where, getDocFromServer, increment, runTransaction,
+  orderBy, limit as qLimit,
 } from 'firebase/firestore';
 import { onAuthStateChanged, signInAnonymously, signOut, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
-import { auth, db } from '../lib/firebase';
+import { auth, db, clearLocalData } from '../lib/firebase';
 import { provisionAccount, randomToken } from '../lib/authAccounts';
 import { formatFCFA } from '../lib/format';
 import { checkLimit } from '../lib/planLimits';
@@ -410,8 +411,8 @@ export function AppProvider({ children }) {
 
       // Refresh usersByUid so Firestore rules recognize this session's CURRENT org
       // AVANT d'ouvrir les abonnements filtrés (les règles lisent usersByUid côté
-      // serveur). La persistance hors-ligne n'est PAS activée : `await setDoc` ne se
-      // résout donc qu'une fois l'écriture confirmée par le serveur → inutile de
+      // serveur). Même avec la mémoire locale, `await setDoc` ne se résout
+      // qu'une fois l'écriture confirmée par le serveur → inutile de
       // relire (getDocFromServer) ou de forcer un nouveau jeton (getIdToken(true)),
       // qui n'ajoutaient que 1 à 3 s d'attente à CHAQUE connexion. Le filet de
       // sécurité scheduleHeal rattrape la rare course restante.
@@ -540,13 +541,13 @@ export function AppProvider({ children }) {
 
       // Activity log
       unsubs.push(
-        onSnapshot(wsCol('activityLog'),
+        // Seules les 500 dernières entrées sont affichées : on ne lit plus
+        // qu'elles (avant, tout le journal était relu à chaque ouverture, ce
+        // qui épuisait le quota de lectures Firestore).
+        onSnapshot(query(wsCol('activityLog'), orderBy('timestamp', 'desc'), qLimit(500)),
           (snap) => setState((s) => ({
             ...s,
-            activityLog: snap.docs
-              .map((d) => d.data())
-              .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
-              .slice(0, 500),
+            activityLog: snap.docs.map((d) => d.data()),
           })),
           () => {}
         )
@@ -859,6 +860,8 @@ export function AppProvider({ children }) {
           // reconstruction de session reconnecte l'utilisateur aussitôt (« impossible
           // de se déconnecter »).
           try { await signOut(auth); } catch { /* ignore */ }
+          // Efface la copie locale des données (poste partagé en agence).
+          await clearLocalData();
           // Reload to clear all org-filtered subscriptions
           window.location.reload();
           break;

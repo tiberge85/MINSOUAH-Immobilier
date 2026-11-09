@@ -1,6 +1,9 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, setPersistence, browserLocalPersistence, indexedDBLocalPersistence } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import {
+  initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager,
+  terminate, clearIndexedDbPersistence,
+} from 'firebase/firestore';
 
 // Les clés Firebase web sont publiques par design — la sécurité est dans les Security Rules
 const firebaseConfig = {
@@ -18,7 +21,30 @@ const firebaseConfig = {
 const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+// Mémoire locale Firestore (IndexedDB) : au rechargement, les écrans
+// s'affichent depuis la copie locale et Firestore ne renvoie (et ne facture)
+// que ce qui a changé, au lieu de relire toutes les collections. Si le
+// navigateur la refuse (navigation privée…), Firestore repasse seul en mémoire.
+function makeDb() {
+  try {
+    return initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+  } catch {
+    return getFirestore(app); // déjà initialisée (rechargement à chaud Vite)
+  }
+}
+export const db = makeDb();
+
+/** Efface la copie locale (à la déconnexion). La page doit être rechargée ensuite. */
+export async function clearLocalData() {
+  try {
+    await terminate(db);
+    await clearIndexedDbPersistence(db);
+  } catch (e) {
+    console.warn('[clearLocalData]', e?.code || e?.message);
+  }
+}
 // Storage et Realtime Database ne sont PAS initialisés ici : ils ne servent
 // qu'à quelques écrans (lib/storage.js, hooks/usePresence.js) qui les créent
 // eux-mêmes. Les importer ici les ajoutait au téléchargement initial.
