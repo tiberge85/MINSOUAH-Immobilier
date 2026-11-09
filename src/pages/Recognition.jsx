@@ -451,6 +451,7 @@ export default function Recognition() {
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
                               <div><p className="font-semibold text-on-surface mb-1">Statistiques {year}</p>
                                 <ul className="text-on-surface-variant space-y-0.5">
+                                  <li>Période évaluée : {r.stats.periode} <span className="text-on-surface-variant/70">(depuis la 1ʳᵉ quittance)</span></li>
                                   <li>Échéances exigibles : {r.stats.nbExigible}</li>
                                   <li>Payées : {r.stats.nbPaid} · En retard (régularisés) : {r.stats.nbLate}</li>
                                   <li>Partiels : {r.stats.nbPartial} · Impayés : {r.stats.nbUnpaid}</li>

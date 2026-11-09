@@ -84,6 +84,16 @@ const nameMatch = (a, b) => { a = norm(a); b = norm(b); if (!a || !b) return fal
 const parseDate = (v) => { if (!v) return null; if (v instanceof Date) return isNaN(v) ? null : v; const s = String(v).trim(); const m = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/); if (m) { let [, d, mo, y] = m; if (y.length === 2) y = '20' + y; const dt = new Date(+y, +mo - 1, +d); return isNaN(dt) ? null : dt; } const dt = new Date(s); return isNaN(dt) ? null : dt; };
 const monthLabel = (m, y) => `${MONTHS_FR[m]} ${y}`;
 
+/** Indice de mois (0-11) d'un libellé « Mois AAAA » s'il appartient à l'année, sinon null. */
+function monthIndexInYear(label, year) {
+  if (!label) return null;
+  const s = norm(label);
+  const ym = s.match(/(\d{4})/);
+  if (ym && Number(ym[1]) !== Number(year)) return null;
+  for (let i = 0; i < 12; i++) if (s.includes(norm(MONTHS_FR[i]))) return i;
+  return null;
+}
+
 /** Contrats d'un locataire dans le périmètre fourni (par id ou par nom). */
 function contractsOfTenant(tenant, contracts) {
   return (contracts || []).filter(c =>
@@ -128,6 +138,15 @@ export function evaluateTenantYear({ tenant, contracts, payments, year, rules, n
   if (depart && depart.getFullYear() === year) endMonth = Math.min(endMonth, depart.getMonth());
   else if (depart && depart.getFullYear() < year) endMonth = -1;
 
+  // Logiciel mis en place en cours d'année : le suivi d'un locataire commence à
+  // sa PREMIÈRE QUITTANCE enregistrée. Les mois antérieurs (non suivis) ne sont
+  // pas comptés comme impayés. On borne donc le début de l'année au 1er mois
+  // réellement saisi (toute quittance/enregistrement de paiement de l'année).
+  const trackedMonths = myPayments
+    .map(p => monthIndexInYear(p.month, year))
+    .filter(m => m != null);
+  if (trackedMonths.length) startMonth = Math.max(startMonth, Math.min(...trackedMonths));
+
   const exigibleMonths = [];
   for (let m = startMonth; m <= endMonth; m++) exigibleMonths.push(m);
 
@@ -155,7 +174,8 @@ export function evaluateTenantYear({ tenant, contracts, payments, year, rules, n
   const soldeOk = nbUnpaid === 0 && nbPartial === 0 && soldeDu === 0 && nbExigible > 0;
   const hasUnresolved = myPayments.some(p => p.status === 'Impayé' || p.status === 'En retard');
 
-  const stats = { nbExigible, nbPaid, nbLate, nbPartial, nbUnpaid, soldeDu, rent, anciennete, fullYear };
+  const periode = exigibleMonths.length ? `${MONTHS_FR[exigibleMonths[0]]} → ${MONTHS_FR[exigibleMonths[exigibleMonths.length - 1]]} ${year}` : '—';
+  const stats = { nbExigible, nbPaid, nbLate, nbPartial, nbUnpaid, soldeDu, rent, anciennete, fullYear, periode };
 
   if (nbExigible === 0) {
     return { eligible: null, label: 'Non évaluable', score: 0, fullYear: false, stats, anciennete,
