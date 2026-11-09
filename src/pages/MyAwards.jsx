@@ -76,7 +76,7 @@ export default function MyAwards() {
   return (
     <div className="flex flex-col gap-md max-w-3xl mx-auto w-full">
       <div className="text-center">
-        <h2 className="font-bold text-on-surface text-xl flex items-center justify-center gap-2"><Icon name="military_tech" size={24} className="text-primary" /> Mes distinctions</h2>
+        <h2 className="font-bold text-on-surface text-xl flex items-center justify-center gap-2"><Icon name="verified" size={24} className="text-primary" /> Mes distinctions</h2>
         <p className="text-sm text-on-surface-variant mt-1 italic">« Votre sérieux mérite d'être reconnu. »</p>
       </div>
       {msg && <div className="bg-surface-container-high text-on-surface rounded-xl px-4 py-2 text-sm text-center">{msg}</div>}
@@ -85,7 +85,7 @@ export default function MyAwards() {
 
       {!loading && awards.length === 0 && (
         <div className="bg-surface-container-lowest rounded-2xl shadow-card border border-outline-variant/20 p-8 text-center">
-          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3"><Icon name="emoji_events" size={34} className="text-primary" /></div>
+          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3"><Icon name="verified" size={34} className="text-primary" /></div>
           <h3 className="font-bold text-on-surface">Votre reconnaissance se construit !</h3>
           <p className="text-on-surface-variant text-sm mt-2">Vous n'avez pas encore de distinction, mais chaque loyer réglé à temps vous en rapproche. Continuez ainsi : votre sérieux sera récompensé en fin d'année. 💪</p>
         </div>

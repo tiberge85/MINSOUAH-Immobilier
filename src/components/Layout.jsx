@@ -41,8 +41,8 @@ const navItems = [
   { path: '/inbox',       label: 'Messagerie',        icon: 'support_agent',           mobileIcon: 'mail' },
   { path: '/reports',     label: 'Rapports',          icon: 'description',             mobileIcon: 'description' },
   { path: '/prospection',      label: 'Prospection',        icon: 'group_add',          mobileIcon: 'group_add', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'AGENT', 'MANAGER', 'SUPER_ADMIN'] },
-  { path: '/reconnaissance',   label: 'Reconnaissance',     icon: 'military_tech',  mobileIcon: 'military_tech', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
-  { path: '/mes-distinctions', label: 'Mes distinctions',   icon: 'military_tech',  mobileIcon: 'military_tech', roles: ['TENANT'] },
+  { path: '/reconnaissance',   label: 'Reconnaissance',     icon: 'verified',  mobileIcon: 'verified', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { path: '/mes-distinctions', label: 'Mes distinctions',   icon: 'verified',  mobileIcon: 'verified', roles: ['TENANT'] },
   { path: '/rapport-exercice', label: "Rapport d'exercice", icon: 'assessment',        mobileIcon: 'assessment', roles: ['ORGANIZATION_ADMIN', 'ADMIN', 'SUPER_ADMIN'] },
 ];
 
@@ -147,7 +147,7 @@ export default function Layout() {
         .filter(a => a.status === 'publiee')
         .sort((a, b) => (b.year || 0) - (a.year || 0))
         .map(a => ({
-          id: `award-${a.id}`, icon: 'military_tech', color: 'text-primary', bg: 'bg-primary/10',
+          id: `award-${a.id}`, icon: 'verified', color: 'text-primary', bg: 'bg-primary/10',
           label: '🏅 Nouvelle distinction', sub: `${a.label || 'Distinction'} — ${a.year || ''}`, path: '/mes-distinctions',
         }));
       setAwardNotifs(list);
