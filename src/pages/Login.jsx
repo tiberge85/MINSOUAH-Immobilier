@@ -137,6 +137,15 @@ export default function Login() {
         orgIds: user.orgIds || [user.orgId || 'default'],
       },
     });
+    // Connexion via le mot de passe LOCAL (pas de vraie session Firebase, donc
+    // session anonyme) : l'état d'auth ne change pas → le chargement des données
+    // ne se relance pas tout seul. On recharge la page : au redémarrage, la
+    // session (localStorage) est reprise et SES données se chargent.
+    try {
+      if (!firebaseUid || auth.currentUser?.isAnonymous) {
+        setTimeout(() => { try { window.location.reload(); } catch { /* ignore */ } }, 400);
+      }
+    } catch { /* ignore */ }
   };
 
   // ── OTP submit ─────────────────────────────────────────────────────────

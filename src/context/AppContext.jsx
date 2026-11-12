@@ -662,11 +662,11 @@ export function AppProvider({ children }) {
       unsubAuth();
       unsubFirestoreRef.current.forEach((u) => u());
     };
-    // Re-déclenché quand l'utilisateur CONNECTÉ change (connexion / déconnexion /
-    // changement de compte). Indispensable pour un login locataire en session
-    // anonyme : sans ça, les abonnements ouverts au démarrage (sans session) ne se
-    // rouvraient jamais et ses données ne se chargeaient pas.
-  }, [checkBootstrap, state.currentUser?.id]);
+    // NE PAS dépendre de currentUser : cela ré-exécutait l'effet en boucle et
+    // ANNULAIT le chargement avant qu'il n'aboutisse (écran bloqué). L'effet
+    // s'exécute au montage + à chaque changement d'auth Firebase, ce qui suffit ;
+    // le ré-abonnement après un login locataire est géré par un rechargement.
+  }, [checkBootstrap]);
 
   // ── 5. Seed — only ensure SUPER_ADMIN account exists ─────────────────────
   // Organizations and licenses are NEVER auto-created — the Super Admin creates
