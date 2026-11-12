@@ -36,12 +36,16 @@ let _db;
 try {
   _db = initializeFirestore(app, {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-    experimentalAutoDetectLongPolling: true,
+    // Long-polling FORCÉ : sur ce réseau la connexion temps réel « streaming »
+    // de Firestore (WebChannel/QUIC) échoue en boucle (QUIC_PROTOCOL_ERROR) et
+    // les données ne se chargent jamais. On force de simples requêtes HTTP qui
+    // passent partout, au lieu de laisser l'auto-détection tenter le streaming.
+    experimentalForceLongPolling: true,
   });
 } catch (e) {
   console.warn('[firestore init] repli sans cache', e?.code || e?.message);
   try {
-    _db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+    _db = initializeFirestore(app, { experimentalForceLongPolling: true });
   } catch {
     _db = getFirestore(app);
   }
