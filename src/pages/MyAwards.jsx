@@ -32,7 +32,7 @@ export default function MyAwards() {
     const q = query(collection(db, 'workspaces', WS, 'tenantAwards'), where('tenantId', '==', personId));
     const unsub = onSnapshot(q, (snap) => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .filter(a => a.status === 'publiee')
+        .filter(a => a.status === 'publiee' || a.status === 'validee')
         .sort((a, b) => (b.year || 0) - (a.year || 0));
       setAwards(list); setLoading(false);
     }, () => { setLoading(false); });

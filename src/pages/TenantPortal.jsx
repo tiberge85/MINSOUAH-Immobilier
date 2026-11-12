@@ -324,7 +324,7 @@ export default function TenantPortal() {
     const q = query(collection(db, 'workspaces', WS_TP, 'tenantAwards'), where('tenantId', '==', String(selectedId)));
     const unsub = onSnapshot(q, (snap) => {
       setAwards(snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .filter(a => a.status === 'publiee')
+        .filter(a => a.status === 'publiee' || a.status === 'validee')
         .sort((a, b) => (b.year || 0) - (a.year || 0)));
     }, () => setAwards([]));
     return unsub;
