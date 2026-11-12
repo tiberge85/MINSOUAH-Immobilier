@@ -574,8 +574,16 @@ export function AppProvider({ children }) {
       }
     });
 
+    // Garde-fou : si le démarrage n'est pas terminé au bout de 9 s (ex. lectures
+    // refusées qui ne « résolvent » jamais pour une session locataire), on affiche
+    // quand même l'appli au lieu de laisser tourner « Chargement des données… ».
+    const bootSafety = setTimeout(() => {
+      if (!cancelled) setState((s) => (s._bootstrapping ? { ...s, _bootstrapping: false } : s));
+    }, 9000);
+
     return () => {
       cancelled = true;
+      clearTimeout(bootSafety);
       unsubAuth();
       unsubFirestoreRef.current.forEach((u) => u());
     };
