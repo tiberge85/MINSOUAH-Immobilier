@@ -205,12 +205,12 @@ export default function Recognition() {
   }
 
   async function genCertPDF(award) {
+    const win = window.open('', '_blank', 'width=1150,height=820'); // geste utilisateur → non bloqué
     try {
       const { svg } = await buildCertificate(award, orgSettings, baseUrl);
-      const win = window.open('', '_blank', 'width=1150,height=820');
       if (win) { win.document.write(certificateHTML(svg, `Certificat ${award.tenantName}`)); win.document.close(); }
-      else alert('Autorisez les pop-ups pour le certificat.');
-    } catch (e) { setMsg('Certificat : ' + (e?.message || e)); }
+      else { await genCertPNG(award); setMsg('Fenêtre bloquée : certificat téléchargé en image.'); setTimeout(() => setMsg(''), 6000); }
+    } catch (e) { if (win) win.close(); setMsg('Certificat : ' + (e?.message || e)); }
   }
 
   async function genCertPNG(award) {

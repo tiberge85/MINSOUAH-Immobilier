@@ -338,12 +338,19 @@ export default function TenantPortal() {
 
   const awardBaseUrl = (typeof window !== 'undefined') ? (window.location.origin + window.location.pathname) : '';
   async function viewAwardPDF(a) {
+    // Fenêtre ouverte IMMÉDIATEMENT au clic (geste utilisateur) → non bloquée.
+    const win = window.open('', '_blank', 'width=1150,height=820');
     try {
       const { svg } = await buildCertificate(a, orgSettings || {}, awardBaseUrl);
-      const win = window.open('', '_blank', 'width=1150,height=820');
-      if (win) { win.document.write(certificateHTML(svg, `Certificat ${a.tenantName}`)); win.document.close(); }
-      else setAwardMsg('Autorisez les pop-ups pour voir le certificat.');
-    } catch (e) { setAwardMsg('Erreur : ' + (e?.message || e)); }
+      if (win) {
+        win.document.write(certificateHTML(svg, `Certificat ${a.tenantName}`)); win.document.close();
+      } else {
+        // Fenêtre bloquée malgré tout : on télécharge le certificat en image.
+        const b = await makeAwardPng(a);
+        const u = URL.createObjectURL(b); const el = document.createElement('a'); el.href = u; el.download = `Certificat_${a.year}.png`; el.click(); setTimeout(() => URL.revokeObjectURL(u), 1500);
+        setAwardMsg('Fenêtre bloquée par le navigateur : certificat téléchargé en image.'); setTimeout(() => setAwardMsg(''), 6000);
+      }
+    } catch (e) { if (win) win.close(); setAwardMsg('Erreur : ' + (e?.message || e)); }
   }
   async function makeAwardPng(a) {
     const { svg } = await buildCertificate(a, orgSettings || {}, awardBaseUrl);
