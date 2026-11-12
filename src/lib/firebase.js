@@ -1,9 +1,8 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, setPersistence, browserLocalPersistence, indexedDBLocalPersistence } from 'firebase/auth';
-import {
-  initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager,
-  terminate, clearIndexedDbPersistence,
-} from 'firebase/firestore';
+import { initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
+import { getDatabase } from 'firebase/database';
 
 // Les clés Firebase web sont publiques par design — la sécurité est dans les Security Rules
 const firebaseConfig = {
@@ -21,33 +20,26 @@ const firebaseConfig = {
 const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-// Mémoire locale Firestore (IndexedDB) : au rechargement, les écrans
-// s'affichent depuis la copie locale et Firestore ne renvoie (et ne facture)
-// que ce qui a changé, au lieu de relire toutes les collections. Si le
-// navigateur la refuse (navigation privée…), Firestore repasse seul en mémoire.
-function makeDb() {
-  try {
-    return initializeFirestore(app, {
-      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-    });
-  } catch {
-    return getFirestore(app); // déjà initialisée (rechargement à chaud Vite)
-  }
-}
-export const db = makeDb();
 
-/** Efface la copie locale (à la déconnexion). La page doit être rechargée ensuite. */
-export async function clearLocalData() {
-  try {
-    await terminate(db);
-    await clearIndexedDbPersistence(db);
-  } catch (e) {
-    console.warn('[clearLocalData]', e?.code || e?.message);
-  }
+// Firestore AVEC CACHE LOCAL PERSISTANT (IndexedDB).
+// Au 1er accès les données viennent du serveur ; ensuite, à chaque visite,
+// elles s'affichent INSTANTANÉMENT depuis le cache local puis se mettent à jour
+// en arrière-plan. persistentMultipleTabManager permet plusieurs onglets ouverts.
+// En cas d'indisponibilité (navigateur restreint, HMR déjà initialisé), on
+// retombe proprement sur une instance Firestore classique, sans casser l'app.
+let _db;
+try {
+  _db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  });
+} catch (e) {
+  console.warn('[firestore cache] indisponible — mode sans cache', e?.code || e?.message);
+  _db = getFirestore(app);
 }
-// Storage et Realtime Database ne sont PAS initialisés ici : ils ne servent
-// qu'à quelques écrans (lib/storage.js, hooks/usePresence.js) qui les créent
-// eux-mêmes. Les importer ici les ajoutait au téléchargement initial.
+export const db = _db;
+
+export const storage = getStorage(app);
+export const rtdb = getDatabase(app);
 
 // Persist auth across browser sessions / reloads.
 // IMPORTANT : on EXPORTE une promesse `authReady` et on l'ATTEND avant toute
