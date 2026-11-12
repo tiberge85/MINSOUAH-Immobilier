@@ -1,6 +1,6 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, setPersistence, browserLocalPersistence, indexedDBLocalPersistence } from 'firebase/auth';
-import { initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
+import { initializeFirestore, getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getDatabase } from 'firebase/database';
 
@@ -21,34 +21,20 @@ const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 
-// Firestore AVEC CACHE LOCAL PERSISTANT (IndexedDB).
-// Au 1er accès les données viennent du serveur ; ensuite, à chaque visite,
-// elles s'affichent INSTANTANÉMENT depuis le cache local puis se mettent à jour
-// en arrière-plan. persistentMultipleTabManager permet plusieurs onglets ouverts.
-// En cas d'indisponibilité (navigateur restreint, HMR déjà initialisé), on
-// retombe proprement sur une instance Firestore classique, sans casser l'app.
-// experimentalAutoDetectLongPolling : certains réseaux (connexions instables,
-// pare-feu, extensions/bloqueurs, erreurs QUIC) empêchent la connexion temps
-// réel « streaming » de Firestore de s'établir → les données ne se chargent
-// jamais et l'écran reste bloqué. Le long-polling (détecté automatiquement)
-// bascule sur de simples requêtes HTTP qui passent dans ces conditions.
+// Firestore en LONG-POLLING FORCÉ, SANS cache local persistant.
+// • Long-polling forcé : sur certains réseaux (connexions instables, pare-feu,
+//   erreurs QUIC) la connexion temps réel « streaming » de Firestore échoue en
+//   boucle et les données ne se chargent jamais. On force de simples requêtes
+//   HTTP qui passent partout — c'est la config validée qui charge en < 1 s.
+// • Pas de cache IndexedDB : le cache persistant pouvait rester dans un état
+//   corrompu/verrouillé et empêcher Firestore de fonctionner. On privilégie la
+//   fiabilité du chargement à l'affichage instantané depuis le cache.
 let _db;
 try {
-  _db = initializeFirestore(app, {
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-    // Long-polling FORCÉ : sur ce réseau la connexion temps réel « streaming »
-    // de Firestore (WebChannel/QUIC) échoue en boucle (QUIC_PROTOCOL_ERROR) et
-    // les données ne se chargent jamais. On force de simples requêtes HTTP qui
-    // passent partout, au lieu de laisser l'auto-détection tenter le streaming.
-    experimentalForceLongPolling: true,
-  });
+  _db = initializeFirestore(app, { experimentalForceLongPolling: true });
 } catch (e) {
-  console.warn('[firestore init] repli sans cache', e?.code || e?.message);
-  try {
-    _db = initializeFirestore(app, { experimentalForceLongPolling: true });
-  } catch {
-    _db = getFirestore(app);
-  }
+  console.warn('[firestore init]', e?.code || e?.message);
+  _db = getFirestore(app);
 }
 export const db = _db;
 

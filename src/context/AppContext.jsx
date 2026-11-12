@@ -325,7 +325,13 @@ export function AppProvider({ children }) {
     if (pending.length === 0) {
       setState((s) => (s._bootstrapping ? { ...s, _bootstrapping: false } : s));
     } else {
-      setState((s) => ({ ...s, _bootPending: pending }));
+      // Évite une tempête de re-rendus : on ne met à jour le diagnostic que si la
+      // liste « en attente » a réellement changé.
+      setState((s) => {
+        const prev = s._bootPending || [];
+        if (prev.length === pending.length && prev.every((c, i) => c === pending[i])) return s;
+        return { ...s, _bootPending: pending };
+      });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
