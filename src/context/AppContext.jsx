@@ -582,38 +582,52 @@ export function AppProvider({ children }) {
 
       sub('tenantPortals'); // publicly readable portal tokens
 
-      // Listings + client profiles (marketplace — no org filter)
-      sub('listings');
-      sub('listingClients');
-      sub('listingUnlocks');
+      // Les collections ci-dessous sont réservées au PERSONNEL (staff) par les
+      // règles. Pour un locataire ou une session anonyme, elles sont REFUSÉES et,
+      // avec le long-polling, l'abonnement refusé RÉ-ESSAIE EN BOUCLE → tempête de
+      // requêtes qui sature la connexion et empêche le reste de charger. On ne les
+      // abonne donc QUE pour une session staff.
+      const STAFF_ROLES = ['SUPER_ADMIN', 'ORGANIZATION_ADMIN', 'AGENT', 'ADMIN', 'MANAGER', 'CONCIERGE', 'TECHNICIAN', 'ACCOUNTANT'];
+      const isStaffSession = !!sessionUser && STAFF_ROLES.includes(sessionUser.role);
 
-      // Activity log
-      unsubs.push(
-        onSnapshot(wsCol('activityLog'),
-          (snap) => setState((s) => ({
-            ...s,
-            activityLog: snap.docs
-              .map((d) => d.data())
-              .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
-              .slice(0, 500),
-          })),
-          () => {}
-        )
-      );
+      if (isStaffSession) {
+        // Listings + client profiles (marketplace — no org filter)
+        sub('listings');
+        sub('listingClients');
+        sub('listingUnlocks');
 
-      // Settings docs — org settings are per-org (settings/{orgId})
-      const orgSettingsDocRef = sessionOrgId
-        ? wsDoc('settings', sessionOrgId)
-        : wsDoc('settings', 'org'); // SUPER_ADMIN fallback
+        // Activity log
+        unsubs.push(
+          onSnapshot(wsCol('activityLog'),
+            (snap) => setState((s) => ({
+              ...s,
+              activityLog: snap.docs
+                .map((d) => d.data())
+                .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+                .slice(0, 500),
+            })),
+            () => {}
+          )
+        );
+
+        // Settings docs (réservés au staff) — org settings par agence.
+        const orgSettingsDocRef = sessionOrgId
+          ? wsDoc('settings', sessionOrgId)
+          : wsDoc('settings', 'org'); // SUPER_ADMIN fallback
+        unsubs.push(
+          onSnapshot(orgSettingsDocRef,
+            (snap) => { if (snap.exists()) setState((s) => ({ ...s, orgSettings: { ...DEFAULT_ORG, ...snap.data() } })); },
+            () => {}
+          ),
+          onSnapshot(wsDoc('settings', 'system'),
+            (snap) => { if (snap.exists()) setState((s) => ({ ...s, systemSettings: { ...DEFAULT_SYSTEM, ...snap.data() } })); },
+            () => {}
+          )
+        );
+      }
+
+      // publicSettings/marketplace est lisible publiquement.
       unsubs.push(
-        onSnapshot(orgSettingsDocRef,
-          (snap) => { if (snap.exists()) setState((s) => ({ ...s, orgSettings: { ...DEFAULT_ORG, ...snap.data() } })); },
-          () => {}
-        ),
-        onSnapshot(wsDoc('settings', 'system'),
-          (snap) => { if (snap.exists()) setState((s) => ({ ...s, systemSettings: { ...DEFAULT_SYSTEM, ...snap.data() } })); },
-          () => {}
-        ),
         onSnapshot(wsDoc('publicSettings', 'marketplace'),
           (snap) => { if (snap.exists()) setState((s) => ({ ...s, publicMarketplace: snap.data() })); },
           () => {}
