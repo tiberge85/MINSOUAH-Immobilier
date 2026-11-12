@@ -1,4 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 import { loadXLSX } from '../lib/lazyXlsx';
 import { QRCodeSVG } from 'qrcode.react';
 import { useApp } from '../context/AppContext';
@@ -291,19 +293,28 @@ export default function Rental() {
   };
 
   // Créer l'accès portail d'un locataire directement depuis sa fiche.
-  const createTenantAccess = (t) => {
+  const createTenantAccess = async (t) => {
     if (!t.email || !t.email.trim()) {
       alert(`Ajoutez d'abord un e-mail à ${t.name} (bouton Modifier) pour pouvoir créer son accès au portail.`);
       return;
     }
-    const existing = (state.users || []).find(u => (u.email || '').toLowerCase() === t.email.trim().toLowerCase());
+    const emailLow = t.email.trim().toLowerCase();
+    const existing = (state.users || []).find(u => (u.email || '').toLowerCase() === emailLow);
     if (existing) {
-      // L'accès existe déjà → proposer de RÉINITIALISER le mot de passe temporaire
-      // (utile quand le locataire n'arrive pas à se connecter / a oublié).
-      if (!window.confirm(`Un accès existe déjà pour ${t.email}.\n\nRéinitialiser son mot de passe temporaire ?`)) return;
-      const tmpPw = genTmpPw();
-      dispatch({ type: 'UPDATE_USER', payload: { id: existing.id, password: tmpPw, firstLogin: true, failedAttempts: 0, lockedUntil: null, personId: existing.personId ?? t.id } });
-      alert(`Mot de passe réinitialisé pour ${t.name}\n\nEmail : ${t.email}\nNouveau mot de passe temporaire : ${tmpPw}\n\nCommuniquez-le au locataire (il choisira son mot de passe à la connexion).`);
+      // L'accès existe déjà → RÉINITIALISATION fiable via l'e-mail de
+      // réinitialisation Firebase. Ça resynchronise le mot de passe côté Firebase
+      // (source de la session) et évite le blocage « reconnectez-vous ».
+      if (!window.confirm(`Un accès existe déjà pour ${t.email}.\n\nEnvoyer un e-mail de réinitialisation du mot de passe au locataire ?`)) return;
+      try {
+        await sendPasswordResetEmail(auth, emailLow);
+        dispatch({ type: 'UPDATE_USER', payload: { id: existing.id, firstLogin: false, failedAttempts: 0, lockedUntil: null, personId: existing.personId ?? t.id } });
+        alert(`E-mail de réinitialisation envoyé à ${t.email}.\n\nLe locataire ouvre le lien reçu, choisit son mot de passe, puis se connecte avec. (Pensez aux spams.)`);
+      } catch (e) {
+        // Pas encore de compte Firebase (jamais connecté) → mot de passe temporaire.
+        const tmpPw = genTmpPw();
+        dispatch({ type: 'UPDATE_USER', payload: { id: existing.id, password: tmpPw, firstLogin: true, failedAttempts: 0, lockedUntil: null, personId: existing.personId ?? t.id } });
+        alert(`Nouveau mot de passe temporaire pour ${t.name} :\n\n${tmpPw}\n\nCommuniquez-le au locataire (il choisira son mot de passe à la connexion).\n\n(Détail : ${e?.code || e?.message || 'reset email indisponible'})`);
+      }
       return;
     }
     offerCreateAccount(t.name, t.email, 'TENANT', t.id);
