@@ -621,7 +621,11 @@ export function AppProvider({ children }) {
       unsubAuth();
       unsubFirestoreRef.current.forEach((u) => u());
     };
-  }, [checkBootstrap]);
+    // Re-déclenché quand l'utilisateur CONNECTÉ change (connexion / déconnexion /
+    // changement de compte). Indispensable pour un login locataire en session
+    // anonyme : sans ça, les abonnements ouverts au démarrage (sans session) ne se
+    // rouvraient jamais et ses données ne se chargeaient pas.
+  }, [checkBootstrap, state.currentUser?.id]);
 
   // ── 5. Seed — only ensure SUPER_ADMIN account exists ─────────────────────
   // Organizations and licenses are NEVER auto-created — the Super Admin creates
