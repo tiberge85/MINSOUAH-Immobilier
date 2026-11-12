@@ -9,14 +9,12 @@ import TenantDocuments from '../components/TenantDocuments';
 import TenantFinancialStatement from '../components/TenantFinancialStatement';
 import { openContractReport } from '../lib/contractReport';
 import { can } from '../lib/permissions';
-import { randomPassword } from '../lib/authAccounts';
-import { formatFCFA } from '../lib/format';
-import { confirmDialog } from '../context/ToastContext';
 
 const TABS = ['Contrats', 'Locataires', 'Anciens locataires', 'Propriétaires'];
 const CONTRACT_STATUSES = ['Tous', 'Actif', 'Expirant', 'Brouillon', 'Résilié'];
 const COLORS = ['bg-primary-container text-on-primary-container', 'bg-secondary-container text-on-secondary-container', 'bg-tertiary-container text-on-tertiary-container', 'bg-error-container text-on-error-container'];
-const fmt = formatFCFA;
+const fmt = (n) => Number(n || 0).toLocaleString('fr-CI') + ' FCFA';
+
 const STATUS_BADGE = {
   Actif:    'bg-green-100 text-green-800',
   Expirant: 'bg-amber-100 text-amber-800',
@@ -185,8 +183,8 @@ export default function Rental() {
     setTimeout(() => { sigBailleurRef.current?.clear(); sigPreneurRef.current?.clear(); }, 50);
   };
   const openEditContract = (c) => { setCForm({ ...c, rent: String(c.rent) }); setModal('contract'); setTarget(c); setStep(1); };
-  const endContract = async (c) => {
-    if (!await confirmDialog(`Mettre fin au contrat de ${c.tenant} (${c.propertyName}) ?\n\n• Le contrat passe en « Résilié »\n• Le bien repasse « Libre »\n• Le locataire n'est plus compté dans les loyers à encaisser`)) return;
+  const endContract = (c) => {
+    if (!window.confirm(`Mettre fin au contrat de ${c.tenant} (${c.propertyName}) ?\n\n• Le contrat passe en « Résilié »\n• Le bien repasse « Libre »\n• Le locataire n'est plus compté dans les loyers à encaisser`)) return;
     const today = new Date().toISOString().slice(0, 10);
     dispatch({ type: 'UPDATE_CONTRACT', payload: { ...c, status: 'Résilié', endDate: c.endDate || today } });
     const base = normN((c.propertyName || '').split(' — ')[0]);
@@ -228,7 +226,7 @@ export default function Rental() {
   const openEditOwner = (o) => { setOForm({ propertyIds: [], ...o }); setModal('owner'); setTarget(o); };
 
   // ── Sauvegardes ────────────────────────────────────────────────────────────
-  const saveContract = async () => {
+  const saveContract = () => {
     const prop = properties.find(p => p.id === cForm.propertyId) ||
                  properties.find(p => p.name?.trim().toLowerCase() === cForm.propertyName?.trim().toLowerCase());
     const sigB = sigBailleurRef.current?.getDataURL() || cForm.sigBailleur || null;
@@ -252,7 +250,7 @@ export default function Rental() {
         ? contracts.find(c => isActC(c) && normN(c.propertyName || '') === normPayload)
         : null;
       if (conflict) {
-        const ok = await confirmDialog(
+        const ok = window.confirm(
           `Ce bien est déjà loué par ${conflict.tenant} (contrat ${conflict.status}).\n\nVoulez-vous quand même créer un nouveau contrat ?`
         );
         if (!ok) return;
@@ -263,12 +261,22 @@ export default function Rental() {
     setModal(null);
   };
 
+  // Mot de passe temporaire FACILE à taper : minuscules + chiffres, sans
+  // caractères ambigus (ni majuscule, ni l/o/0/1), pour éviter les erreurs de
+  // saisie côté locataire (ex. le « B » majuscule mal recopié).
+  const genTmpPw = () => {
+    const chars = 'abcdefghijkmnpqrstuvwxyz23456789';
+    let s = '';
+    for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    return 'ms' + s; // ex. « msa3k9zq »
+  };
+
   const offerCreateAccount = (name, email, role, personId = null) => {
     if (!email || !email.trim()) return;
     const emailLow = email.trim().toLowerCase();
     const alreadyExists = (state.users || []).some(u => u.email.toLowerCase() === emailLow);
     if (alreadyExists) return;
-    const tmpPw = randomPassword(10);
+    const tmpPw = genTmpPw();
     setCreateAccountPrompt({ name, email: emailLow, role, tmpPw, personId });
   };
 
@@ -277,7 +285,7 @@ export default function Rental() {
     const { name, email, role, tmpPw, personId } = createAccountPrompt;
     const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     const colorMap = { TENANT: 'bg-secondary-container text-on-secondary-container', OWNER: 'bg-tertiary-container text-on-tertiary-container' };
-    dispatch({ type: 'ADD_USER', payload: { name, email, plainPassword: tmpPw, role, initials, color: colorMap[role] || 'bg-primary-container text-on-primary-container', firstLogin: true, personId: personId ?? null } });
+    dispatch({ type: 'ADD_USER', payload: { name, email, password: tmpPw, role, initials, color: colorMap[role] || 'bg-primary-container text-on-primary-container', firstLogin: true, personId: personId ?? null } });
     alert(`Compte créé pour ${name}\n\nEmail : ${email}\nMot de passe temporaire : ${tmpPw}\n\nCommuniquez ces identifiants à l'utilisateur.`);
     setCreateAccountPrompt(null);
   };
@@ -288,9 +296,14 @@ export default function Rental() {
       alert(`Ajoutez d'abord un e-mail à ${t.name} (bouton Modifier) pour pouvoir créer son accès au portail.`);
       return;
     }
-    const exists = (state.users || []).some(u => (u.email || '').toLowerCase() === t.email.trim().toLowerCase());
-    if (exists) {
-      alert(`Un accès existe déjà pour ${t.email}.\nRetrouvez-le dans Paramètres → Utilisateurs.`);
+    const existing = (state.users || []).find(u => (u.email || '').toLowerCase() === t.email.trim().toLowerCase());
+    if (existing) {
+      // L'accès existe déjà → proposer de RÉINITIALISER le mot de passe temporaire
+      // (utile quand le locataire n'arrive pas à se connecter / a oublié).
+      if (!window.confirm(`Un accès existe déjà pour ${t.email}.\n\nRéinitialiser son mot de passe temporaire ?`)) return;
+      const tmpPw = genTmpPw();
+      dispatch({ type: 'UPDATE_USER', payload: { id: existing.id, password: tmpPw, firstLogin: true, failedAttempts: 0, lockedUntil: null, personId: existing.personId ?? t.id } });
+      alert(`Mot de passe réinitialisé pour ${t.name}\n\nEmail : ${t.email}\nNouveau mot de passe temporaire : ${tmpPw}\n\nCommuniquez-le au locataire (il choisira son mot de passe à la connexion).`);
       return;
     }
     offerCreateAccount(t.name, t.email, 'TENANT', t.id);
@@ -716,7 +729,7 @@ ${sectionsHtml}
             </span>
           )}
           {!former && t.paymentStartDate && (
-            <span className="flex items-center gap-1.5 text-amber-700 font-medium">
+            <span className="flex items-center gap-1.5 text-amber-600 font-medium">
               <Icon name="event_upcoming" size={12} />1er loyer : {new Date(t.paymentStartDate).toLocaleDateString('fr-CI')}
             </span>
           )}
@@ -989,7 +1002,7 @@ ${sectionsHtml}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="bg-green-50 border border-green-200 rounded-2xl p-4 text-center">
                       <p className="text-3xl font-black text-green-700">{importResult.ok.length}</p>
-                      <p className="text-xs text-green-700 font-semibold mt-1">Importé(s) avec succès</p>
+                      <p className="text-xs text-green-600 font-semibold mt-1">Importé(s) avec succès</p>
                     </div>
                     <div className={`${importResult.errors.length > 0 ? 'bg-red-50 border-red-200' : 'bg-surface-container border-outline-variant/20'} border rounded-2xl p-4 text-center`}>
                       <p className={`text-3xl font-black ${importResult.errors.length > 0 ? 'text-red-600' : 'text-on-surface-variant'}`}>{importResult.errors.length}</p>
@@ -1115,11 +1128,11 @@ ${sectionsHtml}
                   const ct = tenants.find(t => normN(t.name) === normN(activeCont.tenant));
                   return (
                     <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-start gap-2">
-                      <Icon name="person" size={14} className="text-amber-700 mt-0.5 flex-shrink-0" />
+                      <Icon name="person" size={14} className="text-amber-600 mt-0.5 flex-shrink-0" />
                       <div className="text-xs">
                         <p className="font-bold text-amber-800">{activeCont.tenant}</p>
                         {ct?.phone && <p className="text-amber-700">{ct.phone}</p>}
-                        {ct?.email && <p className="text-amber-700">{ct.email}</p>}
+                        {ct?.email && <p className="text-amber-600">{ct.email}</p>}
                         <p className="text-amber-500 mt-0.5">Contrat {activeCont.status} — fin : {activeCont.endDate || 'Indéterminée'}</p>
                       </div>
                     </div>
@@ -1308,7 +1321,7 @@ ${sectionsHtml}
               </div>
               <div>
                 <label className="form-label flex items-center gap-1.5">
-                  <Icon name="event_upcoming" size={13} className="text-amber-700" />
+                  <Icon name="event_upcoming" size={13} className="text-amber-600" />
                   1er paiement de loyer
                 </label>
                 <input type="date" value={tForm.paymentStartDate || ''} onChange={e => setTForm(f => ({ ...f, paymentStartDate: e.target.value }))} className="form-input" />
