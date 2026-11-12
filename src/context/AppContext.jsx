@@ -499,11 +499,45 @@ export function AppProvider({ children }) {
       sub('organizations');
       sub('licenses');
       sub('users');
-      // entity collections: filtered by orgId for non-admin users
-      ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
-        'tickets', 'inspections', 'conversations', 'monthClosures',
-        'insurances', 'budgets', 'referrers', 'prestataires', 'bordereaux', 'commissionRates',
-        'tenantDocuments', 'reports'].forEach(c => sub(c, true));
+
+      const markLoaded = (c) => { if (!loadedRef.current.has(c)) { loadedRef.current.add(c); checkBootstrap(); } };
+      const isTenant = sessionUser?.role === 'TENANT';
+      const tenantPid = sessionUser?.personId != null ? String(sessionUser.personId) : '';
+
+      if (isTenant && tenantPid) {
+        // ── PORTAIL LOCATAIRE : lire UNIQUEMENT ses propres documents. ──
+        // tenantId est tantôt un nombre, tantôt une chaîne → on interroge les deux.
+        const pidVals = /^\d+$/.test(tenantPid) ? [tenantPid, Number(tenantPid)] : [tenantPid];
+        const subOwn = (colName) => {
+          unsubs.push(onSnapshot(
+            query(wsCol(colName), where('tenantId', 'in', pidVals)),
+            (snap) => { setState((s) => ({ ...s, [colName]: snap.docs.map((d) => d.data()) })); markLoaded(colName); },
+            (err) => { console.warn(`[portail locataire:${colName}]`, err?.code || err?.message); markLoaded(colName); }
+          ));
+        };
+        // Sa fiche locataire (id du document = personId).
+        unsubs.push(onSnapshot(
+          wsDoc('tenants', tenantPid),
+          (snap) => { setState((s) => ({ ...s, tenants: snap.exists() ? [snap.data()] : [] })); markLoaded('tenants'); },
+          (err) => { console.warn('[portail locataire:tenants]', err?.code || err?.message); markLoaded('tenants'); }
+        ));
+        subOwn('contracts');
+        subOwn('payments');
+        subOwn('tickets');
+        subOwn('inspections');
+        subOwn('tenantDocuments');
+        // Collections non pertinentes pour un locataire : marquées « chargées »
+        // (vides) pour débloquer le démarrage sans tenter de lectures refusées.
+        ['properties', 'owners', 'transactions', 'conversations', 'monthClosures',
+          'insurances', 'budgets', 'referrers', 'prestataires', 'bordereaux',
+          'commissionRates', 'reports'].forEach(markLoaded);
+      } else {
+        // entity collections: filtered by orgId for non-admin staff users
+        ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
+          'tickets', 'inspections', 'conversations', 'monthClosures',
+          'insurances', 'budgets', 'referrers', 'prestataires', 'bordereaux', 'commissionRates',
+          'tenantDocuments', 'reports'].forEach(c => sub(c, true));
+      }
 
       sub('tenantPortals'); // publicly readable portal tokens
 
