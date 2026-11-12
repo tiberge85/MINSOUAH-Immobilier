@@ -32,11 +32,24 @@ export const auth = getAuth(app);
 let _db;
 try {
   _db = initializeFirestore(app, { experimentalForceLongPolling: true });
+  console.log('[MINSOUAH][firestore] initializeFirestore OK, forceLongPolling demandé');
 } catch (e) {
-  console.warn('[firestore init]', e?.code || e?.message);
+  console.warn('[MINSOUAH][firestore init] FALLBACK getFirestore (QUIC)', e?.code || e?.message);
   _db = getFirestore(app);
 }
 export const db = _db;
+// Diagnostic réseau (temporaire) : expose la config réelle + teste une lecture.
+try {
+  if (typeof window !== 'undefined') {
+    window.__MDB = _db;
+    const s = _db._settings || {};
+    console.log('[MINSOUAH][firestore] settings:', JSON.stringify({
+      forceLongPolling: s.experimentalForceLongPolling,
+      autoDetect: s.experimentalAutoDetectLongPolling,
+      host: s.host, hasLocalCache: !!s.localCache,
+    }));
+  }
+} catch { /* ignore */ }
 
 export const storage = getStorage(app);
 export const rtdb = getDatabase(app);
