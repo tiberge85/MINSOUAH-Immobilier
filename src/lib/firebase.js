@@ -27,14 +27,24 @@ export const auth = getAuth(app);
 // en arrière-plan. persistentMultipleTabManager permet plusieurs onglets ouverts.
 // En cas d'indisponibilité (navigateur restreint, HMR déjà initialisé), on
 // retombe proprement sur une instance Firestore classique, sans casser l'app.
+// experimentalAutoDetectLongPolling : certains réseaux (connexions instables,
+// pare-feu, extensions/bloqueurs, erreurs QUIC) empêchent la connexion temps
+// réel « streaming » de Firestore de s'établir → les données ne se chargent
+// jamais et l'écran reste bloqué. Le long-polling (détecté automatiquement)
+// bascule sur de simples requêtes HTTP qui passent dans ces conditions.
 let _db;
 try {
   _db = initializeFirestore(app, {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    experimentalAutoDetectLongPolling: true,
   });
 } catch (e) {
-  console.warn('[firestore cache] indisponible — mode sans cache', e?.code || e?.message);
-  _db = getFirestore(app);
+  console.warn('[firestore init] repli sans cache', e?.code || e?.message);
+  try {
+    _db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  } catch {
+    _db = getFirestore(app);
+  }
 }
 export const db = _db;
 
