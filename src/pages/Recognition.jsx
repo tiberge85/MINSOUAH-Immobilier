@@ -113,7 +113,10 @@ export default function Recognition() {
       const batch = writeBatch(db);
       items.forEach(a => {
         batch.delete(doc(db, 'workspaces', WS, 'tenantAwards', a.id));
-        if (a.certificate_number) batch.delete(doc(db, 'workspaces', WS, 'certificateVerify', a.certificate_number));
+        // La fiche de vérification publique n'existe QUE pour les distinctions
+        // publiées. Supprimer une fiche inexistante ferait échouer tout le lot
+        // (la règle refuse la suppression d'un document absent).
+        if (a.status === 'publiee' && a.certificate_number) batch.delete(doc(db, 'workspaces', WS, 'certificateVerify', a.certificate_number));
       });
       batch.delete(doc(db, 'workspaces', WS, 'awardCampaigns', campaignId));
       await batch.commit();
