@@ -511,15 +511,25 @@ export function AppProvider({ children }) {
 
       const markLoaded = (c) => { if (!loadedRef.current.has(c)) { loadedRef.current.add(c); checkBootstrap(); } };
 
+      // DÉMARRAGE RAPIDE ET FIABLE : on charge les collections ESSENTIELLES par
+      // une LECTURE UNIQUE (getDocs) plutôt qu'en attendant le canal temps réel
+      // (onSnapshot) — ce dernier peut mettre longtemps à se connecter sur un
+      // réseau instable et bloquer tout l'écran de chargement. La lecture unique
+      // répond en < 1 s ; les abonnements temps réel (ci-dessous) prennent ensuite
+      // le relais pour les mises à jour en direct.
+      ESSENTIAL.forEach((c) => {
+        getDocs(wsCol(c))
+          .then((snap) => { if (!cancelled) setState((s) => ({ ...s, [c]: snap.docs.map((d) => d.data()) })); })
+          .catch(() => { /* refusé (anonyme/règles) : on débloque quand même */ })
+          .finally(() => { if (!cancelled) markLoaded(c); });
+      });
+
       // organizations + licenses: lecture NON-anonyme requise par les règles.
-      // Pour une session anonyme (ex. locataire connecté via le mot de passe local),
-      // ces lectures sont refusées et NE « résolvent » jamais → elles bloquaient le
-      // démarrage. On les marque « chargées » tout de suite dans ce cas.
+      // Pour une session anonyme, ces lectures sont refusées → la lecture unique
+      // ci-dessus les débloque déjà. On n'ouvre l'abonnement temps réel que pour
+      // une vraie session.
       sub('users');
-      if (user?.isAnonymous) {
-        markLoaded('organizations');
-        markLoaded('licenses');
-      } else {
+      if (!user?.isAnonymous) {
         sub('organizations');
         sub('licenses');
       }
