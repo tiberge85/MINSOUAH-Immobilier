@@ -503,12 +503,21 @@ export function AppProvider({ children }) {
         );
       };
 
-      // organizations + licenses: always unfiltered (super admin sees all)
-      sub('organizations');
-      sub('licenses');
-      sub('users');
-
       const markLoaded = (c) => { if (!loadedRef.current.has(c)) { loadedRef.current.add(c); checkBootstrap(); } };
+
+      // organizations + licenses: lecture NON-anonyme requise par les règles.
+      // Pour une session anonyme (ex. locataire connecté via le mot de passe local),
+      // ces lectures sont refusées et NE « résolvent » jamais → elles bloquaient le
+      // démarrage. On les marque « chargées » tout de suite dans ce cas.
+      sub('users');
+      if (user?.isAnonymous) {
+        markLoaded('organizations');
+        markLoaded('licenses');
+      } else {
+        sub('organizations');
+        sub('licenses');
+      }
+
       const isTenant = sessionUser?.role === 'TENANT';
       const tenantPid = sessionUser?.personId != null ? String(sessionUser.personId) : '';
 
