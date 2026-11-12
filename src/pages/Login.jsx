@@ -92,9 +92,15 @@ export default function Login() {
   useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
 
   const completeLogin = async (user, firebaseUid) => {
-    if (firebaseUid) {
+    // On enregistre la correspondance uid → compte pour la session COURANTE.
+    // Si la connexion s'est faite via le hash local (pas de vraie session
+    // Firebase), on utilise l'uid de la session anonyme : les règles Firestore
+    // reconnaissent alors le locataire (lecture de ses distinctions, changement
+    // de mot de passe à la 1ʳᵉ connexion…), sans dépendre d'un compte Firebase.
+    const uid = firebaseUid || auth.currentUser?.uid || null;
+    if (uid) {
       try {
-        const ubRef = doc(db, 'workspaces', WS, 'usersByUid', firebaseUid);
+        const ubRef = doc(db, 'workspaces', WS, 'usersByUid', uid);
         await setDoc(ubRef, {
           userId: String(user.id), orgId: user.orgId || 'default',
           orgIds: (user.orgIds && user.orgIds.length) ? user.orgIds : [user.orgId || 'default'],

@@ -4,8 +4,8 @@ import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 import Icon from '../components/Icon';
 import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
-import { authErrorMessage } from '../lib/authAccounts';
 import { auth } from '../lib/firebase';
+import { hashPwd, verifyPwd } from '../lib/auth';
 
 const WELCOME_GUIDES = {
   ORGANIZATION_ADMIN: {
@@ -194,34 +194,43 @@ export default function ChangePassword() {
       return;
     }
 
+    // Hors 1ʳᵉ connexion : vérifier le mot de passe ACTUEL contre la base de
+    // l'app (source fiable, fonctionne même sans session Firebase).
+    if (!isFirstLogin) {
+      const dbUser = (state.users || []).find(u => u.email === user.email);
+      const okCurrent = await verifyPwd(current, dbUser?.password);
+      if (!okCurrent) { setError('Mot de passe actuel incorrect.'); return; }
+    }
+
     setLoading(true);
-    // Synchroniser AUSSI le mot de passe Firebase Auth avec le nouveau. Sinon
-    // Firebase garde le mot de passe temporaire : à la connexion suivante,
-    // l'utilisateur saisit son nouveau mot de passe, Firebase le refuse, et il
-    // retombe sur l'authentification de secours sans vraie session Firebase.
-    // L'utilisateur vient de se connecter (session récente) donc updatePassword
-    // ne requiert pas de ré-authentification ici.
-    // Firebase Auth est la seule source de vérité : un échec ici est BLOQUANT.
+    const hashedNext = await hashPwd(next);
+
+    // Firebase Auth : on synchronise le mot de passe QUAND une vraie session
+    // existe, mais un échec N'EST PLUS BLOQUANT. La base de l'app est la source
+    // de vérité (la connexion sait vérifier via le hash local), donc un locataire
+    // sans session Firebase peut quand même définir son mot de passe.
     try {
       const fbUser = auth.currentUser;
-      if (!fbUser || fbUser.isAnonymous) throw Object.assign(new Error('no-session'), { code: 'auth/requires-recent-login' });
-      if (!isFirstLogin) {
-        try {
-          await reauthenticateWithCredential(fbUser, EmailAuthProvider.credential(fbUser.email, current));
-        } catch {
-          setError('Mot de passe actuel incorrect.');
-          setLoading(false);
-          return;
+      if (fbUser && !fbUser.isAnonymous) {
+        if (!isFirstLogin) {
+          try { await reauthenticateWithCredential(fbUser, EmailAuthProvider.credential(fbUser.email, current)); } catch { /* non bloquant */ }
         }
+        await updatePassword(fbUser, next);
       }
-      await updatePassword(fbUser, next);
-    } catch (e) {
-      console.warn('[ChangePassword] updatePassword Firebase', e?.code || e?.message);
-      setError(authErrorMessage(e));
+    } catch (err) {
+      console.warn('[ChangePassword] sync Firebase non effectuée', err?.code || err?.message);
+      // non bloquant : on continue avec la base de l'app.
+    }
+
+    // Source de vérité : enregistrement dans la base de l'app.
+    try {
+      await dispatch({ type: 'CHANGE_PASSWORD', payload: { email: user.email, newPassword: hashedNext } });
+    } catch (err) {
+      console.warn('[ChangePassword] enregistrement', err?.code || err?.message);
+      setError('Échec de l\'enregistrement du mot de passe. Vérifiez votre connexion et réessayez.');
       setLoading(false);
       return;
     }
-    dispatch({ type: 'CHANGE_PASSWORD', payload: { email: user.email } });
     toast('Mot de passe modifié avec succès !', 'success');
     const dest =
       user.role === 'TENANT' ? '/portal/tenant' :

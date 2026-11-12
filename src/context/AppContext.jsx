@@ -30,6 +30,18 @@ const SESSION_KEY = 'minsouah_user_v2';
 const wsCol = (name) => collection(db, 'workspaces', WS, name);
 const wsDoc = (col, id) => doc(db, 'workspaces', WS, col, String(id));
 
+// Firestore refuse les valeurs `undefined`. On les retire (en profondeur) avant
+// toute écriture pour éviter « Unsupported field value: undefined ».
+const stripUndefined = (v) => {
+  if (Array.isArray(v)) return v.map(stripUndefined);
+  if (v && typeof v === 'object' && !(v instanceof Date)) {
+    const o = {};
+    for (const k in v) if (v[k] !== undefined) o[k] = stripUndefined(v[k]);
+    return o;
+  }
+  return v;
+};
+
 // Atomic, never-duplicated voucher number: BC-2026-000001 / BP-2026-000001.
 // Uses a per-type-per-year counter doc updated inside a Firestore transaction.
 async function nextBordereauNumber(type, year) {
@@ -839,11 +851,11 @@ export function AppProvider({ children }) {
           const limit = checkLimit(planId, 'Properties', count);
           if (!limit.ok) throw new Error(`Limite atteinte : plan ${limit.plan} autorise ${limit.max} biens maximum.`);
           const id = Date.now();
-          await setDoc(wsDoc('properties', id), { ...payload, id, orgId, createdAt: new Date().toISOString() });
+          await setDoc(wsDoc('properties', id), stripUndefined({ ...payload, id, orgId, createdAt: new Date().toISOString() }));
           break;
         }
         case 'UPDATE_PROPERTY':
-          await setDoc(wsDoc('properties', payload.id), payload);
+          await setDoc(wsDoc('properties', payload.id), stripUndefined(payload));
           break;
         case 'DELETE_PROPERTY':
           await deleteDoc(wsDoc('properties', payload));
@@ -853,13 +865,13 @@ export function AppProvider({ children }) {
         case 'ADD_CONTRACT': {
           const id = Date.now();
           const contract = { ...payload, id, orgId, createdAt: new Date().toISOString() };
-          await setDoc(wsDoc('contracts', id), contract);
+          await setDoc(wsDoc('contracts', id), stripUndefined(contract));
           await pushPropertyStatus(contract, st.properties);
           await pushPropertyTenant(contract, st.properties);
           break;
         }
         case 'UPDATE_CONTRACT': {
-          await setDoc(wsDoc('contracts', payload.id), payload);
+          await setDoc(wsDoc('contracts', payload.id), stripUndefined(payload));
           await pushPropertyStatus(payload, st.properties);
           await pushPropertyTenant(payload, st.properties);
           break;
@@ -882,13 +894,13 @@ export function AppProvider({ children }) {
           if (!limit.ok) throw new Error(`Limite atteinte : plan ${limit.plan} autorise ${limit.max} locataires maximum.`);
           const id = Date.now();
           const newTenant = { ...payload, id, orgId, createdAt: new Date().toISOString() };
-          await setDoc(wsDoc('tenants', id), newTenant);
+          await setDoc(wsDoc('tenants', id), stripUndefined(newTenant));
           if (newTenant.property) await pushTenantPropertyStatus(newTenant.property, st.properties, true);
           break;
         }
         case 'UPDATE_TENANT': {
           const oldTenant = st.tenants.find(t => t.id === payload.id);
-          await setDoc(wsDoc('tenants', payload.id), payload);
+          await setDoc(wsDoc('tenants', payload.id), stripUndefined(payload));
           // If property changed, revert old unit (unless a contract still covers it)
           if (oldTenant?.property && oldTenant.property !== payload.property) {
             const hasActiveContract = st.contracts.some(c =>
@@ -916,11 +928,11 @@ export function AppProvider({ children }) {
         // ── OWNERS ────────────────────────────────────────────────────────────
         case 'ADD_OWNER': {
           const id = Date.now();
-          await setDoc(wsDoc('owners', id), { ...payload, id, orgId, createdAt: new Date().toISOString() });
+          await setDoc(wsDoc('owners', id), stripUndefined({ ...payload, id, orgId, createdAt: new Date().toISOString() }));
           break;
         }
         case 'UPDATE_OWNER':
-          await setDoc(wsDoc('owners', payload.id), payload);
+          await setDoc(wsDoc('owners', payload.id), stripUndefined(payload));
           break;
         case 'DELETE_OWNER':
           await deleteDoc(wsDoc('owners', payload));
@@ -1533,8 +1545,10 @@ export function AppProvider({ children }) {
           const { email, newPassword } = payload;
           const targetUser = st.users.find((u) => u.email === email);
           if (targetUser) {
+            // Ne jamais écrire un mot de passe « undefined » (Firestore le refuse).
             await updateDoc(wsDoc('users', targetUser.id), {
-              password: newPassword, firstLogin: false, failedAttempts: 0, lockedUntil: null,
+              ...(newPassword !== undefined ? { password: newPassword } : {}),
+              firstLogin: false, failedAttempts: 0, lockedUntil: null,
             });
             // Consume any verified reset-OTP used to authorize this write (no-op otherwise)
             await deleteDoc(wsDoc('otps', targetUser.id)).catch(() => {});
