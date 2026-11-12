@@ -321,8 +321,11 @@ export function AppProvider({ children }) {
   const ESSENTIAL = ['users', 'organizations', 'licenses'];
 
   const checkBootstrap = useCallback(() => {
-    if (ESSENTIAL.every((c) => loadedRef.current.has(c))) {
+    const pending = ESSENTIAL.filter((c) => !loadedRef.current.has(c));
+    if (pending.length === 0) {
       setState((s) => (s._bootstrapping ? { ...s, _bootstrapping: false } : s));
+    } else {
+      setState((s) => ({ ...s, _bootPending: pending }));
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -365,6 +368,11 @@ export function AppProvider({ children }) {
     const openFirestore = async (user) => {
       const unsubs = [];
       let healed = false;
+      // Diagnostic : type de session Firebase courante (aide au débogage portail).
+      try {
+        const prov = !user ? 'none' : (user.isAnonymous ? 'anonyme' : (user.email ? 'email' : 'autre'));
+        setState((s) => (s._authProvider !== prov ? { ...s, _authProvider: prov } : s));
+      } catch { /* ignore */ }
 
       // Derive orgId from session for non-admin filtering
       let sessionOrgId = null;
