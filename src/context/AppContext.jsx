@@ -519,16 +519,15 @@ export function AppProvider({ children }) {
       // le relais pour les mises à jour en direct.
       ESSENTIAL.forEach((c) => {
         getDocs(wsCol(c))
-          .then((snap) => { if (!cancelled) setState((s) => ({ ...s, [c]: snap.docs.map((d) => d.data()) })); })
+          .then((snap) => { setState((s) => ({ ...s, [c]: snap.docs.map((d) => d.data()) })); })
           .catch(() => { /* refusé (anonyme/règles) : on débloque quand même */ })
-          .finally(() => { if (!cancelled) markLoaded(c); });
+          .finally(() => { markLoaded(c); }); // marquer chargé TOUJOURS (idempotent)
       });
 
-      // organizations + licenses: lecture NON-anonyme requise par les règles.
-      // Pour une session anonyme, ces lectures sont refusées → la lecture unique
-      // ci-dessus les débloque déjà. On n'ouvre l'abonnement temps réel que pour
-      // une vraie session.
-      sub('users');
+      // users : chargé par la lecture unique ci-dessus. On N'OUVRE PAS d'abonnement
+      // temps réel pour users (il saturait la connexion sur réseau instable).
+      // organizations + licenses : abonnement temps réel seulement pour une vraie
+      // session (lecture refusée en anonyme — déjà débloquée par la lecture unique).
       if (!user?.isAnonymous) {
         sub('organizations');
         sub('licenses');
@@ -542,13 +541,22 @@ export function AppProvider({ children }) {
         // tenantId est tantôt un nombre, tantôt une chaîne → on interroge les deux.
         const pidVals = /^\d+$/.test(tenantPid) ? [tenantPid, Number(tenantPid)] : [tenantPid];
         const subOwn = (colName) => {
-          unsubs.push(onSnapshot(
-            query(wsCol(colName), where('tenantId', 'in', pidVals)),
+          const q = query(wsCol(colName), where('tenantId', 'in', pidVals));
+          // Lecture unique d'abord (fiable sur réseau instable), puis abonnement.
+          getDocs(q)
+            .then((snap) => { setState((s) => ({ ...s, [colName]: snap.docs.map((d) => d.data()) })); })
+            .catch(() => {})
+            .finally(() => markLoaded(colName));
+          unsubs.push(onSnapshot(q,
             (snap) => { setState((s) => ({ ...s, [colName]: snap.docs.map((d) => d.data()) })); markLoaded(colName); },
             (err) => { console.warn(`[portail locataire:${colName}]`, err?.code || err?.message); markLoaded(colName); }
           ));
         };
-        // Sa fiche locataire (id du document = personId).
+        // Sa fiche locataire (id du document = personId) : lecture unique + abonnement.
+        getDocs(query(wsCol('tenants'), where('id', 'in', pidVals)))
+          .then((snap) => { if (!snap.empty) setState((s) => ({ ...s, tenants: snap.docs.map((d) => d.data()) })); })
+          .catch(() => {})
+          .finally(() => markLoaded('tenants'));
         unsubs.push(onSnapshot(
           wsDoc('tenants', tenantPid),
           (snap) => { setState((s) => ({ ...s, tenants: snap.exists() ? [snap.data()] : [] })); markLoaded('tenants'); },
