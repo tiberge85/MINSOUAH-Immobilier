@@ -295,9 +295,15 @@ export default function Login() {
           dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: emailLow, success: false } });
           const attempts = (user.failedAttempts || 0) + 1;
           await logSec({ action: SEC.LOGIN_FAIL, userId: user.id, userEmail: emailLow, role: user.role, details: `Attempt ${attempts}` });
+          // Diagnostic SÛR (ne révèle jamais le mot de passe) : forme du mot de
+          // passe stocké + code Firebase, pour comprendre un échec persistant.
+          const pwShape = user.password
+            ? (String(user.password).startsWith('sha256:') ? 'hash' : `clair(${String(user.password).length})`)
+            : 'vide';
+          const dbg = `[pw:${pwShape} saisi:${(password || '').length} fb:${fbErr?.code || '?'} org:${user.orgId || '?'}]`;
           setError(attempts >= 5
-            ? 'Compte bloqué pour 15 minutes après 5 tentatives échouées.'
-            : `Mot de passe incorrect. ${5 - attempts} tentative(s) restante(s).`);
+            ? `Compte bloqué 15 min après 5 tentatives. ${dbg}`
+            : `Mot de passe incorrect. ${5 - attempts} tentative(s). ${dbg}`);
           return;
         }
         // Hash verified — ensure a Firebase Auth account exists for this password
