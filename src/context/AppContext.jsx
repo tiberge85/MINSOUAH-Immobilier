@@ -518,10 +518,13 @@ export function AppProvider({ children }) {
       // répond en < 1 s ; les abonnements temps réel (ci-dessous) prennent ensuite
       // le relais pour les mises à jour en direct.
       ESSENTIAL.forEach((c) => {
+        // On DÉBLOQUE le démarrage IMMÉDIATEMENT (markLoaded synchrone) : l'app
+        // s'affiche tout de suite et les données arrivent ensuite. Ça évite que
+        // l'écran reste bloqué si une lecture traîne sur un réseau instable.
+        markLoaded(c);
         getDocs(wsCol(c))
           .then((snap) => { setState((s) => ({ ...s, [c]: snap.docs.map((d) => d.data()) })); })
-          .catch(() => { /* refusé (anonyme/règles) : on débloque quand même */ })
-          .finally(() => { markLoaded(c); }); // marquer chargé TOUJOURS (idempotent)
+          .catch(() => { /* refusé (anonyme/règles) : ignoré */ });
       });
 
       // users : chargé par la lecture unique ci-dessus. On N'OUVRE PAS d'abonnement
