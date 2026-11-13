@@ -144,9 +144,14 @@ export default function Settings() {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2800); };
 
-  const save = (type, data) => {
-    dispatch({ type: 'UPDATE_SETTINGS', payload: { type, data } });
-    showToast('Modifications enregistrées');
+  const save = async (type, data) => {
+    try {
+      await dispatch({ type: 'UPDATE_SETTINGS', payload: { type, data } });
+      showToast('Modifications enregistrées');
+    } catch (e) {
+      console.warn('[Settings save]', e?.code || e?.message);
+      showToast("Échec de l'enregistrement. Vérifiez votre connexion puis réessayez.");
+    }
   };
 
   /* ── Avatar ── */

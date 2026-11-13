@@ -1528,6 +1528,12 @@ export function AppProvider({ children }) {
         case 'UPDATE_TICKET':
           await setDoc(wsDoc('tickets', payload.id), payload);
           break;
+        // Mise à jour CIBLÉE de quelques champs (fusion). Utilisé par le locataire
+        // pour ne modifier QUE sa disponibilité / son avis sans écraser le reste
+        // (les règles n'autorisent que ces clés pour un locataire).
+        case 'UPDATE_TICKET_FIELDS':
+          await updateDoc(wsDoc('tickets', payload.id), payload.fields);
+          break;
         case 'DELETE_TICKET':
           await deleteDoc(wsDoc('tickets', payload));
           break;

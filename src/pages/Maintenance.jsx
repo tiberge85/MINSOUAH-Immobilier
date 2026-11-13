@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
@@ -46,6 +46,13 @@ export default function Maintenance() {
   const [assignModal, setAssignModal] = useState(null);
   const [technicianName, setTechnicianName] = useState('');
   const [commentText, setCommentText] = useState('');
+  // Workflow d'intervention (charge, technicien, clôture) — synchronisé à l'ouverture.
+  const [chargeTech, setChargeTech] = useState({ name: '', phone: '' });
+  const [closeNote, setCloseNote] = useState('');
+  useEffect(() => {
+    setChargeTech({ name: detailTicket?.technician?.name || '', phone: detailTicket?.technician?.phone || '' });
+    setCloseNote(detailTicket?.closingNote || '');
+  }, [detailTicket?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [form, setForm] = useState(newTicketForm0);
 
   const filtered = tickets.filter((t) => {
@@ -144,6 +151,23 @@ export default function Maintenance() {
     ? (state.ticketComments || []).filter(c => String(c.ticketId) === String(detailTicket.id))
     : []
   ).sort((a, b) => (a.at || '').localeCompare(b.at || ''));
+
+  // Mise à jour du ticket ouvert (met aussi à jour la vue modale localement).
+  const updTicket = (patch) => {
+    if (!detailTicket) return;
+    const next = { ...detailTicket, ...patch };
+    dispatch({ type: 'UPDATE_TICKET', payload: next });
+    setDetailTicket(next);
+  };
+  const assignTechnician = () => {
+    if (!chargeTech.name.trim()) return;
+    updTicket({
+      technician: { name: chargeTech.name.trim(), phone: chargeTech.phone.trim() },
+      assignedTo: chargeTech.name.trim(),
+      status: detailTicket.status === 'En attente' ? 'En cours' : detailTicket.status,
+    });
+  };
+  const closeTicket = () => updTicket({ closingNote: closeNote.trim(), status: 'Résolu' });
 
   return (
     <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl max-w-7xl mx-auto flex flex-col gap-gutter">
@@ -548,6 +572,84 @@ export default function Maintenance() {
                 <span>{detailTicket.devisAmount ? parseFloat(detailTicket.devisAmount).toLocaleString('fr-FR') + ' FCFA' : <span className="italic font-normal opacity-60">Aucun devis</span>}</span>
               </div>
             </div>
+
+            {/* ── Décision & intervention ─────────────────────────────── */}
+            {canEdit && (
+              <div className="bg-surface-container rounded-xl p-sm flex flex-col gap-3">
+                <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider flex items-center gap-1">
+                  <Icon name="assignment_turned_in" size={13} /> Décision d'intervention
+                </p>
+                {/* À qui revient la charge ? */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => updTicket({ charge: 'locataire' })}
+                    className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold border transition-colors ${detailTicket.charge === 'locataire' ? 'bg-amber-100 border-amber-400 text-amber-900' : 'border-outline-variant/40 text-on-surface-variant hover:bg-surface-container-high'}`}
+                  >
+                    Charge locataire
+                  </button>
+                  <button
+                    onClick={() => updTicket({ charge: 'agence' })}
+                    className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold border transition-colors ${detailTicket.charge === 'agence' ? 'bg-green-100 border-green-400 text-green-900' : 'border-outline-variant/40 text-on-surface-variant hover:bg-surface-container-high'}`}
+                  >
+                    Charge agence
+                  </button>
+                </div>
+
+                {/* Charge agence : disponibilités proposées par le locataire */}
+                {detailTicket.charge === 'agence' && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-2 text-body-sm text-green-900">
+                    <p className="font-semibold">Disponibilités du locataire</p>
+                    <p>{detailTicket.tenantAvailability || <span className="italic opacity-70">En attente de la réponse du locataire…</span>}</p>
+                  </div>
+                )}
+
+                {/* Assignation d'un technicien (coordonnées vues par le locataire) */}
+                {detailTicket.charge && (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[11px] font-bold text-on-surface-variant uppercase">Technicien assigné</label>
+                    <input
+                      value={chargeTech.name}
+                      onChange={(e) => setChargeTech((s) => ({ ...s, name: e.target.value }))}
+                      placeholder="Nom du technicien"
+                      className="border border-outline-variant/40 bg-surface-container-lowest rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
+                    <input
+                      value={chargeTech.phone}
+                      onChange={(e) => setChargeTech((s) => ({ ...s, phone: e.target.value }))}
+                      placeholder="Téléphone du technicien"
+                      className="border border-outline-variant/40 bg-surface-container-lowest rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
+                    <Button onClick={assignTechnician} disabled={!chargeTech.name.trim()} icon="person_add">
+                      {detailTicket.technician?.name ? 'Mettre à jour le technicien' : 'Assigner le technicien'}
+                    </Button>
+                  </div>
+                )}
+
+                {/* Charge locataire : avis laissé par le locataire après travaux */}
+                {detailTicket.charge === 'locataire' && detailTicket.tenantReview && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-body-sm text-amber-900">
+                    <p className="font-semibold">Avis du locataire sur le travail</p>
+                    <p className="italic">{detailTicket.tenantReview}</p>
+                  </div>
+                )}
+
+                {/* Clôture avec note */}
+                {detailTicket.status !== 'Résolu' && (
+                  <div className="flex flex-col gap-2 pt-2 border-t border-outline-variant/20">
+                    <label className="text-[11px] font-bold text-on-surface-variant uppercase">Note de clôture</label>
+                    <input
+                      value={closeNote}
+                      onChange={(e) => setCloseNote(e.target.value)}
+                      placeholder="Résultat de l'intervention"
+                      className="border border-outline-variant/40 bg-surface-container-lowest rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
+                    <Button onClick={closeTicket} icon="task_alt" className="bg-green-600 hover:bg-green-700 text-white border-green-600">
+                      Clôturer le ticket
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Commentaires internes (gestion seule) — avant la décision finale */}
             <div className="bg-surface-container rounded-xl p-sm">

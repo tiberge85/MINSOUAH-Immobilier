@@ -447,6 +447,17 @@ export default function TenantPortal() {
     toast('Ticket de maintenance créé !', 'success');
   };
 
+  // Brouillons de saisie (disponibilité / avis) par ticket.
+  const [ticketDraft, setTicketDraft] = useState({});
+  const setDraft = (id, field, value) =>
+    setTicketDraft(d => ({ ...d, [id]: { ...(d[id] || {}), [field]: value } }));
+  // Le locataire ne modifie QUE sa disponibilité ou son avis (règles Firestore) :
+  // fusion ciblée des seuls champs concernés, sans écraser le reste du ticket.
+  const updateMyTicket = (ticket, patch) => {
+    dispatch({ type: 'UPDATE_TICKET_FIELDS', payload: { id: ticket.id, fields: { ...patch, updatedAt: new Date().toISOString() } } });
+    toast('Transmis à la gestion', 'success');
+  };
+
   const tenantConversation = useMemo(() =>
     conversations.find(c =>
       (c.tenantId != null && tenant?.id != null && String(c.tenantId) === String(tenant.id)) ||
@@ -947,12 +958,19 @@ export default function TenantPortal() {
               </div>
             ) : (
               <div className="flex flex-col gap-3">
-                {tenantTickets.map(t => (
+                {tenantTickets.map(t => {
+                  const tech = t.technician || {};
+                  const hasTech = !!(tech.name);
+                  const done = t.status === 'Résolu';
+                  const draft = ticketDraft[t.id] || {};
+                  return (
                   <div key={t.id} className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-md">
                     <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Badge label={t.priority} />
                         <Badge label={t.status} />
+                        {t.charge === 'locataire' && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">À votre charge</span>}
+                        {t.charge === 'agence' && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-800">Charge agence</span>}
                       </div>
                       <span className="text-label-sm text-on-surface-variant font-mono">{t.id}</span>
                     </div>
@@ -961,10 +979,98 @@ export default function TenantPortal() {
                     <p className="text-label-sm text-on-surface-variant mt-2">
                       <Icon name="calendar_today" size={12} className="inline mr-1" />
                       Signalé le {t.reportedAt}
-                      {t.assignedTo && ` — Assigné à ${t.assignedTo}`}
                     </p>
+
+                    {/* ── Suivi de l'intervention ─────────────────────────── */}
+                    {!t.charge && !done && (
+                      <div className="mt-3 text-body-sm text-on-surface-variant bg-surface-container rounded-xl p-3 flex items-center gap-2">
+                        <Icon name="hourglass_empty" size={16} className="text-primary" />
+                        En attente de traitement par la gestion.
+                      </div>
+                    )}
+
+                    {/* CHARGE = AGENCE : le locataire propose ses disponibilités */}
+                    {t.charge === 'agence' && !done && (
+                      <div className="mt-3 bg-green-50 border border-green-200 rounded-xl p-3 flex flex-col gap-2">
+                        <p className="text-body-sm text-green-900">
+                          <Icon name="engineering" size={15} className="inline mr-1" />
+                          L'agence enverra un technicien. Indiquez vos jours et heures de disponibilité.
+                        </p>
+                        {hasTech ? (
+                          <p className="text-body-sm text-green-900 font-semibold">
+                            Technicien assigné : {tech.name}{tech.phone ? ` · ${tech.phone}` : ''}
+                          </p>
+                        ) : (
+                          <>
+                            <textarea
+                              value={draft.availability ?? t.tenantAvailability ?? ''}
+                              onChange={e => setDraft(t.id, 'availability', e.target.value)}
+                              rows={2}
+                              placeholder="Ex : lundi–vendredi 9h-12h, samedi matin…"
+                              className="w-full border border-green-300 bg-white rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-green-400"
+                            />
+                            <button
+                              onClick={() => updateMyTicket(t, { tenantAvailability: (draft.availability ?? t.tenantAvailability ?? '').trim() })}
+                              disabled={!(draft.availability ?? t.tenantAvailability ?? '').trim()}
+                              className="self-start bg-green-600 text-white rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
+                            >
+                              {t.tenantAvailability ? 'Mettre à jour mes disponibilités' : 'Envoyer mes disponibilités'}
+                            </button>
+                          </>
+                        )}
+                        {t.tenantAvailability && !hasTech && (
+                          <p className="text-[11px] text-green-800">Disponibilités transmises : {t.tenantAvailability}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* CHARGE = LOCATAIRE : coordonnées du technicien + avis après travaux */}
+                    {t.charge === 'locataire' && !done && (
+                      <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3 flex flex-col gap-2">
+                        <p className="text-body-sm text-amber-900">
+                          <Icon name="info" size={15} className="inline mr-1" />
+                          Cette intervention est à votre charge.
+                        </p>
+                        {hasTech ? (
+                          <div className="text-body-sm text-amber-900">
+                            <p className="font-semibold">Technicien proposé :</p>
+                            <p>{tech.name}{tech.phone ? <> · <a href={`tel:${tech.phone}`} className="underline">{tech.phone}</a></> : null}</p>
+                          </div>
+                        ) : (
+                          <p className="text-body-sm text-amber-800 italic">La gestion va vous communiquer les coordonnées d'un technicien.</p>
+                        )}
+                        {hasTech && (
+                          <div className="flex flex-col gap-1 mt-1">
+                            <label className="text-[11px] font-bold text-amber-800 uppercase">Votre avis sur le travail</label>
+                            <textarea
+                              value={draft.review ?? t.tenantReview ?? ''}
+                              onChange={e => setDraft(t.id, 'review', e.target.value)}
+                              rows={2}
+                              placeholder="Le problème est-il résolu ? Qualité de l'intervention…"
+                              className="w-full border border-amber-300 bg-white rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            />
+                            <button
+                              onClick={() => updateMyTicket(t, { tenantReview: (draft.review ?? t.tenantReview ?? '').trim() })}
+                              disabled={!(draft.review ?? t.tenantReview ?? '').trim()}
+                              className="self-start bg-amber-600 text-white rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
+                            >
+                              {t.tenantReview ? 'Mettre à jour mon avis' : 'Envoyer mon avis'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {done && (
+                      <div className="mt-3 bg-surface-container rounded-xl p-3 text-body-sm text-on-surface-variant">
+                        <p className="flex items-center gap-2 text-green-700 font-semibold"><Icon name="check_circle" size={16} filled /> Ticket clôturé</p>
+                        {t.closingNote && <p className="mt-1">Note de clôture : {t.closingNote}</p>}
+                        {t.tenantReview && <p className="mt-1 italic">Votre avis : {t.tenantReview}</p>}
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </>

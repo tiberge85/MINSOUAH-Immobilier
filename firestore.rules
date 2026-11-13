@@ -89,12 +89,14 @@ service cloud.firestore {
                             && (isSuperAdmin(wsId)
                                 || (isOrgAdmin(wsId)
                                     && resource.data.orgId == callerOrgId(wsId))
-                                // Un utilisateur peut modifier SA PROPRE fiche (ex. mot de
-                                // passe à la première connexion). L'id du document est un
-                                // nombre (Date.now()) et usersByUid.userId une chaîne : on
-                                // compare en TEXTE des deux côtés, sinon la règle échoue
-                                // (nombre == chaîne) et le changement de mot de passe est
-                                // refusé → l'utilisateur reste bloqué à « Première connexion ».
+                                // Un utilisateur peut modifier SA PROPRE fiche (mot de passe,
+                                // profil). On compare l'ID DU DOCUMENT (le segment de chemin
+                                // `userId`, toujours présent) au `userId` du méta, en TEXTE
+                                // des deux côtés (l'un est un nombre Date.now(), l'autre une
+                                // chaîne). Avant, on comparait resource.data.id : si ce champ
+                                // manquait ou différait du chemin, l'écriture était refusée
+                                // (profil du locataire « toujours vide » après enregistrement).
+                                || string(userId) == string(callerMeta(wsId).userId)
                                 || string(resource.data.id) == string(callerMeta(wsId).userId));
     }
 
@@ -144,7 +146,18 @@ service cloud.firestore {
     match /workspaces/{wsId}/properties/{id}    { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/contracts/{id}     { allow read: if allowOrgDoc(wsId) || ownTenantDoc(wsId); allow write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/payments/{id}      { allow read: if allowOrgDoc(wsId) || ownTenantDoc(wsId); allow write: if allowOrgDoc(wsId); }
-    match /workspaces/{wsId}/tickets/{id}       { allow read: if allowOrgDoc(wsId) || ownTenantDoc(wsId); allow create: if allowOrgDoc(wsId) || ownTenantCreate(wsId); allow update, delete: if allowOrgDoc(wsId); }
+    // Tickets de maintenance. Le locataire crée les siens et peut UNIQUEMENT
+    // renseigner sa disponibilité et son avis sur le travail (champs limités) ;
+    // tout le reste (statut, charge, technicien, clôture) reste au personnel.
+    match /workspaces/{wsId}/tickets/{id} {
+      allow read:   if allowOrgDoc(wsId) || ownTenantDoc(wsId);
+      allow create: if allowOrgDoc(wsId) || ownTenantCreate(wsId);
+      allow update: if allowOrgDoc(wsId)
+                    || (ownTenantDoc(wsId)
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly(['tenantAvailability', 'tenantReview', 'updatedAt']));
+      allow delete: if allowOrgDoc(wsId);
+    }
     // Commentaires internes de maintenance — STRICTEMENT réservés au personnel
     // (le locataire ne doit jamais les lire).
     match /workspaces/{wsId}/ticketComments/{id} { allow read, write: if allowOrgDoc(wsId); }
