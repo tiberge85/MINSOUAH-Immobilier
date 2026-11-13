@@ -374,7 +374,11 @@ export default function TenantPortal() {
     } catch (e) { if (e?.name !== 'AbortError') setAwardMsg('Partage impossible : ' + (e?.message || e)); }
   }
 
-  const tenant = tenants.find(t => t.id === selectedId);
+  // Comparaison ROBUSTE : selectedId vient de currentUser.personId (souvent une
+  // chaîne) alors que t.id peut être un nombre en base → un === strict échouait
+  // (5 === "5" est faux), tenant restait undefined et le portail plantait sur
+  // tenant.avatar. On compare en chaîne des deux côtés.
+  const tenant = tenants.find(t => String(t.id) === String(selectedId));
   const tenantName = tenant ? (tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim()) : '';
 
   const contract = useMemo(() => {
@@ -574,6 +578,43 @@ export default function TenantPortal() {
           </div>
           );
         })()}
+      </div>
+    );
+  }
+
+  /* ─── Filet de sécurité ───────────────────────────────────────────
+     Un locataire est dirigé ici avec selectedId = son personId, mais sa
+     fiche peut ne pas (encore) être dans `tenants` (requête self-read non
+     revenue, ou id introuvable). Sans ce garde, le rendu plantait sur
+     `tenant.avatar` (undefined is not an object). On affiche alors un écran
+     propre plutôt qu'un crash — avec possibilité de recharger. */
+  if (!tenant) {
+    const isTenantUser = currentUser?.role === 'TENANT';
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center text-center px-6 max-w-md mx-auto">
+        <Icon name="person_search" size={48} className="opacity-30 mb-3" />
+        <h2 className="font-h3 text-h3 text-on-surface font-bold mb-2">Espace en préparation</h2>
+        <p className="text-body-sm text-on-surface-variant mb-5">
+          {isTenantUser
+            ? "Vos informations se synchronisent. Si cet écran persiste, rechargez la page."
+            : "Locataire introuvable. Revenez à la liste et réessayez."}
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => window.location.reload()}
+            className="inline-flex items-center gap-1.5 bg-primary text-on-primary rounded-xl px-4 py-2.5 text-sm font-semibold"
+          >
+            <Icon name="refresh" size={16} /> Recharger
+          </button>
+          {!isTenantUser && (
+            <button
+              onClick={() => setSelectedId(null)}
+              className="inline-flex items-center gap-1.5 border border-outline-variant text-on-surface-variant rounded-xl px-4 py-2.5 text-sm font-semibold"
+            >
+              <Icon name="arrow_back" size={16} /> Liste
+            </button>
+          )}
+        </div>
       </div>
     );
   }
