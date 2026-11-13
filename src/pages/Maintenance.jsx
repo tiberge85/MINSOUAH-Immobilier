@@ -627,11 +627,30 @@ export default function Maintenance() {
                         className="border border-outline-variant/40 bg-surface-container-lowest rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40"
                       >
                         <option value="">— Choisir un prestataire —</option>
-                        {(state.prestataires || []).map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}{p.specialty ? ` · ${p.specialty}` : ''}{p.phone ? ` · ${p.phone}` : ''}
-                          </option>
-                        ))}
+                        {(() => {
+                          const cat = (detailTicket.type || detailTicket.category || '').toLowerCase();
+                          const opt = (p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}{p.specialty ? ` · ${p.specialty}` : ''}{p.phone ? ` · ${p.phone}` : ''}
+                            </option>
+                          );
+                          const match = (state.prestataires || []).filter(p => cat && (p.specialty || '').toLowerCase() === cat);
+                          const others = (state.prestataires || []).filter(p => !(cat && (p.specialty || '').toLowerCase() === cat));
+                          return (
+                            <>
+                              {match.length > 0 && (
+                                <optgroup label={`Spécialité ${detailTicket.type || detailTicket.category}`}>
+                                  {match.map(opt)}
+                                </optgroup>
+                              )}
+                              {others.length > 0 && (
+                                <optgroup label={match.length > 0 ? 'Autres prestataires' : 'Tous les prestataires'}>
+                                  {others.map(opt)}
+                                </optgroup>
+                              )}
+                            </>
+                          );
+                        })()}
                       </select>
                     ) : (
                       <p className="text-[11px] text-on-surface-variant italic">

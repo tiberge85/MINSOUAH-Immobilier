@@ -202,7 +202,19 @@ service cloud.firestore {
     }
 
     // ── Tenants / owners ──────────────────────────────────────────────────────
-    match /workspaces/{wsId}/tenants/{id}       { allow read: if allowOrgDoc(wsId) || (request.auth != null && callerPersonId(wsId) != '' && string(resource.data.id) == string(callerPersonId(wsId))); allow write: if allowOrgDoc(wsId); }
+    // Fiche locataire. Le personnel gère tout. Le locataire LIT sa fiche et peut
+    // mettre à jour SES coordonnées (synchro profil), via un ensemble de champs
+    // limité — il ne peut pas toucher orgId, loyer, statut, bien, etc.
+    match /workspaces/{wsId}/tenants/{id} {
+      allow read: if allowOrgDoc(wsId)
+                  || (request.auth != null && callerPersonId(wsId) != '' && string(resource.data.id) == string(callerPersonId(wsId)));
+      allow update: if allowOrgDoc(wsId)
+                    || (request.auth != null && callerPersonId(wsId) != ''
+                        && string(resource.data.id) == string(callerPersonId(wsId))
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly(['name','phone','whatsapp','email','profession','address','birthdate','gender','nationalId','avatar','updatedAt']));
+      allow create, delete: if allowOrgDoc(wsId);
+    }
     match /workspaces/{wsId}/owners/{id}        { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/monthClosures/{id} { allow read, write: if allowOrgDoc(wsId); }
     // Documents du dossier : le locataire lit les siens ET peut en AJOUTER /

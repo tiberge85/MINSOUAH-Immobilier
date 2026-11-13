@@ -1809,6 +1809,16 @@ export function AppProvider({ children }) {
             if (st.currentUser?.id) {
               await setDoc(wsDoc('users', st.currentUser.id), profileData, { merge: true });
             }
+            // Synchronise les coordonnées vers la FICHE côté agence (collection
+            // tenants) pour un locataire — ainsi le gérant voit les infos à jour.
+            // On n'envoie QUE les champs autorisés par les règles (pas orgId/loyer…).
+            if (st.currentUser?.role === 'TENANT' && st.currentUser?.personId != null) {
+              const allow = ['name', 'phone', 'whatsapp', 'email', 'profession', 'address', 'birthdate', 'gender', 'nationalId', 'avatar'];
+              const tfields = {};
+              allow.forEach((k) => { if (data[k] !== undefined) tfields[k] = data[k]; });
+              tfields.updatedAt = new Date().toISOString();
+              await updateDoc(wsDoc('tenants', st.currentUser.personId), stripUndefined(tfields)).catch((e) => console.warn('[profil→fiche]', e?.code || e?.message));
+            }
             const updated = { ...st.currentUser, ...profileData };
             try { localStorage.setItem(SESSION_KEY, JSON.stringify(updated)); } catch { /* quota */ }
             setState((s) => ({ ...s, currentUser: updated }));
