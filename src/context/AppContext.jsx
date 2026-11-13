@@ -701,7 +701,24 @@ export function AppProvider({ children }) {
                   try { await setDoc(wsDoc('payments', p.id), { tenantId: tid }, { merge: true }); patched++; } catch { /* règles */ }
                 }
               }
-              if (patched > 0) console.log(`[MINSOUAH][backfill] tenantId estampillé sur ${patched} document(s)`);
+              // 3) Photos de profil : recopier l'avatar du COMPTE (users) vers la
+              // FICHE (tenants) quand la fiche n'en a pas encore — cas des photos
+              // définies AVANT la synchro profil→fiche (ex. compte de Branco).
+              try {
+                const uSnap = await getDocs(wsCol('users'));
+                const userByPerson = new Map();
+                uSnap.docs.map((d) => d.data()).forEach((u) => {
+                  if (u.personId != null && hasVal(u.avatar)) userByPerson.set(String(u.personId), u);
+                });
+                for (const t of tenantsArr) {
+                  if (hasVal(t.avatar) || t.id == null) continue;
+                  const u = userByPerson.get(String(t.id));
+                  if (u && hasVal(u.avatar)) {
+                    try { await setDoc(wsDoc('tenants', t.id), { avatar: u.avatar }, { merge: true }); patched++; } catch { /* règles */ }
+                  }
+                }
+              } catch { /* optionnel */ }
+              if (patched > 0) console.log(`[MINSOUAH][backfill] ${patched} document(s) mis à jour (tenantId / photos)`);
             } catch (e) {
               console.warn('[MINSOUAH][backfill] échec', e?.code || e?.message);
             }
