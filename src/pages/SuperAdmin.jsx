@@ -845,6 +845,23 @@ export default function SuperAdmin() {
                                 <span className="text-xs text-on-surface-variant italic">Géré par Firebase Auth — utilisez "Réinitialiser" pour envoyer un nouveau mot de passe.</span>
                               </div>
                             </div>
+                            {/* Déblocage de la vérification d'email (compte bloqué sur « Email non vérifié ») */}
+                            <div className="flex items-center justify-between gap-2 mt-1 pt-2 border-t border-outline-variant/10">
+                              <div>
+                                <span className="text-[10px] text-on-surface-variant uppercase tracking-wide">Vérification email</span>
+                                <p className={`text-xs font-semibold ${adminUser.emailVerificationRequired ? 'text-amber-700' : 'text-green-700'}`}>
+                                  {adminUser.emailVerificationRequired ? "Bloqué : email non vérifié" : 'Accès débloqué'}
+                                </p>
+                              </div>
+                              {adminUser.emailVerificationRequired && (
+                                <button
+                                  onClick={async () => { await dispatch({ type: 'UPDATE_USER', payload: { ...adminUser, emailVerificationRequired: false } }); showToast("Accès débloqué — l'admin peut se reconnecter"); }}
+                                  className="text-xs bg-green-100 text-green-700 hover:bg-green-200 px-3 py-1.5 rounded-lg font-semibold transition-colors whitespace-nowrap"
+                                >
+                                  Débloquer l'accès
+                                </button>
+                              )}
+                            </div>
                           </div>
                         )}
 
