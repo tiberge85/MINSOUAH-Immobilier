@@ -1965,25 +1965,6 @@ export function AppProvider({ children }) {
     }
   }, []); // stateRef is always current — no deps needed
 
-  // Sonde de diagnostic (temporaire) : lire l'état interne depuis la console.
-  if (typeof window !== 'undefined') {
-    window.__MST = () => ({
-      bootstrapping: state._bootstrapping,
-      pending: state._bootPending,
-      authProvider: state._authProvider,
-      loaded: Array.from(loadedRef.current || []),
-      usersLen: (state.users || []).length,
-      currentUserRole: state.currentUser?.role || null,
-      personId: state.currentUser?.personId ?? null,
-      tenantsLen: (state.tenants || []).length,
-      contractsLen: (state.contracts || []).length,
-      paymentsLen: (state.payments || []).length,
-      tenant0: (state.tenants || [])[0] ? { id: state.tenants[0].id, idType: typeof state.tenants[0].id, name: state.tenants[0].name, property: state.tenants[0].property } : null,
-      contractsSample: (state.contracts || []).slice(0, 3).map(c => ({ id: c.id, tenantId: c.tenantId, tenantIdType: typeof c.tenantId, tenant: c.tenant, status: c.status })),
-      paymentsSample: (state.payments || []).slice(0, 3).map(p => ({ id: p.id, tenantId: p.tenantId, contractId: p.contractId, tenantName: p.tenantName, status: p.status })),
-    });
-  }
-
   return (
     <AppContext.Provider value={{ state, dispatch }}>
       {children}

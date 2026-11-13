@@ -69,11 +69,10 @@ const ROLE_HOME = {
 };
 
 function BootstrapScreen() {
-  const { state } = useApp();
-  const [showDiag, setShowDiag] = useState(false);
-  useEffect(() => { const t = setTimeout(() => setShowDiag(true), 5000); return () => clearTimeout(t); }, []);
-  const pending = state?._bootPending;
-  const provider = state?._authProvider;
+  // Petit lien « Recharger » discret qui n'apparaît qu'au bout de quelques
+  // secondes, comme échappatoire sur réseau lent. Plus d'encart de diagnostic.
+  const [showReload, setShowReload] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setShowReload(true), 8000); return () => clearTimeout(t); }, []);
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4 px-6 text-center">
       <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center shadow-lg animate-pulse">
@@ -84,12 +83,10 @@ function BootstrapScreen() {
         <Icon name="progress_activity" size={18} className="animate-spin text-primary" />
         Chargement des données…
       </div>
-      {showDiag && (
-        <div className="mt-2 text-xs text-on-surface-variant/80 bg-surface-container-high rounded-lg px-3 py-2 max-w-xs">
-          <p>Diagnostic : session <b>{provider || '…'}</b></p>
-          <p>En attente : <b>{pending && pending.length ? pending.join(', ') : '—'}</b></p>
-          <button onClick={() => window.location.reload()} className="mt-1 text-primary underline">Recharger</button>
-        </div>
+      {showReload && (
+        <button onClick={() => window.location.reload()} className="mt-1 text-xs text-primary underline">
+          Recharger
+        </button>
       )}
     </div>
   );
