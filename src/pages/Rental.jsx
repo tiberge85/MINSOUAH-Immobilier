@@ -687,7 +687,10 @@ ${sectionsHtml}
     return (
       <div key={t.id} className={`bg-surface rounded-2xl p-4 border shadow-sm group hover:shadow-md transition-shadow ${former ? 'border-error/30' : 'border-outline-variant/20'}`}>
         <div className="flex items-center gap-3 mb-3">
-          <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${t.color}`}>{t.initials}</div>
+          {t.avatar
+            ? <img src={t.avatar} alt="" className="w-12 h-12 rounded-full object-cover flex-shrink-0" />
+            : <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${t.color}`}>{t.initials}</div>
+          }
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-on-surface truncate">{t.name}</h3>
             {former
