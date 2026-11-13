@@ -6,6 +6,7 @@ import { loadXLSX } from '../lib/lazyXlsx';
 import { auth } from '../lib/firebase';
 import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { provisionAccount, sendResetLink, authErrorMessage } from '../lib/authAccounts';
+import { hashPwd, verifyPwd } from '../lib/auth';
 import { formatFCFA } from '../lib/format';
 import { getPlan } from '../lib/planLimits';
 import { getDaysRemaining, getLicenseStatusInfo } from '../lib/licenses';
@@ -219,15 +220,32 @@ export default function Settings() {
     e.preventDefault();
     if (pwForm.next.length < 8) { setPwError('Au moins 8 caractères requis.'); return; }
     if (pwForm.next !== pwForm.confirm) { setPwError('Les mots de passe ne correspondent pas.'); return; }
-    const fbUser = auth.currentUser;
-    if (!fbUser || fbUser.isAnonymous) { setPwError('Session expirée. Reconnectez-vous.'); return; }
-    try {
-      await reauthenticateWithCredential(fbUser, EmailAuthProvider.credential(fbUser.email, pwForm.current));
-    } catch { setPwError('Mot de passe actuel incorrect.'); return; }
-    try { await updatePassword(fbUser, pwForm.next); }
-    catch (err) { setPwError(authErrorMessage(err)); return; }
+    // Vérifie le mot de passe ACTUEL contre la base de l'app (source fiable, qui
+    // fonctionne MÊME sans vraie session Firebase — cas d'un locataire en session
+    // anonyme). Avant, on exigeait une session Firebase non anonyme, ce qui
+    // bloquait les locataires avec « Session expirée. Reconnectez-vous. ».
+    const dbUser = (state.users || []).find(u => u.email === currentUser?.email);
+    const okCurrent = await verifyPwd(pwForm.current, dbUser?.password);
+    if (!okCurrent) { setPwError('Mot de passe actuel incorrect.'); return; }
     setPwError('');
-    dispatch({ type: 'CHANGE_PASSWORD', payload: { email: currentUser.email } });
+    const hashedNext = await hashPwd(pwForm.next);
+    // Synchronisation Firebase Auth best-effort QUAND une vraie session existe —
+    // un échec n'est PAS bloquant (la base de l'app reste la source de vérité).
+    try {
+      const fbUser = auth.currentUser;
+      if (fbUser && !fbUser.isAnonymous) {
+        try { await reauthenticateWithCredential(fbUser, EmailAuthProvider.credential(fbUser.email, pwForm.current)); } catch { /* non bloquant */ }
+        await updatePassword(fbUser, pwForm.next);
+      }
+    } catch (err) { console.warn('[Settings pw] sync Firebase non effectuée', err?.code || err?.message); }
+    // Source de vérité : enregistrement du hash dans la base de l'app.
+    try {
+      await dispatch({ type: 'CHANGE_PASSWORD', payload: { email: currentUser.email, newPassword: hashedNext } });
+    } catch (err) {
+      console.warn('[Settings pw] enregistrement', err?.code || err?.message);
+      setPwError('Échec de l\'enregistrement. Vérifiez votre connexion et réessayez.');
+      return;
+    }
     setPwForm({ current: '', next: '', confirm: '' });
     showToast('Mot de passe mis à jour');
   };
