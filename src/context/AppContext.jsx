@@ -372,6 +372,15 @@ export function AppProvider({ children }) {
     // lieu d'abandonner. Ne se déclenche que si l'utilisateur est CONNECTÉ (session
     // locale présente) et est borné à MAX_HEAL essais → aucune boucle possible.
     const openFirestore = async (user) => {
+      // DÉBLOCAGE IMMÉDIAT du démarrage, AVANT toute écriture/lecture réseau :
+      // on marque les collections essentielles comme « chargées » dès l'entrée,
+      // de façon synchrone, pour que l'écran de chargement disparaisse tout de
+      // suite. Les données réelles se remplissent ensuite en arrière-plan. Évite
+      // définitivement l'écran « Chargement des données… » bloqué sur un réseau
+      // instable (une lecture/écriture lente ne peut plus retenir l'affichage).
+      ESSENTIAL.forEach((c) => loadedRef.current.add(c));
+      checkBootstrap();
+
       const unsubs = [];
       let healed = false;
       // Diagnostic : type de session Firebase courante (aide au débogage portail).
