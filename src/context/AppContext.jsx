@@ -636,6 +636,59 @@ export function AppProvider({ children }) {
             () => {}
           )
         );
+
+        // ── BACKFILL tenantId (migration unique, idempotente) ──────────────
+        // Les baux (et certains paiements) hérités sont liés au locataire par
+        // son NOM (champ `tenant`) et n'ont PAS de champ `tenantId`. Or le
+        // portail locataire lit SES baux via `where('tenantId','in',…)` et les
+        // règles n'autorisent la lecture que si `tenantId == personId`. Sans ce
+        // champ, le bail reste invisible (Accueil vide « Aucun contrat actif »).
+        // Un membre du personnel (droit d'écriture) estampille donc ici, une
+        // seule fois, le `tenantId` manquant en faisant correspondre les noms.
+        if (!window.__msBackfillRan) {
+          window.__msBackfillRan = true;
+          (async () => {
+            try {
+              const normN = (s) => (s == null ? '' : String(s)).trim().toLowerCase();
+              const [tSnap, cSnap, pSnap] = await Promise.all([
+                getDocs(wsCol('tenants')),
+                getDocs(wsCol('contracts')),
+                getDocs(wsCol('payments')),
+              ]);
+              const tenantsArr = tSnap.docs.map((d) => d.data());
+              const byName = new Map();
+              tenantsArr.forEach((t) => {
+                const nm = normN(t.name || `${t.firstName || ''} ${t.lastName || ''}`);
+                if (nm && t.id != null) byName.set(nm, t.id);
+              });
+              const hasVal = (v) => v != null && String(v).trim() !== '';
+              const contractsArr = cSnap.docs.map((d) => d.data());
+              const contractTenantById = new Map();
+              let patched = 0;
+              // 1) Baux sans tenantId → résolution par nom
+              for (const c of contractsArr) {
+                if (hasVal(c.tenantId)) { contractTenantById.set(String(c.id), c.tenantId); continue; }
+                const tid = byName.get(normN(c.tenant));
+                if (tid != null) {
+                  contractTenantById.set(String(c.id), tid);
+                  try { await setDoc(wsDoc('contracts', c.id), { tenantId: tid }, { merge: true }); patched++; } catch { /* règles */ }
+                }
+              }
+              // 2) Paiements sans tenantId → par nom, sinon via le bail
+              for (const p of pSnap.docs.map((d) => d.data())) {
+                if (hasVal(p.tenantId)) continue;
+                let tid = byName.get(normN(p.tenantName));
+                if (tid == null && hasVal(p.contractId)) tid = contractTenantById.get(String(p.contractId));
+                if (tid != null) {
+                  try { await setDoc(wsDoc('payments', p.id), { tenantId: tid }, { merge: true }); patched++; } catch { /* règles */ }
+                }
+              }
+              if (patched > 0) console.log(`[MINSOUAH][backfill] tenantId estampillé sur ${patched} document(s)`);
+            } catch (e) {
+              console.warn('[MINSOUAH][backfill] échec', e?.code || e?.message);
+            }
+          })();
+        }
       }
 
       // publicSettings/marketplace est lisible publiquement.
@@ -1912,6 +1965,13 @@ export function AppProvider({ children }) {
       loaded: Array.from(loadedRef.current || []),
       usersLen: (state.users || []).length,
       currentUserRole: state.currentUser?.role || null,
+      personId: state.currentUser?.personId ?? null,
+      tenantsLen: (state.tenants || []).length,
+      contractsLen: (state.contracts || []).length,
+      paymentsLen: (state.payments || []).length,
+      tenant0: (state.tenants || [])[0] ? { id: state.tenants[0].id, idType: typeof state.tenants[0].id, name: state.tenants[0].name, property: state.tenants[0].property } : null,
+      contractsSample: (state.contracts || []).slice(0, 3).map(c => ({ id: c.id, tenantId: c.tenantId, tenantIdType: typeof c.tenantId, tenant: c.tenant, status: c.status })),
+      paymentsSample: (state.payments || []).slice(0, 3).map(p => ({ id: p.id, tenantId: p.tenantId, contractId: p.contractId, tenantName: p.tenantName, status: p.status })),
     });
   }
 
