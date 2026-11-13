@@ -962,7 +962,14 @@ export function AppProvider({ children }) {
         // ── AUTH ───────────────────────────────────────────────────────────────
         case 'LOGIN': {
           const u = payload;
+          // On CONSERVE tous les champs de la fiche (téléphone, whatsapp,
+          // profession, date de naissance, genre, pièce, adresse…) et non plus un
+          // sous-ensemble figé : sinon le profil « disparaissait à la reconnexion »
+          // (la session rechargée depuis localStorage ne contenait pas ces champs).
+          // On EXCLUT le hash du mot de passe (jamais en localStorage).
+          const { password: _pw, ...uSafe } = u;
           const session = {
+            ...uSafe,
             id: u.id, role: u.role, name: u.name, initials: u.initials,
             email: u.email, color: u.color, avatar: u.avatar || null,
             personId: u.personId || null, firstLogin: u.firstLogin || false,

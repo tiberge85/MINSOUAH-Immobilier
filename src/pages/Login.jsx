@@ -127,9 +127,15 @@ export default function Login() {
       }
     }
     dispatch({ type: 'LOGIN_ATTEMPT', payload: { email: user.email, success: true } });
+    // On REPREND tous les champs de la fiche (téléphone, whatsapp, profession,
+    // date de naissance, genre, pièce, adresse…) et non plus un sous-ensemble
+    // figé : sinon le profil enregistré « disparaissait à la reconnexion ». On
+    // EXCLUT le hash du mot de passe (jamais stocké dans la session/localStorage).
+    const { password: _pw, ...userSafe } = user;
     dispatch({
       type: 'LOGIN',
       payload: {
+        ...userSafe,
         id: user.id, role: user.role, name: user.name, initials: user.initials,
         email: user.email, color: user.color, avatar: user.avatar || null,
         personId: user.personId || null, firstLogin: user.firstLogin || false,
