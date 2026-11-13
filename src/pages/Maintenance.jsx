@@ -50,7 +50,11 @@ export default function Maintenance() {
   const [chargeTech, setChargeTech] = useState({ name: '', phone: '' });
   const [closeNote, setCloseNote] = useState('');
   useEffect(() => {
-    setChargeTech({ name: detailTicket?.technician?.name || '', phone: detailTicket?.technician?.phone || '' });
+    setChargeTech({
+      name: detailTicket?.technician?.name || '',
+      phone: detailTicket?.technician?.phone || '',
+      prestataireId: detailTicket?.technician?.prestataireId || '',
+    });
     setCloseNote(detailTicket?.closingNote || '');
   }, [detailTicket?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [form, setForm] = useState(newTicketForm0);
@@ -162,8 +166,12 @@ export default function Maintenance() {
   const assignTechnician = () => {
     if (!chargeTech.name.trim()) return;
     updTicket({
-      technician: { name: chargeTech.name.trim(), phone: chargeTech.phone.trim() },
+      technician: { name: chargeTech.name.trim(), phone: chargeTech.phone.trim(), prestataireId: chargeTech.prestataireId || null },
       assignedTo: chargeTech.name.trim(),
+      // On renseigne aussi prestataire/prestatairePhone pour le bloc « Prestataire »
+      // déjà présent dans le détail du ticket.
+      prestataire: chargeTech.name.trim(),
+      prestatairePhone: chargeTech.phone.trim(),
       status: detailTicket.status === 'En attente' ? 'En cours' : detailTicket.status,
     });
   };
@@ -606,10 +614,33 @@ export default function Maintenance() {
                 {/* Assignation d'un technicien (coordonnées vues par le locataire) */}
                 {detailTicket.charge && (
                   <div className="flex flex-col gap-2">
-                    <label className="text-[11px] font-bold text-on-surface-variant uppercase">Technicien assigné</label>
+                    <label className="text-[11px] font-bold text-on-surface-variant uppercase">Technicien / prestataire assigné</label>
+                    {/* Choix dans la liste des prestataires enregistrés (remplit nom + téléphone). */}
+                    {(state.prestataires || []).length > 0 ? (
+                      <select
+                        value={chargeTech.prestataireId || ''}
+                        onChange={(e) => {
+                          const p = (state.prestataires || []).find((x) => String(x.id) === e.target.value);
+                          if (p) setChargeTech({ name: p.name || '', phone: p.phone || '', prestataireId: p.id });
+                          else setChargeTech((s) => ({ ...s, prestataireId: '' }));
+                        }}
+                        className="border border-outline-variant/40 bg-surface-container-lowest rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      >
+                        <option value="">— Choisir un prestataire —</option>
+                        {(state.prestataires || []).map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}{p.specialty ? ` · ${p.specialty}` : ''}{p.phone ? ` · ${p.phone}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="text-[11px] text-on-surface-variant italic">
+                        Aucun prestataire enregistré — ajoutez-en dans « Prestataires », ou saisissez les coordonnées ci-dessous.
+                      </p>
+                    )}
                     <input
                       value={chargeTech.name}
-                      onChange={(e) => setChargeTech((s) => ({ ...s, name: e.target.value }))}
+                      onChange={(e) => setChargeTech((s) => ({ ...s, name: e.target.value, prestataireId: '' }))}
                       placeholder="Nom du technicien"
                       className="border border-outline-variant/40 bg-surface-container-lowest rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40"
                     />
