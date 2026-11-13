@@ -1903,6 +1903,18 @@ export function AppProvider({ children }) {
     }
   }, []); // stateRef is always current — no deps needed
 
+  // Sonde de diagnostic (temporaire) : lire l'état interne depuis la console.
+  if (typeof window !== 'undefined') {
+    window.__MST = () => ({
+      bootstrapping: state._bootstrapping,
+      pending: state._bootPending,
+      authProvider: state._authProvider,
+      loaded: Array.from(loadedRef.current || []),
+      usersLen: (state.users || []).length,
+      currentUserRole: state.currentUser?.role || null,
+    });
+  }
+
   return (
     <AppContext.Provider value={{ state, dispatch }}>
       {children}
