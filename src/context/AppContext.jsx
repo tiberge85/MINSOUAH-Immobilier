@@ -298,6 +298,7 @@ export function AppProvider({ children }) {
     orgSettings: DEFAULT_ORG,
     systemSettings: DEFAULT_SYSTEM,
     publicMarketplace: {},
+    paymentConfig: {},
     _bootstrapping: true,
     _networkError: false,
   });
@@ -760,6 +761,15 @@ export function AppProvider({ children }) {
       unsubs.push(
         onSnapshot(wsDoc('publicSettings', 'marketplace'),
           (snap) => { if (snap.exists()) setState((s) => ({ ...s, publicMarketplace: snap.data() })); },
+          () => {}
+        )
+      );
+
+      // publicSettings/payment : config de paiement (alias/QR PI-SPI), lisible par
+      // tous (y compris le locataire en session invité) pour l'afficher au paiement.
+      unsubs.push(
+        onSnapshot(wsDoc('publicSettings', 'payment'),
+          (snap) => { if (snap.exists()) setState((s) => ({ ...s, paymentConfig: snap.data() })); },
           () => {}
         )
       );
@@ -1842,6 +1852,14 @@ export function AppProvider({ children }) {
               ...(lockedUntil ? { lockedUntil } : {}),
             }).catch(() => {});
           }
+          break;
+        }
+
+        // Config de paiement (alias/QR PI-SPI) — document PUBLIC lisible par les
+        // locataires. Écriture réservée au personnel (règles).
+        case 'UPDATE_PAYMENT_CONFIG': {
+          await setDoc(wsDoc('publicSettings', 'payment'), { ...payload, updatedAt: new Date().toISOString() }, { merge: true });
+          setState((s) => ({ ...s, paymentConfig: { ...(s.paymentConfig || {}), ...payload } }));
           break;
         }
 

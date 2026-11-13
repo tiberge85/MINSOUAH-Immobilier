@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
@@ -23,6 +23,7 @@ const ALL_TABS = [
   { key: 'profile',       label: 'Mon Profil',      icon: 'account_circle',  roles: null },
   { key: 'org',           label: 'Organisation',    icon: 'business',        roles: STAFF_ROLES },
   { key: 'commissions',   label: 'Commissions',     icon: 'percent',         roles: STAFF_ROLES },
+  { key: 'payment',       label: 'Paiement',        icon: 'payments',        roles: STAFF_ROLES },
   // 'organizations' retiré de Settings — géré exclusivement dans /superadmin
   { key: 'plan',          label: 'Plan & Licence',  icon: 'verified',        roles: ADMIN_ROLES },
   { key: 'users',         label: 'Utilisateurs',    icon: 'group',           roles: ADMIN_ROLES },
@@ -99,6 +100,43 @@ export default function Settings() {
     nationalId:  currentUser?.nationalId || '',
     avatar:      currentUser?.avatar || '',
   });
+
+  /* ── Config paiement (PI-SPI) ── */
+  const [payCfg, setPayCfg] = useState({ pispiAlias: '', pispiQr: '' });
+  useEffect(() => {
+    setPayCfg({
+      pispiAlias: state.paymentConfig?.pispiAlias || '',
+      pispiQr:    state.paymentConfig?.pispiQr || '',
+    });
+  }, [state.paymentConfig?.pispiAlias, state.paymentConfig?.pispiQr]);
+  const handleQrUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { showToast('Image trop grande (max 5 Mo)'); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 600;
+        const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        setPayCfg(p => ({ ...p, pispiQr: canvas.toDataURL('image/png', 0.9) }));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+  const savePayCfg = async () => {
+    try {
+      await dispatch({ type: 'UPDATE_PAYMENT_CONFIG', payload: { pispiAlias: payCfg.pispiAlias.trim(), pispiQr: payCfg.pispiQr || '' } });
+      showToast('Moyen de paiement enregistré');
+    } catch (e) {
+      showToast("Échec de l'enregistrement. Vérifiez votre connexion.");
+    }
+  };
 
   /* ── Org ── */
   const isSciNora = /sci\s*nora/i.test(orgSettings?.companyName || '');
@@ -686,6 +724,50 @@ export default function Settings() {
           {/* ══════════ COMMISSIONS ══════════ */}
           {tab === 'commissions' && (
             <CommissionsTab state={state} dispatch={dispatch} currentUser={currentUser} showToast={showToast} />
+          )}
+
+          {/* ══════════ PAIEMENT (PI-SPI) ══════════ */}
+          {tab === 'payment' && (
+            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-6 max-w-xl">
+              <h2 className="font-h3 text-h3 font-bold text-on-surface flex items-center gap-2 mb-1">
+                <Icon name="payments" filled /> Moyen de paiement — PI-SPI
+              </h2>
+              <p className="text-sm text-on-surface-variant mb-5">
+                Renseignez votre alias et votre QR code PI-SPI. Ils seront affichés aux locataires dans leur portail pour qu'ils effectuent leurs paiements.
+              </p>
+
+              <label className="form-label">Alias PI-SPI</label>
+              <input
+                value={payCfg.pispiAlias}
+                onChange={e => setPayCfg(p => ({ ...p, pispiAlias: e.target.value }))}
+                placeholder="Ex : 29155082-fb09-4aa0-8225-..."
+                className="form-input mb-4"
+              />
+
+              <label className="form-label">QR code PI-SPI</label>
+              <div className="flex items-center gap-4 mb-4">
+                {payCfg.pispiQr ? (
+                  <img src={payCfg.pispiQr} alt="QR PI-SPI" className="w-28 h-28 rounded-xl border border-outline-variant/30 object-contain bg-white p-1" />
+                ) : (
+                  <div className="w-28 h-28 rounded-xl border-2 border-dashed border-outline-variant/40 flex items-center justify-center text-on-surface-variant">
+                    <Icon name="qr_code_2" size={32} className="opacity-40" />
+                  </div>
+                )}
+                <div className="flex flex-col gap-2">
+                  <label className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-on-primary text-sm font-semibold cursor-pointer">
+                    <Icon name="upload" size={16} /> Importer le QR
+                    <input type="file" accept="image/*" className="hidden" onChange={handleQrUpload} />
+                  </label>
+                  {payCfg.pispiQr && (
+                    <button onClick={() => setPayCfg(p => ({ ...p, pispiQr: '' }))} className="text-sm text-error hover:underline">Retirer</button>
+                  )}
+                </div>
+              </div>
+
+              <button onClick={savePayCfg} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-on-primary font-bold">
+                <Icon name="save" size={18} /> Enregistrer
+              </button>
+            </div>
           )}
 
           {/* ══════════ PLAN & LICENCE ══════════ */}

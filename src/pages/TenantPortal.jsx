@@ -31,12 +31,14 @@ const MOBILE_MONEY = [
   { id: 'moov', name: 'Moov Money', color: 'bg-blue-700', textColor: 'text-white', icon: 'smartphone' },
 ];
 
-function PaymentModal({ contract, onClose, onSuccess }) {
+function PaymentModal({ contract, payConfig = {}, onClose, onSuccess }) {
   const [step, setStep] = useState(1);
   const [operator, setOperator] = useState(null);
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [txRef] = useState(() => 'TXN' + Date.now());
+  const hasPispi = !!(payConfig?.pispiQr || payConfig?.pispiAlias);
 
   const simulate = () => {
     if (!operator || !phone.trim()) return;
@@ -60,7 +62,37 @@ function PaymentModal({ contract, onClose, onSuccess }) {
         <div className="px-6 py-5">
           {step === 1 && (
             <>
-              <p className="text-body-sm text-on-surface-variant mb-4">Sélectionnez votre opérateur Mobile Money</p>
+              {/* ── Paiement PI-SPI (QR + alias configurés par l'agence) ── */}
+              {hasPispi && (
+                <div className="mb-5 bg-gradient-to-br from-primary/5 to-tertiary/5 border border-primary/20 rounded-2xl p-4">
+                  <p className="font-bold text-on-surface flex items-center gap-2 mb-1">
+                    <Icon name="qr_code_2" size={18} className="text-primary" /> Payer via PI-SPI
+                  </p>
+                  <p className="text-label-sm text-on-surface-variant mb-3">
+                    Scannez le QR code ou copiez l'alias dans l'appli PI-SPI pour régler {fmt(contract?.rent)}, puis confirmez ci-dessous.
+                  </p>
+                  {payConfig.pispiQr && (
+                    <img src={payConfig.pispiQr} alt="QR PI-SPI" className="w-44 h-44 mx-auto rounded-xl bg-white p-2 object-contain border border-outline-variant/20" />
+                  )}
+                  {payConfig.pispiAlias && (
+                    <div className="flex items-center gap-2 mt-3 bg-surface-container rounded-xl px-3 py-2">
+                      <span className="font-mono text-xs text-on-surface break-all flex-1">{payConfig.pispiAlias}</span>
+                      <button
+                        onClick={() => { try { navigator.clipboard?.writeText(payConfig.pispiAlias); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* ignore */ } }}
+                        className="flex items-center gap-1 text-primary text-label-sm font-semibold flex-shrink-0"
+                      >
+                        <Icon name={copied ? 'check_circle' : 'content_copy'} size={16} /> {copied ? 'Copié' : 'Copier'}
+                      </button>
+                    </div>
+                  )}
+                  <button onClick={() => setStep(3)} className="w-full mt-3 py-3 rounded-2xl bg-primary text-on-primary font-bold">
+                    J'ai effectué le paiement
+                  </button>
+                  <p className="text-[11px] text-on-surface-variant text-center mt-2">L'agence confirmera la réception de votre paiement.</p>
+                </div>
+              )}
+
+              <p className="text-body-sm text-on-surface-variant mb-4">{hasPispi ? 'Ou par Mobile Money' : 'Sélectionnez votre opérateur Mobile Money'}</p>
               <div className="grid grid-cols-2 gap-3 mb-5">
                 {MOBILE_MONEY.map(op => (
                   <button
@@ -147,7 +179,7 @@ function PaymentModal({ contract, onClose, onSuccess }) {
               </div>
               <h4 className="font-h2 text-h2 font-bold text-on-surface mb-2">Paiement Confirmé</h4>
               <p className="text-body-sm text-on-surface-variant mb-1">
-                {fmt(contract?.rent)} payé via {operator?.name}
+                {fmt(contract?.rent)} payé via {operator?.name || 'PI-SPI'}
               </p>
               <p className="text-label-sm text-on-surface-variant font-mono bg-surface-container rounded-lg px-3 py-1.5 inline-block mb-5">
                 Réf: {txRef}
@@ -364,6 +396,7 @@ export default function TenantPortal() {
     conversations = [],
     currentUser,
     inspections = [],
+    paymentConfig = {},
   } = state;
   const navigate = useNavigate();
   const toast = useToast();
@@ -775,6 +808,7 @@ export default function TenantPortal() {
       {showPayModal && (
         <PaymentModal
           contract={contract}
+          payConfig={paymentConfig}
           onClose={() => setShowPayModal(false)}
           onSuccess={handlePaySuccess}
         />
