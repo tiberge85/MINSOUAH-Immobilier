@@ -419,7 +419,14 @@ export function AppProvider({ children }) {
           const me = snap.docs.map(d => ({ id: d.id, ...d.data() }))
             .find(u => (u.email || '').toLowerCase() === emailLow);
           if (me && !me.suspended) {
+            // On REPREND tous les champs de la fiche (téléphone, whatsapp,
+            // profession, date de naissance, genre, pièce, adresse…) et non plus
+            // un sous-ensemble figé : sinon le profil enregistré « disparaissait
+            // après reconnexion ». On EXCLUT le hash du mot de passe (jamais en
+            // localStorage).
+            const { password: _pw, ...meSafe } = me;
             sessionUser = {
+              ...meSafe,
               id: me.id, role: me.role, name: me.name, initials: me.initials,
               email: me.email, color: me.color, avatar: me.avatar || null,
               personId: me.personId || null, firstLogin: me.firstLogin || false,

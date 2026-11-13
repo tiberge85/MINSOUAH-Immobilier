@@ -577,7 +577,7 @@ export default function Maintenance() {
             {canEdit && (
               <div className="bg-surface-container rounded-xl p-sm flex flex-col gap-3">
                 <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider flex items-center gap-1">
-                  <Icon name="assignment_turned_in" size={13} /> Décision d'intervention
+                  <Icon name="fact_check" size={13} /> Décision d'intervention
                 </p>
                 {/* À qui revient la charge ? */}
                 <div className="flex gap-2">

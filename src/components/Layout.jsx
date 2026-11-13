@@ -93,6 +93,21 @@ export default function Layout() {
     () => currentMonthUnpaidList({ payments: state.payments, contracts: state.contracts, tenants: state.tenants, properties: state.properties }).length,
     [state.payments, state.contracts, state.tenants, state.properties]
   );
+  // Badge Maintenance = tickets « En attente » (nouveaux, non traités).
+  const openTicketsCount = useMemo(
+    () => (state.tickets || []).filter(t => t.status === 'En attente').length,
+    [state.tickets]
+  );
+  // Badge Messagerie = conversations avec des messages non lus.
+  const unreadConvCount = useMemo(
+    () => (state.conversations || []).filter(c => (c.unread || 0) > 0).length,
+    [state.conversations]
+  );
+  const navBadge = (path) =>
+    path === '/payments'    ? unpaidCount
+    : path === '/maintenance' ? openTicketsCount
+    : path === '/inbox'       ? unreadConvCount
+    : 0;
 
   /* ── Org switcher ── */
   const [showOrgMenu, setShowOrgMenu] = useState(false);
@@ -446,14 +461,9 @@ export default function Layout() {
                 <>
                   <Icon name={item.icon} filled={isActive} />
                   <span className="font-label-md text-label-md flex-1">{item.label}</span>
-                  {item.path === '/payments' && unpaidCount > 0 && (
-                    <span className="bg-error text-on-error text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center mr-3">
-                      {unpaidCount}
-                    </span>
-                  )}
-                  {item.path === '/inbox' && (state.conversations || []).some(c => (c.unread || 0) > 0) && (
-                    <span className="bg-primary text-on-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center mr-3">
-                      {(state.conversations || []).reduce((s, c) => s + (c.unread || 0), 0)}
+                  {navBadge(item.path) > 0 && (
+                    <span className={`${item.path === '/payments' ? 'bg-error text-on-error' : 'bg-primary text-on-primary'} text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center mr-3`}>
+                      {navBadge(item.path)}
                     </span>
                   )}
                 </>
