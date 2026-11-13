@@ -145,6 +145,9 @@ service cloud.firestore {
     match /workspaces/{wsId}/contracts/{id}     { allow read: if allowOrgDoc(wsId) || ownTenantDoc(wsId); allow write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/payments/{id}      { allow read: if allowOrgDoc(wsId) || ownTenantDoc(wsId); allow write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/tickets/{id}       { allow read: if allowOrgDoc(wsId) || ownTenantDoc(wsId); allow create: if allowOrgDoc(wsId) || ownTenantCreate(wsId); allow update, delete: if allowOrgDoc(wsId); }
+    // Commentaires internes de maintenance — STRICTEMENT réservés au personnel
+    // (le locataire ne doit jamais les lire).
+    match /workspaces/{wsId}/ticketComments/{id} { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/inspections/{id}   { allow read: if allowOrgDoc(wsId) || ownTenantDoc(wsId); allow write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/transactions/{id}  { allow read, write: if allowOrgDoc(wsId); }
     // Messagerie : le gérant (staff) voit toutes les conversations de son agence ;

@@ -589,7 +589,7 @@ export function AppProvider({ children }) {
       } else {
         // entity collections: filtered by orgId for non-admin staff users
         ['properties', 'contracts', 'tenants', 'owners', 'payments', 'transactions',
-          'tickets', 'inspections', 'conversations', 'monthClosures',
+          'tickets', 'ticketComments', 'inspections', 'conversations', 'monthClosures',
           'insurances', 'budgets', 'referrers', 'prestataires', 'bordereaux', 'commissionRates',
           'tenantDocuments', 'reports'].forEach(c => sub(c, true));
       }
@@ -1530,6 +1530,17 @@ export function AppProvider({ children }) {
           break;
         case 'DELETE_TICKET':
           await deleteDoc(wsDoc('tickets', payload));
+          break;
+        // Commentaire INTERNE sur un ticket (collection réservée au personnel —
+        // le locataire ne la lit jamais). Permet de documenter la décision avant
+        // de marquer le statut final.
+        case 'ADD_TICKET_COMMENT': {
+          const id = payload.id || `TC-${Date.now()}`;
+          await setDoc(wsDoc('ticketComments', id), { ...payload, id, orgId });
+          break;
+        }
+        case 'DELETE_TICKET_COMMENT':
+          await deleteDoc(wsDoc('ticketComments', payload));
           break;
 
         // ── INSPECTIONS ───────────────────────────────────────────────────────

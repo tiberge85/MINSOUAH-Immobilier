@@ -45,6 +45,7 @@ export default function Maintenance() {
   const [detailTicket, setDetailTicket] = useState(null);
   const [assignModal, setAssignModal] = useState(null);
   const [technicianName, setTechnicianName] = useState('');
+  const [commentText, setCommentText] = useState('');
   const [form, setForm] = useState(newTicketForm0);
 
   const filtered = tickets.filter((t) => {
@@ -122,6 +123,27 @@ export default function Maintenance() {
     setAssignModal(null);
     setTechnicianName('');
   };
+
+  // Commentaires internes (gestion seule) rattachés au ticket ouvert.
+  const addComment = () => {
+    const text = commentText.trim();
+    if (!text || !detailTicket) return;
+    dispatch({
+      type: 'ADD_TICKET_COMMENT',
+      payload: {
+        id: 'TC-' + Date.now(),
+        ticketId: detailTicket.id,
+        text,
+        author: state.currentUser?.name || 'Gestion',
+        at: new Date().toISOString(),
+      },
+    });
+    setCommentText('');
+  };
+  const ticketComments = (detailTicket
+    ? (state.ticketComments || []).filter(c => String(c.ticketId) === String(detailTicket.id))
+    : []
+  ).sort((a, b) => (a.at || '').localeCompare(b.at || ''));
 
   return (
     <div className="px-3 sm:px-6 md:px-margin pt-4 sm:pt-gutter pb-xl max-w-7xl mx-auto flex flex-col gap-gutter">
@@ -525,6 +547,49 @@ export default function Maintenance() {
                 <Icon name="payments" size={15} />
                 <span>{detailTicket.devisAmount ? parseFloat(detailTicket.devisAmount).toLocaleString('fr-FR') + ' FCFA' : <span className="italic font-normal opacity-60">Aucun devis</span>}</span>
               </div>
+            </div>
+
+            {/* Commentaires internes (gestion seule) — avant la décision finale */}
+            <div className="bg-surface-container rounded-xl p-sm">
+              <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider mb-2 flex items-center gap-1">
+                <Icon name="lock" size={13} /> Commentaires internes
+              </p>
+              <div className="flex flex-col gap-2 mb-2 max-h-44 overflow-y-auto">
+                {ticketComments.length === 0 ? (
+                  <p className="text-body-sm text-on-surface-variant italic">Aucun commentaire. Ajoutez une note avant de décider.</p>
+                ) : (
+                  ticketComments.map((c) => (
+                    <div key={c.id} className="bg-surface-container-lowest rounded-lg p-2 group/com">
+                      <p className="text-body-sm text-on-surface whitespace-pre-wrap">{c.text}</p>
+                      <div className="flex items-center justify-between mt-0.5">
+                        <p className="text-[10px] text-on-surface-variant">
+                          {c.author} · {c.at ? new Date(c.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
+                        </p>
+                        {canEdit && (
+                          <button
+                            onClick={() => dispatch({ type: 'DELETE_TICKET_COMMENT', payload: c.id })}
+                            className="text-[10px] text-error opacity-0 group-hover/com:opacity-100 transition-opacity hover:underline"
+                          >
+                            Supprimer
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              {canEdit && (
+                <div className="flex gap-2">
+                  <input
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addComment(); } }}
+                    placeholder="Ajouter un commentaire…"
+                    className="flex-1 border border-outline-variant/40 bg-surface-container-lowest rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 text-on-surface"
+                  />
+                  <Button onClick={addComment} disabled={!commentText.trim()} icon="add">Ajouter</Button>
+                </div>
+              )}
             </div>
 
             {/* Progress stepper */}
