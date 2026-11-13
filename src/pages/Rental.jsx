@@ -1,7 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
-import { sendPasswordResetEmail } from 'firebase/auth';
-import { auth } from '../lib/firebase';
-import { loadXLSX } from '../lib/lazyXlsx';
+import * as XLSX from 'xlsx';
 import { QRCodeSVG } from 'qrcode.react';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
@@ -130,18 +128,10 @@ export default function Rental() {
   const isFormerTenant = (t) => tenantsResilie.has(normN(t.name)) && !tenantsWithContract.has(normN(t.name));
   // Nouveau locataire = date d'entrée dans le mois en cours.
   const _now = new Date();
-  const _inThisMonth = (val) => {
-    if (!val) return false;
-    const d = new Date(val);
-    return !isNaN(d.getTime()) && d.getMonth() === _now.getMonth() && d.getFullYear() === _now.getFullYear();
-  };
-  // « Nouveau ce mois » : entrée (Depuis) ce mois, OU fiche créée ce mois, OU
-  // contrat actif démarré ce mois — pour attraper un locataire ajouté/signé ce
-  // mois même si sa date « Depuis » est vide ou antérieure.
   const isNewThisMonth = (t) => {
-    if (_inThisMonth(t.since) || _inThisMonth(t.createdAt)) return true;
-    const c = contracts.find(c => normN(c.tenant) === normN(t.name) && (c.status === 'Actif' || c.status === 'Expirant'));
-    return !!c && (_inThisMonth(c.startDate) || _inThisMonth(c.since) || _inThisMonth(c.createdAt));
+    if (!t.since) return false;
+    const d = new Date(t.since);
+    return !isNaN(d.getTime()) && d.getMonth() === _now.getMonth() && d.getFullYear() === _now.getFullYear();
   };
   const matchSearch = (t) => !normQ || normN(t.name).includes(normQ) || normN(t.property || '').includes(normQ) || (t.phone || '').replace(/\s+/g, '').includes(q.replace(/\s+/g, '')) || normN(t.email || '').includes(normQ);
   // Onglet « Locataires » : uniquement les ACTIFS (les sortis ont leur propre onglet).
@@ -263,22 +253,12 @@ export default function Rental() {
     setModal(null);
   };
 
-  // Mot de passe temporaire FACILE à taper : minuscules + chiffres, sans
-  // caractères ambigus (ni majuscule, ni l/o/0/1), pour éviter les erreurs de
-  // saisie côté locataire (ex. le « B » majuscule mal recopié).
-  const genTmpPw = () => {
-    const chars = 'abcdefghijkmnpqrstuvwxyz23456789';
-    let s = '';
-    for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
-    return 'ms' + s; // ex. « msa3k9zq »
-  };
-
   const offerCreateAccount = (name, email, role, personId = null) => {
     if (!email || !email.trim()) return;
     const emailLow = email.trim().toLowerCase();
     const alreadyExists = (state.users || []).some(u => u.email.toLowerCase() === emailLow);
     if (alreadyExists) return;
-    const tmpPw = genTmpPw();
+    const tmpPw = 'Bienv' + Math.random().toString(36).slice(2, 7);
     setCreateAccountPrompt({ name, email: emailLow, role, tmpPw, personId });
   };
 
@@ -293,28 +273,14 @@ export default function Rental() {
   };
 
   // Créer l'accès portail d'un locataire directement depuis sa fiche.
-  const createTenantAccess = async (t) => {
+  const createTenantAccess = (t) => {
     if (!t.email || !t.email.trim()) {
       alert(`Ajoutez d'abord un e-mail à ${t.name} (bouton Modifier) pour pouvoir créer son accès au portail.`);
       return;
     }
-    const emailLow = t.email.trim().toLowerCase();
-    const existing = (state.users || []).find(u => (u.email || '').toLowerCase() === emailLow);
-    if (existing) {
-      // L'accès existe déjà → RÉINITIALISATION fiable via l'e-mail de
-      // réinitialisation Firebase. Ça resynchronise le mot de passe côté Firebase
-      // (source de la session) et évite le blocage « reconnectez-vous ».
-      if (!window.confirm(`Un accès existe déjà pour ${t.email}.\n\nEnvoyer un e-mail de réinitialisation du mot de passe au locataire ?`)) return;
-      try {
-        await sendPasswordResetEmail(auth, emailLow);
-        dispatch({ type: 'UPDATE_USER', payload: { id: existing.id, firstLogin: false, failedAttempts: 0, lockedUntil: null, personId: existing.personId ?? t.id } });
-        alert(`E-mail de réinitialisation envoyé à ${t.email}.\n\nLe locataire ouvre le lien reçu, choisit son mot de passe, puis se connecte avec. (Pensez aux spams.)`);
-      } catch (e) {
-        // Pas encore de compte Firebase (jamais connecté) → mot de passe temporaire.
-        const tmpPw = genTmpPw();
-        dispatch({ type: 'UPDATE_USER', payload: { id: existing.id, password: tmpPw, firstLogin: true, failedAttempts: 0, lockedUntil: null, personId: existing.personId ?? t.id } });
-        alert(`Nouveau mot de passe temporaire pour ${t.name} :\n\n${tmpPw}\n\nCommuniquez-le au locataire (il choisira son mot de passe à la connexion).\n\n(Détail : ${e?.code || e?.message || 'reset email indisponible'})`);
-      }
+    const exists = (state.users || []).some(u => (u.email || '').toLowerCase() === t.email.trim().toLowerCase());
+    if (exists) {
+      alert(`Un accès existe déjà pour ${t.email}.\nRetrouvez-le dans Paramètres → Utilisateurs.`);
       return;
     }
     offerCreateAccount(t.name, t.email, 'TENANT', t.id);
@@ -434,8 +400,7 @@ ${sectionsHtml}
     win.onload = () => { win.focus(); win.print(); };
   };
 
-  const exportTenants = async () => {
-    const XLSX = await loadXLSX();
+  const exportTenants = () => {
     const fmtDate = (d) => {
       if (!d) return '';
       const dt = new Date(d);
@@ -553,8 +518,7 @@ ${sectionsHtml}
   const normalize = (s) =>
     String(s || '').toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-  const downloadTemplate = async () => {
-    const XLSX = await loadXLSX();
+  const downloadTemplate = () => {
     const wb = XLSX.utils.book_new();
     // Feuille 1 : format immeuble (comme OCCUPATION DES APPARTEMENTS)
     const ws1 = XLSX.utils.aoa_to_sheet([
@@ -580,9 +544,8 @@ ${sectionsHtml}
 
   const parseImportFile = (file) => {
     const reader = new FileReader();
-    reader.onload = async (e) => {
+    reader.onload = (e) => {
       try {
-        const XLSX = await loadXLSX();
         const data = new Uint8Array(e.target.result);
         const wb = XLSX.read(data, { type: 'array' });
         const allMapped = [];
@@ -687,10 +650,7 @@ ${sectionsHtml}
     return (
       <div key={t.id} className={`bg-surface rounded-2xl p-4 border shadow-sm group hover:shadow-md transition-shadow ${former ? 'border-error/30' : 'border-outline-variant/20'}`}>
         <div className="flex items-center gap-3 mb-3">
-          {t.avatar
-            ? <img src={t.avatar} alt="" className="w-12 h-12 rounded-full object-cover flex-shrink-0" />
-            : <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${t.color}`}>{t.initials}</div>
-          }
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${t.color}`}>{t.initials}</div>
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-on-surface truncate">{t.name}</h3>
             {former
