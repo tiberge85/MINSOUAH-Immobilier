@@ -543,6 +543,17 @@ export default function Maintenance() {
             </div>
             <p className="text-body-md text-on-surface-variant">{detailTicket.description}</p>
 
+            {/* Photos jointes par le locataire */}
+            {Array.isArray(detailTicket.photos) && detailTicket.photos.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {detailTicket.photos.map((src, i) => (
+                  <a key={i} href={src} target="_blank" rel="noreferrer" className="w-24 h-24 rounded-xl overflow-hidden border border-outline-variant/30 block">
+                    <img src={src} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                  </a>
+                ))}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-sm text-body-sm">
               <div className="bg-surface-container rounded-xl p-sm">
                 <p className="text-on-surface-variant text-label-sm mb-1">Propriété</p>

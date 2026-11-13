@@ -167,9 +167,46 @@ function PaymentModal({ contract, onClose, onSuccess }) {
 }
 
 function NewTicketModal({ tenant, contract, onClose, onSave }) {
-  const [form, setForm] = useState({ title: '', description: '', priority: 'Moyen', category: 'Plomberie' });
+  const [form, setForm] = useState({ title: '', description: '', priority: 'Moyen', category: 'Plomberie', photos: [] });
+  const [photoBusy, setPhotoBusy] = useState(false);
   const categories = ['Plomberie', 'Électricité', 'Climatisation', 'Menuiserie', 'Peinture', 'Autre'];
   const priorities = ['Faible', 'Moyen', 'Urgent'];
+  const MAX_PHOTOS = 3;
+
+  // Compresse chaque photo (max ~1000px, JPEG qualité 0.6) pour tenir dans le
+  // document Firestore (limite 1 Mo). On en garde 3 au maximum.
+  const addPhotos = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setPhotoBusy(true);
+    try {
+      const room = MAX_PHOTOS - form.photos.length;
+      for (const file of files.slice(0, Math.max(0, room))) {
+        if (!file.type.startsWith('image/')) continue;
+        const dataUrl = await new Promise((res, rej) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const img = new Image();
+            img.onload = () => {
+              const MAX = 1000;
+              const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+              const canvas = document.createElement('canvas');
+              canvas.width = Math.round(img.width * ratio);
+              canvas.height = Math.round(img.height * ratio);
+              canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+              res(canvas.toDataURL('image/jpeg', 0.6));
+            };
+            img.onerror = rej;
+            img.src = ev.target.result;
+          };
+          reader.onerror = rej;
+          reader.readAsDataURL(file);
+        });
+        setForm(f => ({ ...f, photos: [...f.photos, dataUrl].slice(0, MAX_PHOTOS) }));
+      }
+    } catch { /* ignore */ }
+    finally { setPhotoBusy(false); e.target.value = ''; }
+  };
 
   const save = () => {
     if (!form.title.trim()) return;
@@ -186,6 +223,7 @@ function NewTicketModal({ tenant, contract, onClose, onSave }) {
       // locataire que si ticket.tenantId == son personId. Sans ce champ, la
       // demande de maintenance était refusée et n'arrivait jamais au gérant.
       tenantId: tenant?.id,
+      photos: form.photos,
       reportedBy: tenant?.name || '',
       reportedAt: new Date().toLocaleDateString('fr-FR'),
       assignedTo: '',
@@ -246,11 +284,35 @@ function NewTicketModal({ tenant, contract, onClose, onSave }) {
               </select>
             </div>
           </div>
+          {/* Photos du problème */}
+          <div>
+            <label className="text-label-sm text-on-surface-variant mb-1 block">Photos ({form.photos.length}/{MAX_PHOTOS})</label>
+            <div className="flex flex-wrap gap-2">
+              {form.photos.map((src, i) => (
+                <div key={i} className="relative w-20 h-20 rounded-xl overflow-hidden border border-outline-variant/30">
+                  <img src={src} alt="" className="w-full h-full object-cover" />
+                  <button
+                    onClick={() => setForm(f => ({ ...f, photos: f.photos.filter((_, j) => j !== i) }))}
+                    className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"
+                  >
+                    <Icon name="close" size={13} />
+                  </button>
+                </div>
+              ))}
+              {form.photos.length < MAX_PHOTOS && (
+                <label className="w-20 h-20 rounded-xl border-2 border-dashed border-outline-variant/50 flex flex-col items-center justify-center text-on-surface-variant cursor-pointer hover:bg-surface-container transition-colors">
+                  <Icon name={photoBusy ? 'progress_activity' : 'add'} size={22} className={photoBusy ? 'animate-spin' : ''} />
+                  <span className="text-[10px] mt-0.5">{photoBusy ? '…' : 'Ajouter'}</span>
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={addPhotos} disabled={photoBusy} />
+                </label>
+              )}
+            </div>
+          </div>
           <div className="flex gap-3 pt-2">
             <button onClick={onClose} className="flex-1 py-3 rounded-2xl border border-outline-variant text-on-surface font-bold">
               Annuler
             </button>
-            <button onClick={save} disabled={!form.title.trim()} className="flex-1 py-3 rounded-2xl bg-primary text-on-primary font-bold disabled:opacity-50">
+            <button onClick={save} disabled={!form.title.trim() || photoBusy} className="flex-1 py-3 rounded-2xl bg-primary text-on-primary font-bold disabled:opacity-50">
               Envoyer
             </button>
           </div>
@@ -306,6 +368,7 @@ export default function TenantPortal() {
   const navigate = useNavigate();
   const toast = useToast();
   const [selectedId, setSelectedId] = useState(null);
+  const [selectedContractId, setSelectedContractId] = useState(null); // bien sélectionné (multi-biens)
   const [portalSearch, setPortalSearch] = useState('');
   const [activeTab, setActiveTab] = useState('home');
   const [showPayModal, setShowPayModal] = useState(false);
@@ -391,26 +454,39 @@ export default function TenantPortal() {
   // actif »). On compare toujours en chaîne, en ignorant les valeurs nulles.
   const idEq = (a, b) => a != null && b != null && String(a) === String(b);
 
-  const contract = useMemo(() => {
-    if (!tenant) return null;
-    return contracts.find(c =>
-      c.status === 'Actif' && (
-        idEq(c.tenantId, tenant.id) ||
-        c.tenant === tenantName ||
-        c.tenant === tenant.name
-      )
-    ) || contracts.find(c => c.tenant === tenantName)
-       || contracts.find(c => idEq(c.tenantId, tenant.id));
+  // TOUS les baux du locataire (il peut louer PLUSIEURS biens). On met les baux
+  // actifs en premier. Le portail affiche un sélecteur quand il y en a plusieurs.
+  const tenantContracts = useMemo(() => {
+    if (!tenant) return [];
+    return contracts
+      .filter(c => idEq(c.tenantId, tenant.id) || c.tenant === tenantName || c.tenant === tenant.name)
+      .sort((a, b) => {
+        const av = (a.status === 'Actif' || a.status === 'Expirant') ? 0 : 1;
+        const bv = (b.status === 'Actif' || b.status === 'Expirant') ? 0 : 1;
+        return av - bv;
+      });
   }, [tenant, contracts, tenantName]);
+  const multiBien = tenantContracts.length > 1;
+
+  const contract = useMemo(() => {
+    if (!tenantContracts.length) return null;
+    return tenantContracts.find(c => String(c.id) === String(selectedContractId)) || tenantContracts[0];
+  }, [tenantContracts, selectedContractId]);
 
   const tenantPayments = useMemo(() =>
-    payments.filter(p =>
-      (contract && idEq(p.contractId, contract.id)) ||
-      (tenant && idEq(p.tenantId, tenant.id)) ||
-      (p.tenantName && tenantName && p.tenantName.toLowerCase().trim() === tenantName.toLowerCase().trim()) ||
-      (p.tenantName && tenant?.name && p.tenantName.toLowerCase().trim() === tenant.name.toLowerCase().trim())
-    ).sort((a, b) => Number(b.id) - Number(a.id)),
-    [contract, payments, tenantName, tenant]
+    payments.filter(p => {
+      // Plusieurs biens : on isole les paiements du bien SÉLECTIONNÉ (par bail ou
+      // par nom de propriété). Un seul bien : on garde la correspondance large.
+      if (multiBien) {
+        return (contract && idEq(p.contractId, contract.id)) ||
+          (contract?.propertyName && p.propertyName && p.propertyName === contract.propertyName);
+      }
+      return (contract && idEq(p.contractId, contract.id)) ||
+        (tenant && idEq(p.tenantId, tenant.id)) ||
+        (p.tenantName && tenantName && p.tenantName.toLowerCase().trim() === tenantName.toLowerCase().trim()) ||
+        (p.tenantName && tenant?.name && p.tenantName.toLowerCase().trim() === tenant.name.toLowerCase().trim());
+    }).sort((a, b) => Number(b.id) - Number(a.id)),
+    [contract, payments, tenantName, tenant, multiBien]
   );
 
   const tenantTickets = useMemo(() =>
@@ -786,12 +862,31 @@ export default function TenantPortal() {
               ? <img src={tenant.avatar} alt="" className="w-16 h-16 rounded-full object-cover border-2 border-on-primary/40 flex-shrink-0" />
               : <div className={`w-16 h-16 rounded-full flex items-center justify-center font-bold text-xl flex-shrink-0 border-2 border-on-primary/40 ${tenant.color || 'bg-primary-container'}`}>{tenant.initials || tenantName[0]}</div>
             }
-            <div>
+            <div className="min-w-0">
               <p className="text-on-primary/70 text-label-sm">Bonjour,</p>
               <h1 className="font-h2 text-h2 font-bold">{tenantName}</h1>
-              <p className="text-on-primary/80 text-body-sm">{contract?.propertyName || tenant.property || '—'}</p>
+              {multiBien ? (
+                <select
+                  value={String(contract?.id ?? '')}
+                  onChange={(e) => setSelectedContractId(e.target.value)}
+                  className="mt-1 max-w-full bg-on-primary/15 text-on-primary text-body-sm font-semibold rounded-lg px-2 py-1 border border-on-primary/30 focus:outline-none"
+                >
+                  {tenantContracts.map((c) => (
+                    <option key={c.id} value={String(c.id)} className="text-on-surface">
+                      {c.propertyName || 'Bien'}{c.status && c.status !== 'Actif' ? ` (${c.status})` : ''}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-on-primary/80 text-body-sm">{contract?.propertyName || tenant.property || '—'}</p>
+              )}
             </div>
           </div>
+          {multiBien && (
+            <p className="text-on-primary/70 text-[11px] mt-2 flex items-center gap-1">
+              <Icon name="domain" size={13} /> {tenantContracts.length} biens — choisissez l'appartement à consulter ci-dessus
+            </p>
+          )}
         </div>
       </div>
 
