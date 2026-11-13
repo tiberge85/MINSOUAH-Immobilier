@@ -449,7 +449,8 @@ export default function TenantPortal() {
 
   const tenantConversation = useMemo(() =>
     conversations.find(c =>
-      c.contact?.personId === tenant?.id ||
+      (c.tenantId != null && tenant?.id != null && String(c.tenantId) === String(tenant.id)) ||
+      (c.contact?.personId != null && tenant?.id != null && String(c.contact.personId) === String(tenant.id)) ||
       c.contact?.name === tenantName
     ) || null,
     [conversations, tenant, tenantName]
@@ -765,14 +766,17 @@ export default function TenantPortal() {
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — grille 4 colonnes sur mobile (toutes les icônes restent visibles,
+          sur 2 lignes) ; rangée flex sur écran large. Avant, les 7 onglets étaient
+          forcés sur une seule ligne et les derniers (Documents, Messages) étaient
+          coupés hors de l'écran sur téléphone. */}
       <div className="px-4 mt-4">
-        <div className="flex gap-1 bg-surface-container rounded-xl p-1">
+        <div className="grid grid-cols-4 sm:flex gap-1 bg-surface-container rounded-xl p-1">
           {TABS.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg text-label-sm font-bold transition-all ${
+              className={`w-full sm:flex-1 flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg text-label-sm font-bold transition-all ${
                 activeTab === tab.id
                   ? 'bg-surface-container-lowest shadow-sm text-primary'
                   : 'text-on-surface-variant hover:text-on-surface'

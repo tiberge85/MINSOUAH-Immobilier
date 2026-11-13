@@ -187,7 +187,10 @@ export default function TenantDocuments({ tenantId, tenantName, readOnly = false
         for (let i = 0; i < chunks.length; i++) {
           const chunkId = `${docId}__c${i}`;
           await setDoc(doc(db, 'workspaces', WS, 'tenantDocuments', chunkId), {
-            id: chunkId, _chunk: true, parentId: docId, i, data: chunks[i], orgId,
+            // tenantId sur CHAQUE morceau : les règles autorisent le locataire à
+            // créer un document seulement si tenantId == son personId. Sans ça,
+            // l'upload d'un locataire était refusé (« Échec de l'ajout du document »).
+            id: chunkId, _chunk: true, parentId: docId, i, data: chunks[i], orgId, tenantId,
           });
           setProgress(Math.round(((i + 1) / chunks.length) * 100));
         }

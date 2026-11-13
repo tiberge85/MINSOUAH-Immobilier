@@ -189,7 +189,15 @@ service cloud.firestore {
     match /workspaces/{wsId}/tenants/{id}       { allow read: if allowOrgDoc(wsId) || (request.auth != null && callerPersonId(wsId) != '' && string(resource.data.id) == string(callerPersonId(wsId))); allow write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/owners/{id}        { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/monthClosures/{id} { allow read, write: if allowOrgDoc(wsId); }
-    match /workspaces/{wsId}/tenantDocuments/{id} { allow read: if allowOrgDoc(wsId) || ownTenantDoc(wsId); allow write: if allowOrgDoc(wsId); }
+    // Documents du dossier : le locataire lit les siens ET peut en AJOUTER /
+    // SUPPRIMER (pièces jointes de son dossier). tenantId doit être présent sur
+    // chaque document/morceau (voir TenantDocuments.jsx) pour ownTenantCreate.
+    match /workspaces/{wsId}/tenantDocuments/{id} {
+      allow read:   if allowOrgDoc(wsId) || ownTenantDoc(wsId);
+      allow create: if allowOrgDoc(wsId) || ownTenantCreate(wsId);
+      allow update: if allowOrgDoc(wsId);
+      allow delete: if allowOrgDoc(wsId) || ownTenantDoc(wsId);
+    }
 
     // ── Marketplace listings ───────────────────────────────────────────────────
     // Read: any authenticated user (includes anonymous — public marketplace)
