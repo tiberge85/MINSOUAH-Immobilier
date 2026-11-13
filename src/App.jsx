@@ -257,8 +257,16 @@ function ProtectedRoute({ children, allowedRoles, module }) {
       return <Navigate to={target} replace />;
     }
   }
-  // License + org guard — SUPER_ADMIN is always exempt
-  if (user.role !== 'SUPER_ADMIN') {
+  // License + org guard — SUPER_ADMIN, TENANT et OWNER sont exemptés.
+  // Un LOCATAIRE (ou propriétaire) consulte UNIQUEMENT ses propres données : il
+  // n'a pas le droit de lire les collections `organizations`/`licenses` (réservées
+  // au personnel de l'agence). Ses tableaux state.organizations/state.licenses
+  // restaient donc VIDES → `!orgsLoaded` renvoyait <BootstrapScreen/> à l'infini
+  // (« Chargement des données… » figé alors que _bootstrapping = false et que ses
+  // données locataire étaient déjà chargées). De plus, la licence est l'affaire du
+  // bailleur, pas du locataire : on ne doit jamais bloquer un locataire sur l'état
+  // de la licence de l'agence. On saute donc entièrement cette barrière pour eux.
+  if (user.role !== 'SUPER_ADMIN' && user.role !== 'TENANT' && user.role !== 'OWNER') {
     // Sur réseau lent, le délai de démarrage (12 s) peut expirer AVANT l'arrivée des
     // organisations/licences. Tant que ces listes sont vides, les données ne sont pas
     // encore chargées : on affiche le chargement, JAMAIS « Accès suspendu » (sinon un
