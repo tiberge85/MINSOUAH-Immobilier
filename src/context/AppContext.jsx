@@ -588,6 +588,36 @@ export function AppProvider({ children }) {
         subOwn('tenantDocuments');
         // Ses conversations (messagerie avec le gérant) : filtrées par tenantId.
         subOwn('conversations');
+
+        // ── BIENS ATTRIBUÉS (gestionnaire de portail) ──────────────────────
+        // Baux qu'un AUTRE locataire gère/paie : portalTenantId == son personId,
+        // même si le bail n'est pas à son nom. On charge ces baux ET leurs
+        // paiements (par contractId), puis on les fusionne dans l'état.
+        (async () => {
+          try {
+            const cs = await getDocs(query(wsCol('contracts'), where('portalTenantId', 'in', pidVals)));
+            const extra = cs.docs.map((d) => d.data());
+            if (!extra.length) return;
+            setState((s) => {
+              const have = new Set((s.contracts || []).map((c) => String(c.id)));
+              return { ...s, contracts: [...(s.contracts || []), ...extra.filter((c) => !have.has(String(c.id)))] };
+            });
+            // Paiements de ces baux, par contractId (nombre ET chaîne), en lots de 10.
+            const idVals = [];
+            extra.forEach((c) => { if (c.id != null) { idVals.push(c.id); idVals.push(String(c.id)); } });
+            for (let i = 0; i < idVals.length; i += 10) {
+              const chunk = idVals.slice(i, i + 10);
+              try {
+                const ps = await getDocs(query(wsCol('payments'), where('contractId', 'in', chunk)));
+                const extraP = ps.docs.map((d) => d.data());
+                if (extraP.length) setState((s) => {
+                  const have = new Set((s.payments || []).map((p) => String(p.id)));
+                  return { ...s, payments: [...(s.payments || []), ...extraP.filter((p) => !have.has(String(p.id)))] };
+                });
+              } catch { /* règles / réseau */ }
+            }
+          } catch { /* règles / réseau */ }
+        })();
         // Collections non pertinentes pour un locataire : marquées « chargées »
         // (vides) pour débloquer le démarrage sans tenter de lectures refusées.
         ['properties', 'owners', 'transactions', 'monthClosures',

@@ -459,7 +459,7 @@ export default function TenantPortal() {
   const tenantContracts = useMemo(() => {
     if (!tenant) return [];
     return contracts
-      .filter(c => idEq(c.tenantId, tenant.id) || c.tenant === tenantName || c.tenant === tenant.name)
+      .filter(c => idEq(c.tenantId, tenant.id) || c.tenant === tenantName || c.tenant === tenant.name || idEq(c.portalTenantId, tenant.id))
       .sort((a, b) => {
         const av = (a.status === 'Actif' || a.status === 'Expirant') ? 0 : 1;
         const bv = (b.status === 'Actif' || b.status === 'Expirant') ? 0 : 1;
