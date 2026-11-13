@@ -207,9 +207,24 @@ export default function Recognition() {
     withPhone.forEach((a, i) => setTimeout(() => window.open(`https://wa.me/${phoneForWA(phoneMap[String(a.tenantId)] || a.tenantPhone || '')}?text=${waMessage(a)}`, '_blank'), i * 700));
   }
 
+  // Crée/complète la fiche de vérification publique pour qu'un certificat GÉNÉRÉ
+  // (même avant publication groupée) soit vérifiable au scan du QR. Sans ça, le
+  // scan renvoyait « Certificat introuvable ».
+  async function ensureCertVerify(award) {
+    const num = award.certificate_number || `MR-${award.year}-${award.tenantId}`;
+    try {
+      await setDoc(doc(db, 'workspaces', WS, 'certificateVerify', num), {
+        certificate_number: num, tenantName: award.tenantName, label: award.label,
+        award_type: award.award_type, year: award.year, property: award.property || '',
+        orgId, valid: true, generated_at: new Date().toISOString(),
+      }, { merge: true });
+    } catch { /* la vérification publique reste optionnelle */ }
+  }
+
   async function genCertPDF(award) {
     const win = window.open('', '_blank', 'width=1150,height=820'); // geste utilisateur → non bloqué
     try {
+      ensureCertVerify(award);
       const { svg } = await buildCertificate(award, orgSettings, baseUrl);
       if (win) { win.document.write(certificateHTML(svg, `Certificat ${award.tenantName}`)); win.document.close(); }
       else { await genCertPNG(award); setMsg('Fenêtre bloquée : certificat téléchargé en image.'); setTimeout(() => setMsg(''), 6000); }
@@ -218,6 +233,7 @@ export default function Recognition() {
 
   async function genCertPNG(award) {
     try {
+      ensureCertVerify(award);
       const { svg } = await buildCertificate(award, orgSettings, baseUrl);
       const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
       const url = URL.createObjectURL(blob);

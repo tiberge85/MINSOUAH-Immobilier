@@ -475,7 +475,8 @@ export default function TenantPortal() {
       time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
     };
     if (tenantConversation) {
-      dispatch({ type: 'SEND_MESSAGE', payload: { convId: tenantConversation.id, message: msg } });
+      // markUnread : le gérant voit un compteur de nouveau message (badge Messagerie).
+      dispatch({ type: 'SEND_MESSAGE', payload: { convId: tenantConversation.id, message: msg, markUnread: true } });
     } else {
       dispatch({
         type: 'ADD_CONVERSATION',

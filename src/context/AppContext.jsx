@@ -1607,14 +1607,16 @@ export function AppProvider({ children }) {
 
         // ── CONVERSATIONS ─────────────────────────────────────────────────────
         case 'SEND_MESSAGE': {
-          const { convId, message } = payload;
+          const { convId, message, markUnread } = payload;
           const conv = st.conversations.find((c) => c.id === convId);
           if (conv) {
             await setDoc(wsDoc('conversations', convId), {
               ...conv,
               lastMessage: message.text,
               time: message.time,
-              unread: 0,
+              // Un message ENVOYÉ PAR LE LOCATAIRE incrémente le compteur « non lu »
+              // du gérant (badge Messagerie) ; l'envoi par le gérant remet à 0.
+              unread: markUnread ? (conv.unread || 0) + 1 : 0,
               messages: [...(conv.messages || []), message],
             });
           }

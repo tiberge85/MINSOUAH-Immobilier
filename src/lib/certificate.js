@@ -91,11 +91,13 @@ function certSVG({ award, org, num, qrDataUrl }) {
     <text text-anchor="middle" y="22" font-size="10" fill="${th.accent}" font-weight="bold">MINSOUAH</text>
   </g>
 
-  <!-- signature -->
+  <!-- signature — « La Direction » puis le nom de l'agence sur DEUX lignes pour
+       ne jamais déborder du cadre, même avec un nom long. -->
   <g transform="translate(${W - 300}, ${H - 150})">
-    ${stamp ? `<image href="${stamp}" x="60" y="-30" width="120" height="70" preserveAspectRatio="xMidYMid meet" opacity="0.9"/>` : ''}
-    <line x1="20" y1="40" x2="260" y2="40" stroke="#888" stroke-width="1"/>
-    <text x="140" y="60" text-anchor="middle" font-size="14" fill="#444" font-weight="bold">La Direction — ${esc(company)}</text>
+    ${stamp ? `<image href="${stamp}" x="55" y="-36" width="120" height="66" preserveAspectRatio="xMidYMid meet" opacity="0.9"/>` : ''}
+    <line x1="10" y1="40" x2="250" y2="40" stroke="#888" stroke-width="1"/>
+    <text x="130" y="57" text-anchor="middle" font-size="12" fill="#666">La Direction</text>
+    <text x="130" y="75" text-anchor="middle" font-size="${String(company).length > 24 ? 11 : 13}" fill="#333" font-weight="bold">${esc(company)}</text>
   </g>
 
   <!-- bas : numéro + date + QR -->
