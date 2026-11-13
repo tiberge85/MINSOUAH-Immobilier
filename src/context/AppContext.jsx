@@ -662,20 +662,29 @@ export function AppProvider({ children }) {
                 if (nm && t.id != null) byName.set(nm, t.id);
               });
               const hasVal = (v) => v != null && String(v).trim() !== '';
+              const paymentsArr = pSnap.docs.map((d) => d.data());
+              // Relation FIABLE bail→locataire déduite des paiements (qui, eux,
+              // portent presque toujours un tenantId correct) : contractId→tenantId.
+              const payTenantByContract = new Map();
+              paymentsArr.forEach((p) => {
+                if (hasVal(p.contractId) && hasVal(p.tenantId)) {
+                  payTenantByContract.set(String(p.contractId), p.tenantId);
+                }
+              });
               const contractsArr = cSnap.docs.map((d) => d.data());
               const contractTenantById = new Map();
               let patched = 0;
-              // 1) Baux sans tenantId → résolution par nom
+              // 1) Baux sans tenantId → résolution par NOM, sinon via les PAIEMENTS
               for (const c of contractsArr) {
                 if (hasVal(c.tenantId)) { contractTenantById.set(String(c.id), c.tenantId); continue; }
-                const tid = byName.get(normN(c.tenant));
+                const tid = byName.get(normN(c.tenant)) ?? payTenantByContract.get(String(c.id));
                 if (tid != null) {
                   contractTenantById.set(String(c.id), tid);
                   try { await setDoc(wsDoc('contracts', c.id), { tenantId: tid }, { merge: true }); patched++; } catch { /* règles */ }
                 }
               }
               // 2) Paiements sans tenantId → par nom, sinon via le bail
-              for (const p of pSnap.docs.map((d) => d.data())) {
+              for (const p of paymentsArr) {
                 if (hasVal(p.tenantId)) continue;
                 let tid = byName.get(normN(p.tenantName));
                 if (tid == null && hasVal(p.contractId)) tid = contractTenantById.get(String(p.contractId));
