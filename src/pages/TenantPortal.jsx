@@ -381,30 +381,38 @@ export default function TenantPortal() {
   const tenant = tenants.find(t => String(t.id) === String(selectedId));
   const tenantName = tenant ? (tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim()) : '';
 
+  // Égalité d'identifiant ROBUSTE au type : en base, tenantId/contractId sont
+  // tantôt des nombres, tantôt des chaînes. Un === strict (5 === "5" → faux)
+  // faisait échouer la liaison contrat/paiements → Accueil vide (« Aucun contrat
+  // actif »). On compare toujours en chaîne, en ignorant les valeurs nulles.
+  const idEq = (a, b) => a != null && b != null && String(a) === String(b);
+
   const contract = useMemo(() => {
     if (!tenant) return null;
     return contracts.find(c =>
       c.status === 'Actif' && (
-        c.tenantId === tenant.id ||
+        idEq(c.tenantId, tenant.id) ||
         c.tenant === tenantName ||
         c.tenant === tenant.name
       )
-    ) || contracts.find(c => c.tenant === tenantName);
+    ) || contracts.find(c => c.tenant === tenantName)
+       || contracts.find(c => idEq(c.tenantId, tenant.id));
   }, [tenant, contracts, tenantName]);
 
   const tenantPayments = useMemo(() =>
     payments.filter(p =>
-      (contract && p.contractId === contract.id) ||
-      (tenant && p.tenantId === tenant.id) ||
+      (contract && idEq(p.contractId, contract.id)) ||
+      (tenant && idEq(p.tenantId, tenant.id)) ||
       (p.tenantName && tenantName && p.tenantName.toLowerCase().trim() === tenantName.toLowerCase().trim()) ||
       (p.tenantName && tenant?.name && p.tenantName.toLowerCase().trim() === tenant.name.toLowerCase().trim())
-    ).sort((a, b) => b.id - a.id),
+    ).sort((a, b) => Number(b.id) - Number(a.id)),
     [contract, payments, tenantName, tenant]
   );
 
   const tenantTickets = useMemo(() =>
     tenant
       ? tickets.filter(t =>
+          idEq(t.tenantId, tenant.id) ||
           t.property === (contract?.propertyName || tenant.property) ||
           t.reportedBy === tenantName
         )
