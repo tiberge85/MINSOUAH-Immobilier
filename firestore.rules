@@ -126,13 +126,36 @@ service cloud.firestore {
              && (isSuperAdmin(wsId) || inCallerOrgs(wsId, orgIdOf(resource, request)));
     }
 
+    // ── Portail locataire : un locataire ne lit QUE ses propres documents ──────
+    function callerPersonId(wsId) { return callerMeta(wsId).get('personId', ''); }
+    // Document existant rattaché au locataire courant (par tenantId).
+    function ownTenantDoc(wsId) {
+      return request.auth != null
+             && callerPersonId(wsId) != ''
+             && string(resource.data.tenantId) == string(callerPersonId(wsId));
+    }
+    // Document que le locataire courant CRÉE pour lui-même (ex. ticket).
+    function ownTenantCreate(wsId) {
+      return request.auth != null
+             && callerPersonId(wsId) != ''
+             && string(request.resource.data.tenantId) == string(callerPersonId(wsId));
+    }
+
     match /workspaces/{wsId}/properties/{id}    { allow read, write: if allowOrgDoc(wsId); }
-    match /workspaces/{wsId}/contracts/{id}     { allow read, write: if allowOrgDoc(wsId); }
-    match /workspaces/{wsId}/payments/{id}      { allow read, write: if allowOrgDoc(wsId); }
-    match /workspaces/{wsId}/tickets/{id}       { allow read, write: if allowOrgDoc(wsId); }
-    match /workspaces/{wsId}/inspections/{id}   { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/contracts/{id}     { allow read: if allowOrgDoc(wsId) || ownTenantDoc(wsId); allow write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/payments/{id}      { allow read: if allowOrgDoc(wsId) || ownTenantDoc(wsId); allow write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/tickets/{id}       { allow read: if allowOrgDoc(wsId) || ownTenantDoc(wsId); allow create: if allowOrgDoc(wsId) || ownTenantCreate(wsId); allow update, delete: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/inspections/{id}   { allow read: if allowOrgDoc(wsId) || ownTenantDoc(wsId); allow write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/transactions/{id}  { allow read, write: if allowOrgDoc(wsId); }
-    match /workspaces/{wsId}/conversations/{id} { allow read, write: if allowOrgDoc(wsId); }
+    // Messagerie : le gérant (staff) voit toutes les conversations de son agence ;
+    // le locataire ne lit/écrit QUE la sienne (conversation.tenantId == personId),
+    // ce qui lui permet d'écrire au gérant et de recevoir ses réponses.
+    match /workspaces/{wsId}/conversations/{id} {
+      allow read:   if allowOrgDoc(wsId) || ownTenantDoc(wsId);
+      allow create: if allowOrgDoc(wsId) || ownTenantCreate(wsId);
+      allow update: if allowOrgDoc(wsId) || ownTenantDoc(wsId);
+      allow delete: if allowOrgDoc(wsId);
+    }
     match /workspaces/{wsId}/persons/{id}       { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/avenants/{id}      { allow read, write: if allowOrgDoc(wsId); }
 
@@ -163,10 +186,10 @@ service cloud.firestore {
     }
 
     // ── Tenants / owners ──────────────────────────────────────────────────────
-    match /workspaces/{wsId}/tenants/{id}       { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/tenants/{id}       { allow read: if allowOrgDoc(wsId) || (request.auth != null && callerPersonId(wsId) != '' && string(resource.data.id) == string(callerPersonId(wsId))); allow write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/owners/{id}        { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/monthClosures/{id} { allow read, write: if allowOrgDoc(wsId); }
-    match /workspaces/{wsId}/tenantDocuments/{id} { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/tenantDocuments/{id} { allow read: if allowOrgDoc(wsId) || ownTenantDoc(wsId); allow write: if allowOrgDoc(wsId); }
 
     // ── Marketplace listings ───────────────────────────────────────────────────
     // Read: any authenticated user (includes anonymous — public marketplace)
@@ -237,9 +260,15 @@ service cloud.firestore {
 
     // Minsouah Reconnaissance (distinctions locataires) — gestion par le personnel.
     // La lecture « sa propre distinction » par le locataire sera ajoutée avec l'espace locataire.
-    match /workspaces/{wsId}/tenantAwards/{id}   { allow read, write: if allowOrgDoc(wsId); }
+    match /workspaces/{wsId}/tenantAwards/{id} {
+      allow read:  if allowOrgDoc(wsId)
+                   || (request.auth != null && string(resource.data.tenantId) == string(callerMeta(wsId).get('personId', '')));
+      allow write: if allowOrgDoc(wsId);
+    }
     match /workspaces/{wsId}/awardCampaigns/{id} { allow read, write: if allowOrgDoc(wsId); }
     match /workspaces/{wsId}/awardAuditLogs/{id} { allow read, write: if allowOrgDoc(wsId); }
+    // Critères paramétrables des distinctions (par agence).
+    match /workspaces/{wsId}/recognitionSettings/{id} { allow read, write: if allowOrgDoc(wsId); }
     // Vérification publique d'un certificat (QR code) — lecture par tous, écriture par le personnel.
     match /workspaces/{wsId}/certificateVerify/{id} {
       allow read:  if true;

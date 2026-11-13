@@ -182,6 +182,10 @@ function NewTicketModal({ tenant, contract, onClose, onSave }) {
       status: 'En attente',
       property: contract?.propertyName || tenant?.property || '',
       unit: '',
+      // tenantId est OBLIGATOIRE : les règles n'autorisent la création par un
+      // locataire que si ticket.tenantId == son personId. Sans ce champ, la
+      // demande de maintenance était refusée et n'arrivait jamais au gérant.
+      tenantId: tenant?.id,
       reportedBy: tenant?.name || '',
       reportedAt: new Date().toLocaleDateString('fr-FR'),
       assignedTo: '',
@@ -465,6 +469,10 @@ export default function TenantPortal() {
         type: 'ADD_CONVERSATION',
         payload: {
           id: 'conv-' + Date.now(),
+          // tenantId au premier niveau : exigé par les règles (ownTenantCreate)
+          // pour autoriser le locataire à créer la conversation, et utilisé par
+          // son abonnement « mes conversations » (where tenantId == personId).
+          tenantId: tenant.id,
           contact: {
             name: tenantName,
             role: 'Locataire',
@@ -474,7 +482,7 @@ export default function TenantPortal() {
             online: false,
           },
           messages: [msg],
-          unread: 0,
+          unread: 1,
           lastMessage: msg.text,
           lastTime: msg.time,
         },

@@ -579,9 +579,11 @@ export function AppProvider({ children }) {
         subOwn('tickets');
         subOwn('inspections');
         subOwn('tenantDocuments');
+        // Ses conversations (messagerie avec le gérant) : filtrées par tenantId.
+        subOwn('conversations');
         // Collections non pertinentes pour un locataire : marquées « chargées »
         // (vides) pour débloquer le démarrage sans tenter de lectures refusées.
-        ['properties', 'owners', 'transactions', 'conversations', 'monthClosures',
+        ['properties', 'owners', 'transactions', 'monthClosures',
           'insurances', 'budgets', 'referrers', 'prestataires', 'bordereaux',
           'commissionRates', 'reports'].forEach(markLoaded);
       } else {
