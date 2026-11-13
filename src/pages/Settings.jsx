@@ -1388,6 +1388,7 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
       // reflect the user's *effective* access so the admin edits from the real state
       permissions: rolePermissionsApply(u.role) ? effectivePermissions(u) : (u.permissions || null),
       orgIds: u.orgIds?.length ? u.orgIds : [u.orgId || currentUser?.orgId || 'default'],
+      emailVerificationRequired: !!u.emailVerificationRequired,
     });
   };
 
@@ -1507,6 +1508,25 @@ function UserManagementTab({ state, dispatch, currentUser, showToast }) {
               <div>
                 <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5 block">Téléphone</label>
                 <input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} className={inputCls} placeholder="+225 07 00 00 00 00" />
+              </div>
+
+              {/* Débloquer l'accès : lève l'obligation de vérifier l'email. */}
+              <div className="md:col-span-2">
+                <label className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-colors ${editForm.emailVerificationRequired ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'}`}>
+                  <input
+                    type="checkbox"
+                    checked={!editForm.emailVerificationRequired}
+                    onChange={e => setEditForm(f => ({ ...f, emailVerificationRequired: !e.target.checked }))}
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-on-surface">Accès débloqué (sans vérification d'email)</p>
+                    <p className="text-xs text-on-surface-variant mt-0.5">
+                      {editForm.emailVerificationRequired
+                        ? "Actuellement, ce compte DOIT vérifier son email avant d'accéder au tableau de bord. Cochez pour débloquer."
+                        : "Ce compte peut se connecter directement, sans vérification d'email."}
+                    </p>
+                  </div>
+                </label>
               </div>
 
               {rolePermissionsApply(editForm.role) && (
