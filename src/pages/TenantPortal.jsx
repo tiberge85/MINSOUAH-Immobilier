@@ -428,6 +428,40 @@ export default function TenantPortal() {
   const unpaidPayments = tenantPayments.filter(p => p.status !== 'Payé');
   const totalPaid = paidPayments.reduce((s, p) => s + (p.amount || 0), 0);
 
+  // ── Arriérés & pénalités de retard ──────────────────────────────────────
+  // Règle agence : le loyer doit être réglé avant le 10 du mois. Passé le 10 sans
+  // paiement → pénalité de 10% du loyer pour ce mois. Les pénalités se CUMULENT
+  // mois après mois tant que l'arriéré n'est pas réglé.
+  const PENALTY_RATE = 0.10;
+  const PENALTY_DAY = 10;
+  const MONTHS_FR_L = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  const parseMonthLabel = (label) => {
+    const parts = String(label || '').trim().toLowerCase().split(/\s+/);
+    const mi = MONTHS_FR_L.indexOf(parts[0]);
+    const yr = parseInt(parts[1], 10);
+    return (mi < 0 || !yr) ? null : { monthIndex: mi, year: yr, key: yr * 12 + mi };
+  };
+  const penaltyFor = (p) => {
+    if (!p || p.status === 'Payé' || p.status === 'Annulé') return 0;
+    if (p.penaltyAmount != null && p.penaltyAmount > 0) return p.penaltyAmount; // pénalité déjà fixée par l'agence
+    const m = parseMonthLabel(p.month);
+    if (!m) return 0;
+    const deadline = new Date(m.year, m.monthIndex, PENALTY_DAY, 23, 59, 59);
+    if (new Date() <= deadline) return 0; // encore dans les délais (jusqu'au 10 inclus)
+    const base = p.amount || p.baseAmount || contract?.rent || 0;
+    return Math.round(base * PENALTY_RATE);
+  };
+  const arrears = useMemo(() =>
+    unpaidPayments
+      .map(p => ({ ...p, _penalty: penaltyFor(p), _mk: parseMonthLabel(p.month)?.key ?? 0 }))
+      .sort((a, b) => a._mk - b._mk),
+    [unpaidPayments] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const totalArrears = arrears.reduce((s, p) => s + (p.amount || 0), 0);
+  const totalPenalties = arrears.reduce((s, p) => s + (p._penalty || 0), 0);
+  const totalDue = totalArrears + totalPenalties;
+  const penaltyCount = arrears.filter(p => p._penalty > 0).length;
+
   const nextDueDate = contract?.endDate || '—';
   const nextRentAmount = contract?.rent || 0;
 
@@ -652,6 +686,7 @@ export default function TenantPortal() {
   const TABS = [
     { id: 'home', label: 'Accueil', icon: 'home' },
     { id: 'payments', label: 'Paiements', icon: 'payments' },
+    { id: 'arrears', label: 'Arriérés', icon: 'account_balance_wallet' },
     { id: 'tickets', label: 'Maintenance', icon: 'engineering' },
     { id: 'edl', label: 'État lieux', icon: 'home_work' },
     { id: 'awards', label: 'Distinctions', icon: 'verified' },
@@ -832,17 +867,19 @@ export default function TenantPortal() {
 
             {/* Unpaid alert */}
             {unpaidPayments.length > 0 && (
-              <div className="bg-error/5 border border-error/20 rounded-2xl p-md flex items-start gap-3">
+              <button onClick={() => setActiveTab('arrears')} className="w-full text-left bg-error/5 border border-error/20 rounded-2xl p-md flex items-start gap-3 hover:bg-error/10 transition-colors">
                 <Icon name="warning" size={20} className="text-error flex-shrink-0 mt-0.5" filled />
-                <div>
+                <div className="flex-1">
                   <p className="font-bold text-on-surface">
                     {unpaidPayments.length} paiement(s) en attente
                   </p>
                   <p className="text-body-sm text-on-surface-variant">
-                    Montant dû : {fmt(unpaidPayments.reduce((s, p) => s + (p.amount || 0), 0))}
+                    Total à régler : <span className="font-bold text-error">{fmt(totalDue)}</span>
+                    {totalPenalties > 0 && <> (dont {fmt(totalPenalties)} de pénalités)</>}
                   </p>
+                  <p className="text-[11px] text-primary font-semibold mt-1">Voir le détail des arriérés →</p>
                 </div>
-              </div>
+              </button>
             )}
 
             {/* Contract card */}
@@ -914,11 +951,26 @@ export default function TenantPortal() {
               </div>
               <div className="bg-error/5 border border-error/20 rounded-xl p-3 text-center">
                 <p className={`font-black text-h2 ${unpaidPayments.length > 0 ? 'text-error' : 'text-green-600'}`}>
-                  {fmt(unpaidPayments.reduce((s, p) => s + (p.amount || 0), 0))}
+                  {fmt(totalArrears)}
                 </p>
                 <p className="text-label-sm text-on-surface-variant">Impayés</p>
+                {totalPenalties > 0 && (
+                  <p className="text-[11px] font-bold text-error mt-0.5">+ {fmt(totalPenalties)} pénalités</p>
+                )}
               </div>
             </div>
+            {totalPenalties > 0 && (
+              <button
+                onClick={() => setActiveTab('arrears')}
+                className="w-full bg-error/5 border border-error/20 rounded-xl p-3 flex items-center justify-between text-left hover:bg-error/10 transition-colors"
+              >
+                <span className="flex items-center gap-2 text-error">
+                  <Icon name="warning" size={18} filled />
+                  <span className="text-body-sm font-bold">{penaltyCount} mois en pénalité — total à régler {fmt(totalDue)}</span>
+                </span>
+                <Icon name="arrow_forward" size={18} className="text-error" />
+              </button>
+            )}
             <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 overflow-hidden">
               {tenantPayments.length === 0 ? (
                 <div className="text-center py-10 text-on-surface-variant">
@@ -935,6 +987,70 @@ export default function TenantPortal() {
                 ))
               )}
             </div>
+          </>
+        )}
+
+        {/* ── ARRIÉRÉS & PÉNALITÉS ── */}
+        {activeTab === 'arrears' && (
+          <>
+            <h3 className="font-bold text-on-surface">Arriérés & pénalités</h3>
+            <p className="text-body-sm text-on-surface-variant -mt-2">
+              Le loyer doit être réglé avant le 10 du mois. Passé cette date, une pénalité de 10% s'applique et se cumule chaque mois.
+            </p>
+
+            {/* Tableau de bord : total dû */}
+            <div className="bg-gradient-to-br from-error/10 to-amber-500/10 border border-error/20 rounded-2xl p-md">
+              <p className="text-label-sm text-on-surface-variant">Total à régler (arriérés + pénalités)</p>
+              <p className="font-h1 text-h1 font-black text-error">{fmt(totalDue)}</p>
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <div className="bg-surface-container-lowest rounded-xl p-3">
+                  <p className="text-label-sm text-on-surface-variant">Loyers impayés</p>
+                  <p className="font-bold text-on-surface">{fmt(totalArrears)}</p>
+                </div>
+                <div className="bg-surface-container-lowest rounded-xl p-3">
+                  <p className="text-label-sm text-on-surface-variant">Pénalités cumulées</p>
+                  <p className="font-bold text-error">{fmt(totalPenalties)}</p>
+                  <p className="text-[11px] text-on-surface-variant">{penaltyCount} mois en pénalité</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Détail par mois */}
+            {arrears.length === 0 ? (
+              <div className="bg-green-50 border border-green-200 rounded-2xl p-8 text-center">
+                <Icon name="check_circle" size={40} className="text-green-600 opacity-80 mb-2" filled />
+                <p className="font-bold text-green-800">Aucun arriéré 🎉</p>
+                <p className="text-body-sm text-green-700">Vous êtes à jour dans vos paiements. Bravo !</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {arrears.map(p => (
+                  <div key={p.id} className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 p-md">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-bold text-on-surface">{p.month || 'Mois —'}</p>
+                        <p className="text-label-sm text-on-surface-variant">Loyer : {fmt(p.amount || 0)}</p>
+                      </div>
+                      {p._penalty > 0 ? (
+                        <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-error/10 text-error whitespace-nowrap">
+                          Pénalité +{fmt(p._penalty)}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-800 whitespace-nowrap">
+                          En attente
+                        </span>
+                      )}
+                    </div>
+                    {p._penalty > 0 && (
+                      <div className="mt-2 pt-2 border-t border-outline-variant/15 flex items-center justify-between">
+                        <span className="text-body-sm text-on-surface-variant">À régler pour ce mois</span>
+                        <span className="font-bold text-error">{fmt((p.amount || 0) + p._penalty)}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
 
